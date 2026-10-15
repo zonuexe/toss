@@ -13,7 +13,7 @@ for (
     "#x bind:",
     "#x at: 'key' put:.",
     "#x bind: 'value' put:.",
-    "#x bind: ('value').",
+    "#x bind: ().",
     "#x bind: 'value' |> #y bind:.",
     "#x bind: 'value'\n$x print.",
   ]

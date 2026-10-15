@@ -18,13 +18,25 @@ export function parse(source: string, file: string): readonly Expression[] {
         return { kind: "symbol", name: token.name, location: token.location };
       case "fetch":
         return { kind: "fetch", name: token.name, location: token.location };
+      case "openParen": {
+        const expression = keyword();
+        if (current().kind !== "closeParen") {
+          throw new TossSyntaxError(
+            current().location,
+            "Expected ')' after grouped expression.",
+          );
+        }
+        index++;
+        return expression;
+      }
       case "unary":
       case "keyword":
       case "period":
+      case "closeParen":
       case "eof":
         throw new TossSyntaxError(
           token.location,
-          "Expected a string, symbol, or reference.",
+          "Expected an expression.",
         );
       default: {
         const exhaustive: never = token;

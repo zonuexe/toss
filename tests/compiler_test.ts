@@ -76,7 +76,7 @@ const invalidCases = [
     source: "'a' print:.",
     line: 1,
     column: 11,
-    reason: "Expected a string, symbol, or reference",
+    reason: "Expected an expression",
   },
   { source: "'a' 表示.", line: 1, column: 5, reason: "Unexpected character" },
   {
@@ -85,7 +85,7 @@ const invalidCases = [
     column: 1,
     reason: "Unexpected character",
   },
-  { source: "('a').", line: 1, column: 1, reason: "Unexpected character" },
+  { source: "('a'.).", line: 1, column: 5, reason: "Expected ')'" },
   { source: "{ 'a' }.", line: 1, column: 1, reason: "Unexpected character" },
   { source: "'a'\n'b'.", line: 2, column: 1, reason: "Expected '.'" },
 ] as const;

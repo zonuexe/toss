@@ -1,0 +1,4 @@
+(#greeting bind: 'Hello') print.
+#copy bind: (#greeting bind: 'Goodbye').
+$copy print.
+$greeting print.

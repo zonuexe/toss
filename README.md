@@ -9,7 +9,7 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 ## Try the first compiler
 
 The current implementation supports single-quoted strings, named symbols,
-bindings and references, unary and keyword messages, multiple statements, and
+bindings and references, unary and keyword messages, expression grouping, multiple statements, and
 `//` line comments. Blocks, macros, pipelines, and effects described below are
 design goals and are not implemented yet.
 
@@ -64,11 +64,30 @@ Unary messages bind more tightly than keyword messages: in
 `#greeting bind: 'Hello' print.`, the string is printed before it is bound.
 Multiple keyword parts form one message, such as `at:put:`, with arguments
 evaluated from left to right. Only `bind:` is provided in this version; other
-keyword messages fail at runtime. Grouping parentheses remain unsupported.
+keyword messages fail at runtime.
 
 ```sh
 mise exec -- deno task compile examples/bindings.toss -o out/bindings.js
 mise exec -- deno run out/bindings.js
+```
+
+### Grouping expressions
+
+Parentheses group one expression, including a keyword message:
+
+```text
+(#greeting bind: 'Hello') print.
+#copy bind: (#greeting bind: 'Goodbye').
+$copy print.
+```
+
+Groups can be nested and share the current environment. A group has no final
+period; its containing statement still needs one. Empty groups and multiple
+statements inside a group are syntax errors.
+
+```sh
+mise exec -- deno task compile examples/grouping.toss -o out/grouping.js
+mise exec -- deno run out/grouping.js
 ```
 
 Run the tests and code checks:
