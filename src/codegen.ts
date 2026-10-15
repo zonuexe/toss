@@ -1,4 +1,5 @@
 import type { Expression } from "./ast.ts";
+import { blockValue, blockValueWithArgument } from "./prelude/block.ts";
 import { outputDump, outputPrint } from "./prelude/output.ts";
 import { stringInspect, stringToString } from "./prelude/string.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
@@ -17,28 +18,48 @@ function messageTable(
   }\n]);`;
 }
 
-function emit(expression: Expression): string {
+function emit(expression: Expression, scope = "environment"): string {
+  const context = `{location: ${
+    JSON.stringify(expression.location)
+  }, environment: ${scope}}`;
   switch (expression.kind) {
+    case "block": {
+      const parameters = expression.parameters.map((_, index) => `arg${index}`);
+      const bindings = expression.parameters.map((name, index) =>
+        `scope.bindings.set(Symbol.for(${JSON.stringify(name)}), arg${index});`
+      );
+      const body = expression.body.map((item, index) =>
+        `${index === expression.body.length - 1 ? "return " : ""}${
+          emit(item, "scope")
+        };`
+      );
+      return `((captured) => function(${
+        parameters.join(", ")
+      }) {\nconst scope = {bindings: new Map(), parent: captured};\n${
+        [...bindings, ...body].join("\n")
+      }\n})(${scope})`;
+    }
     case "string":
       return JSON.stringify(expression.value);
     case "symbol":
       return `Symbol.for(${JSON.stringify(expression.name)})`;
     case "fetch":
-      return `fetchBinding(${JSON.stringify(expression.name)}, ${
-        JSON.stringify(expression.location)
-      })`;
+      return `fetchBinding(${JSON.stringify(expression.name)}, ${context})`;
     case "send":
-      return `send(${emit(expression.receiver)}, {name: ${
-        JSON.stringify(expression.name)
-      }, arguments: [${expression.arguments.map(emit).join(", ")}]}, ${
-        JSON.stringify(expression.location)
-      })`;
-    case "pipeline":
-      return `((piped) => send(${emit(expression.receiver)}, {name: ${
+      return `send(${emit(expression.receiver, scope)}, {name: ${
         JSON.stringify(expression.name)
       }, arguments: [${
-        [...expression.arguments.map(emit), "piped"].join(", ")
-      }]}, ${JSON.stringify(expression.location)}))(${emit(expression.input)})`;
+        expression.arguments.map((argument) => emit(argument, scope)).join(", ")
+      }]}, ${context})`;
+    case "pipeline":
+      return `((piped) => send(${emit(expression.receiver, scope)}, {name: ${
+        JSON.stringify(expression.name)
+      }, arguments: [${
+        [
+          ...expression.arguments.map((argument) => emit(argument, scope)),
+          "piped",
+        ].join(", ")
+      }]}, ${context}))(${emit(expression.input, scope)})`;
     default: {
       const exhaustive: never = expression;
       throw new TypeError(
@@ -52,7 +73,8 @@ export function generate(expressions: readonly Expression[]): string {
   const lines = ['"use strict";'];
   if (expressions.length > 0) {
     lines.push(
-      "const environment = new Map();",
+      "const environment = {bindings: new Map(), parent: null};",
+      messageTable("blockMessages", [blockValue, blockValueWithArgument]),
       messageTable("stringMessages", [
         stringToString,
         stringInspect,

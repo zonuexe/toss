@@ -18,6 +18,41 @@ export function parse(source: string, file: string): readonly Expression[] {
         return { kind: "symbol", name: token.name, location: token.location };
       case "fetch":
         return { kind: "fetch", name: token.name, location: token.location };
+      case "openBrace": {
+        let parameters: readonly [] | readonly [string] = [];
+        const parameter = current();
+        if (parameter.kind === "unary") {
+          parameters = [parameter.name];
+          index++;
+          if (current().kind !== "arrow") {
+            throw new TossSyntaxError(
+              current().location,
+              "Expected '->' after block parameter.",
+            );
+          }
+          index++;
+        }
+        const first = pipeline();
+        const rest: Expression[] = [];
+        while (current().kind === "period") {
+          index++;
+          if (current().kind === "closeBrace") break;
+          rest.push(pipeline());
+        }
+        if (current().kind !== "closeBrace") {
+          throw new TossSyntaxError(
+            current().location,
+            "Expected '}' after block body.",
+          );
+        }
+        index++;
+        return {
+          kind: "block",
+          parameters,
+          body: [first, ...rest],
+          location: token.location,
+        };
+      }
       case "openParen": {
         const expression = pipeline();
         if (current().kind !== "closeParen") {
@@ -34,6 +69,8 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "period":
       case "pipe":
       case "closeParen":
+      case "closeBrace":
+      case "arrow":
       case "eof":
         throw new TossSyntaxError(
           token.location,
@@ -77,6 +114,7 @@ export function parse(source: string, file: string): readonly Expression[] {
         switch (following.kind) {
           case "period":
           case "closeParen":
+          case "closeBrace":
           case "pipe":
           case "eof":
             return {
@@ -93,6 +131,8 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "unary":
           case "keyword":
           case "openParen":
+          case "openBrace":
+          case "arrow":
             break;
           default: {
             const exhaustive: never = following;

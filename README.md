@@ -10,7 +10,8 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 
 The current implementation supports single-quoted strings, named symbols,
 bindings and references, unary and keyword messages, expression grouping,
-pipelines, multiple statements, and `//` line comments. Blocks, macros, and effects described below are
+pipelines, blocks and closures with zero or one parameter, multiple statements,
+and `//` line comments. Macros and effects described below are
 design goals and are not implemented yet.
 
 Use mise to install the pinned Deno version, then compile and run the example:
@@ -111,6 +112,37 @@ arguments, and missing earlier arguments are syntax errors.
 ```sh
 mise exec -- deno task compile examples/pipeline.toss -o out/pipeline.js
 mise exec -- deno run out/pipeline.js
+```
+
+### Blocks and closures
+
+Blocks defer execution until they receive `value` or `value:`:
+
+```text
+#hello bind: { 'Hello' print }.
+$hello value.
+#echo bind: { name -> $name print }.
+$echo value: 'Toss'.
+```
+
+A block returns its last expression. Periods separate expressions inside the
+body; the final period before `}` is optional. Blocks capture their defining
+environment by reference. Each call has fresh local bindings and parameter
+bindings; fetch searches outward, while `bind:` only updates the current scope.
+Returned blocks retain access to the environment in which they were created.
+
+```text
+#makeReader bind: { name -> { $name } }.
+#read bind: ($makeReader value: 'Captured').
+$read value print.
+```
+
+Wrong argument counts are runtime errors. Empty blocks and multiple parameters
+are not supported yet. Block messages currently consist of `value` and `value:`.
+
+```sh
+mise exec -- deno task compile examples/blocks.toss -o out/blocks.js
+mise exec -- deno run out/blocks.js
 ```
 
 Run the tests and code checks:

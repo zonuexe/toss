@@ -1,0 +1,7 @@
+#hello bind: { 'Hello' print }.
+$hello value.
+#echo bind: { name -> $name print }.
+$echo value: 'Toss'.
+#makeReader bind: { name -> { $name } }.
+#read bind: ($makeReader value: 'Captured').
+$read value print.

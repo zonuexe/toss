@@ -30,6 +30,9 @@ export type Token =
   | { readonly kind: "pipe"; readonly location: SourceLocation }
   | { readonly kind: "openParen"; readonly location: SourceLocation }
   | { readonly kind: "closeParen"; readonly location: SourceLocation }
+  | { readonly kind: "openBrace"; readonly location: SourceLocation }
+  | { readonly kind: "closeBrace"; readonly location: SourceLocation }
+  | { readonly kind: "arrow"; readonly location: SourceLocation }
   | { readonly kind: "eof"; readonly location: SourceLocation };
 
 export function lex(
@@ -110,6 +113,16 @@ export function lex(
       } else {
         tokens.push({ kind: "unary", name, location: start });
       }
+    } else if (source.startsWith("->", offset)) {
+      advance();
+      advance();
+      tokens.push({ kind: "arrow", location: start });
+    } else if (character === "{" || character === "}") {
+      advance();
+      tokens.push({
+        kind: character === "{" ? "openBrace" : "closeBrace",
+        location: start,
+      });
     } else if (source.startsWith("|>", offset)) {
       advance();
       advance();

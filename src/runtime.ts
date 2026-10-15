@@ -7,28 +7,37 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
   }
 }
 
-function send(receiver, message, location) {
-  const messages = typeof receiver === "symbol" ? symbolMessages : stringMessages;
+function send(receiver, message, context) {
+  const type = typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : "String";
+  const messages = type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : stringMessages;
   const implementation = messages.get(message.name);
   if (implementation === undefined) {
-    const type = typeof receiver === "symbol" ? "Symbol" : "String";
-    throw new TossRuntimeError("Unknown message " + JSON.stringify(message.name) + " for " + type + ".", location);
+    throw new TossRuntimeError("Unknown message " + JSON.stringify(message.name) + " for " + type + ".", context.location);
   }
-  return implementation(receiver, location, ...message.arguments);
+  return implementation(receiver, context, ...message.arguments);
 }
 
-function fetchBinding(name, location) {
+function fetchBinding(name, context) {
   const key = Symbol.for(name);
-  if (!environment.has(key)) {
-    throw new TossRuntimeError("Unbound name " + JSON.stringify(name) + ".", location);
+  let scope = context.environment;
+  while (scope !== null) {
+    if (scope.bindings.has(key)) return scope.bindings.get(key);
+    scope = scope.parent;
   }
-  return environment.get(key);
+  throw new TossRuntimeError("Unbound name " + JSON.stringify(name) + ".", context.location);
 }
 
-function writeOutput(receiver, conversion, location) {
-  const text = send(receiver, {name: conversion, arguments: []}, location);
+function invokeBlock(receiver, args, context) {
+  if (receiver.length !== args.length) {
+    throw new TossRuntimeError("Block expects " + receiver.length + " argument(s), received " + args.length + ".", context.location);
+  }
+  return receiver(...args);
+}
+
+function writeOutput(receiver, conversion, context) {
+  const text = send(receiver, {name: conversion, arguments: []}, context);
   if (typeof text !== "string") {
-    throw new TossRuntimeError(conversion + " must return a string.", location);
+    throw new TossRuntimeError(conversion + " must return a string.", context.location);
   }
   console.log(text);
   return receiver;

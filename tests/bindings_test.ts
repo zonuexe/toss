@@ -140,7 +140,7 @@ for (const fixture of failures) {
 
 Deno.test("bind returns the stored value", async () => {
   const javascript = compile("#seed.", "fixture.toss") + `
-const value = send(Symbol.for("key"), {name: "bind:", arguments: ["stored"]}, {file: "fixture.toss", line: 1, column: 1});
+const value = send(Symbol.for("key"), {name: "bind:", arguments: ["stored"]}, {location: {file: "fixture.toss", line: 1, column: 1}, environment});
 console.log(value);
 `;
 

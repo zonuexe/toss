@@ -14,8 +14,8 @@ export const symbolInspect = {
 
 export const symbolBind = {
   name: "bind:",
-  javascript: `function bind(receiver, location, value) {
-  environment.set(receiver, value);
+  javascript: `function bind(receiver, context, value) {
+  context.environment.bindings.set(receiver, value);
   return value;
 }`,
 } as const;

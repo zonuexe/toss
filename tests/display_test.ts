@@ -77,7 +77,7 @@ for (
 stringMessages.set(${JSON.stringify(conversion)}, () => "converted");
 const result = send("original", {name: ${
       JSON.stringify(outputMessage)
-    }, arguments: []}, {file: "fixture.toss", line: 2, column: 1});
+    }, arguments: []}, {location: {file: "fixture.toss", line: 2, column: 1}, environment});
 console.log(result);
 `;
 
@@ -92,7 +92,7 @@ console.log(result);
 stringMessages.set(${JSON.stringify(conversion)}, () => 42);
 send("original", {name: ${
       JSON.stringify(outputMessage)
-    }, arguments: []}, {file: "fixture.toss", line: 2, column: 3});
+    }, arguments: []}, {location: {file: "fixture.toss", line: 2, column: 3}, environment});
 `;
 
     const result = await executeJavaScript(javascript);
