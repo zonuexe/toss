@@ -1,28 +1,68 @@
-import type { Statement } from "./parser.ts";
-import { stringPrint } from "./prelude/string.ts";
+import type { Expression } from "./ast.ts";
+import { outputDump, outputPrint } from "./prelude/output.ts";
+import { stringInspect, stringToString } from "./prelude/string.ts";
+import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
 import { runtimeJavaScript } from "./runtime.ts";
 
-export function generate(statements: readonly Statement[]): string {
+type PreludeMessage = { readonly name: string; readonly javascript: string };
+
+function messageTable(
+  name: string,
+  messages: readonly PreludeMessage[],
+): string {
+  return `const ${name} = new Map([\n${
+    messages.map((message) =>
+      `  [${JSON.stringify(message.name)}, ${message.javascript}]`
+    ).join(",\n")
+  }\n]);`;
+}
+
+function emit(expression: Expression): string {
+  switch (expression.kind) {
+    case "string":
+      return JSON.stringify(expression.value);
+    case "symbol":
+      return `Symbol.for(${JSON.stringify(expression.name)})`;
+    case "fetch":
+      return `fetchBinding(${JSON.stringify(expression.name)}, ${
+        JSON.stringify(expression.location)
+      })`;
+    case "send":
+      return `send(${emit(expression.receiver)}, {name: ${
+        JSON.stringify(expression.name)
+      }, arguments: [${expression.arguments.map(emit).join(", ")}]}, ${
+        JSON.stringify(expression.location)
+      })`;
+    default: {
+      const exhaustive: never = expression;
+      throw new TypeError(
+        `Unexpected expression: ${JSON.stringify(exhaustive)}`,
+      );
+    }
+  }
+}
+
+export function generate(expressions: readonly Expression[]): string {
   const lines = ['"use strict";'];
-  if (statements.some((statement) => statement.messages.length > 0)) {
+  if (expressions.length > 0) {
     lines.push(
-      stringPrint.javascript,
-      `const stringMessages = new Map([[${
-        JSON.stringify(stringPrint.name)
-      }, print]]);`,
+      "const environment = new Map();",
+      messageTable("stringMessages", [
+        stringToString,
+        stringInspect,
+        outputPrint,
+        outputDump,
+      ]),
+      messageTable("symbolMessages", [
+        symbolToString,
+        symbolInspect,
+        outputPrint,
+        outputDump,
+        symbolBind,
+      ]),
       runtimeJavaScript,
     );
   }
-  for (const statement of statements) {
-    lines.push("{", `  let receiver = ${JSON.stringify(statement.value)};`);
-    for (const message of statement.messages) {
-      lines.push(
-        `  receiver = send(receiver, ${JSON.stringify(message.name)}, ${
-          JSON.stringify(message.location)
-        });`,
-      );
-    }
-    lines.push("}");
-  }
+  for (const expression of expressions) lines.push(emit(expression) + ";");
   return lines.join("\n") + "\n";
 }

@@ -1,10 +1,16 @@
 import { compile } from "../src/compiler.ts";
 
 export async function execute(source: string): Promise<Deno.CommandOutput> {
+  return await executeJavaScript(compile(source, "fixture.toss"));
+}
+
+export async function executeJavaScript(
+  javascript: string,
+): Promise<Deno.CommandOutput> {
   const directory = await Deno.makeTempDir({ prefix: "toss-test-" });
   try {
     const output = `${directory}/program.js`;
-    await Deno.writeTextFile(output, compile(source, "fixture.toss"));
+    await Deno.writeTextFile(output, javascript);
     return await new Deno.Command(Deno.execPath(), {
       args: ["run", "--no-config", "--no-prompt", output],
       stdout: "piped",

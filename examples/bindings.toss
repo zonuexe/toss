@@ -1,0 +1,6 @@
+#greeting bind: 'Hello, Toss!'.
+$greeting print.
+#key bind: #greeting.
+$key bind: 'Goodbye'.
+$greeting print.
+$key dump.

@@ -8,9 +8,10 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 
 ## Try the first compiler
 
-The first implementation supports single-quoted strings, unary message chains,
-multiple statements, and `//` line comments. Other language features described
-below are design goals and are not implemented yet.
+The current implementation supports single-quoted strings, named symbols,
+bindings and references, unary and keyword messages, multiple statements, and
+`//` line comments. Blocks, macros, pipelines, and effects described below are
+design goals and are not implemented yet.
 
 Use mise to install the pinned Deno version, then compile and run the example:
 
@@ -24,11 +25,51 @@ The example prints `Hello, Toss!`. The generated JavaScript includes its prelude
 and runtime code and needs no imports. Generated files under `out/` are ignored
 by Git.
 
-The prelude's `print` message writes a string followed by a newline and returns
-the same string. `'World' print print.` therefore prints `World` twice.
+The prelude provides `toString`, `inspect`, `print`, and `dump` for strings and
+named symbols. For strings, `toString` returns the original string and `inspect`
+returns its JSON string representation, including quotes and escaped control
+characters. For symbols, `toString` returns the name and `inspect` adds `#`.
+`print` sends `toString` and writes the result with a newline; `dump` does the
+same through `inspect`. Both output messages return the original receiver.
+`'World' print print.` therefore prints `World` twice, while `'World' dump.`
+prints `"World"`. Conversion results must be strings or execution fails.
+
+Try the display example:
+
+```sh
+mise exec -- deno task compile examples/display.toss -o out/display.js
+mise exec -- deno run out/display.js
+```
+
 Single-quoted strings decode only `\\` and `\'`; literal tabs and line breaks
 are preserved. Unknown messages fail at runtime. Syntax and message errors
 report the original Toss file, line, and column and exit with a nonzero status.
+
+### Bindings and symbols
+
+`#name` is an interned symbol. Sending it `bind:` stores a value in the current
+file's environment and returns that value. `$name` fetches the binding; an
+unbound name is a runtime error. Rebinding replaces the previous value, and
+each generated file has its own environment.
+
+```text
+#greeting bind: 'Hello, Toss!'.
+$greeting print.
+#key bind: #greeting.
+$key bind: 'Goodbye'.
+$greeting print.
+```
+
+Unary messages bind more tightly than keyword messages: in
+`#greeting bind: 'Hello' print.`, the string is printed before it is bound.
+Multiple keyword parts form one message, such as `at:put:`, with arguments
+evaluated from left to right. Only `bind:` is provided in this version; other
+keyword messages fail at runtime. Grouping parentheses remain unsupported.
+
+```sh
+mise exec -- deno task compile examples/bindings.toss -o out/bindings.js
+mise exec -- deno run out/bindings.js
+```
 
 Run the tests and code checks:
 

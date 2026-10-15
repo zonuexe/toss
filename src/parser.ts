@@ -1,94 +1,81 @@
-import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
+import type { Expression } from "./ast.ts";
+import { TossSyntaxError } from "./diagnostic.ts";
+import { lex, type Token } from "./lexer.ts";
 
-export type Message = {
-  readonly name: string;
-  readonly location: SourceLocation;
-};
+export function parse(source: string, file: string): readonly Expression[] {
+  const { tokens, end } = lex(source, file);
+  let index = 0;
+  const current = (): Token => tokens[index] ?? end;
+  const expressions: Expression[] = [];
 
-export type Statement = {
-  readonly value: string;
-  readonly messages: readonly Message[];
-};
-
-export function parse(source: string, file: string): readonly Statement[] {
-  let offset = 0;
-  let line = 1;
-  let column = 1;
-  const statements: Statement[] = [];
-
-  function location(): SourceLocation {
-    return { file, line, column };
-  }
-
-  function current(): string {
-    const point = source.codePointAt(offset);
-    return point === undefined ? "" : String.fromCodePoint(point);
-  }
-
-  function advance(): string {
-    const character = current();
-    if (character === "\r") {
-      line++;
-      column = 1;
-    } else if (character === "\n") {
-      if (source[offset - 1] !== "\r") line++;
-      column = 1;
-    } else {
-      column++;
-    }
-    offset += character.length;
-    return character;
-  }
-
-  function skipTrivia(): void {
-    while (offset < source.length) {
-      if (/[ \t\r\n]/.test(current())) {
-        advance();
-      } else if (source.startsWith("//", offset)) {
-        while (offset < source.length && !/[\r\n]/.test(current())) advance();
-      } else {
-        break;
+  function primary(): Expression {
+    const token = current();
+    index++;
+    switch (token.kind) {
+      case "string":
+        return { kind: "string", value: token.value, location: token.location };
+      case "symbol":
+        return { kind: "symbol", name: token.name, location: token.location };
+      case "fetch":
+        return { kind: "fetch", name: token.name, location: token.location };
+      case "unary":
+      case "keyword":
+      case "period":
+      case "eof":
+        throw new TossSyntaxError(
+          token.location,
+          "Expected a string, symbol, or reference.",
+        );
+      default: {
+        const exhaustive: never = token;
+        throw new TypeError(`Unexpected token: ${JSON.stringify(exhaustive)}`);
       }
     }
   }
 
-  function readString(): string {
-    const start = location();
-    if (current() !== "'") {
-      throw new TossSyntaxError(start, "Expected a single-quoted string.");
+  function unary(): Expression {
+    let expression = primary();
+    let token = current();
+    while (token.kind === "unary") {
+      index++;
+      expression = {
+        kind: "send",
+        receiver: expression,
+        name: token.name,
+        arguments: [],
+        location: token.location,
+      };
+      token = current();
     }
-    advance();
-    let value = "";
-    while (offset < source.length) {
-      const character = advance();
-      if (character === "'") return value;
-      if (character === "\\" && (current() === "\\" || current() === "'")) {
-        value += advance();
-      } else {
-        value += character;
-      }
-    }
-    throw new TossSyntaxError(start, "Unterminated string.");
+    return expression;
   }
 
-  skipTrivia();
-  while (offset < source.length) {
-    const value = readString();
-    const messages: Message[] = [];
-    skipTrivia();
-    while (/[A-Za-z_]/.test(current())) {
-      const start = location();
-      let name = advance();
-      while (/[A-Za-z0-9_]/.test(current())) name += advance();
-      messages.push({ name, location: start });
-      skipTrivia();
+  function keyword(): Expression {
+    const receiver = unary();
+    const location = current().location;
+    let name = "";
+    const args: Expression[] = [];
+    let token = current();
+    while (token.kind === "keyword") {
+      name += token.name;
+      index++;
+      args.push(unary());
+      token = current();
     }
-    if (current() !== ".") {
-      throw new TossSyntaxError(location(), "Expected '.' after expression.");
-    }
-    advance();
-    statements.push({ value, messages });
-    skipTrivia();
+    return args.length === 0
+      ? receiver
+      : { kind: "send", receiver, name, arguments: args, location };
   }
-  return statements;
+
+  while (current().kind !== "eof") {
+    expressions.push(keyword());
+    if (current().kind !== "period") {
+      throw new TossSyntaxError(
+        current().location,
+        "Expected '.' after expression.",
+      );
+    }
+    index++;
+  }
+  return expressions;
 }
