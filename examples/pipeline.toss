@@ -1,0 +1,6 @@
+'Hello'
+    |> #greeting bind:
+    |> #copy bind:.
+$greeting print.
+$copy print.
+('Goodbye' |> #greeting bind:) print.

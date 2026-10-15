@@ -33,6 +33,12 @@ function emit(expression: Expression): string {
       }, arguments: [${expression.arguments.map(emit).join(", ")}]}, ${
         JSON.stringify(expression.location)
       })`;
+    case "pipeline":
+      return `((piped) => send(${emit(expression.receiver)}, {name: ${
+        JSON.stringify(expression.name)
+      }, arguments: [${
+        [...expression.arguments.map(emit), "piped"].join(", ")
+      }]}, ${JSON.stringify(expression.location)}))(${emit(expression.input)})`;
     default: {
       const exhaustive: never = expression;
       throw new TypeError(

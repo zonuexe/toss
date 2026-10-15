@@ -17,6 +17,14 @@ export type Expression =
     readonly location: SourceLocation;
   }
   | {
+    readonly kind: "pipeline";
+    readonly input: Expression;
+    readonly receiver: Expression;
+    readonly name: string;
+    readonly arguments: readonly Expression[];
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "send";
     readonly receiver: Expression;
     readonly name: string;

@@ -9,8 +9,8 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 ## Try the first compiler
 
 The current implementation supports single-quoted strings, named symbols,
-bindings and references, unary and keyword messages, expression grouping, multiple statements, and
-`//` line comments. Blocks, macros, pipelines, and effects described below are
+bindings and references, unary and keyword messages, expression grouping,
+pipelines, multiple statements, and `//` line comments. Blocks, macros, and effects described below are
 design goals and are not implemented yet.
 
 Use mise to install the pinned Deno version, then compile and run the example:
@@ -88,6 +88,29 @@ statements inside a group are syntax errors.
 ```sh
 mise exec -- deno task compile examples/grouping.toss -o out/grouping.js
 mise exec -- deno run out/grouping.js
+```
+
+### Pipelines
+
+`|>` passes its left result as the omitted final argument of the keyword message
+on its right. Chained pipelines run from left to right:
+
+```text
+'Hello'
+    |> #greeting bind:
+    |> #copy bind:.
+$copy print.
+```
+
+Unary and keyword messages bind more tightly than pipelines. The left expression
+is evaluated once, before the right receiver and its explicit arguments.
+Parentheses can group a pipeline, as in `('Hello' |> #greeting bind:) print.`.
+The right side must omit its final argument; unary-only sends, fully supplied
+arguments, and missing earlier arguments are syntax errors.
+
+```sh
+mise exec -- deno task compile examples/pipeline.toss -o out/pipeline.js
+mise exec -- deno run out/pipeline.js
 ```
 
 Run the tests and code checks:

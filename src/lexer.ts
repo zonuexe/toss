@@ -27,6 +27,7 @@ export type Token =
     readonly location: SourceLocation;
   }
   | { readonly kind: "period"; readonly location: SourceLocation }
+  | { readonly kind: "pipe"; readonly location: SourceLocation }
   | { readonly kind: "openParen"; readonly location: SourceLocation }
   | { readonly kind: "closeParen"; readonly location: SourceLocation }
   | { readonly kind: "eof"; readonly location: SourceLocation };
@@ -109,6 +110,10 @@ export function lex(
       } else {
         tokens.push({ kind: "unary", name, location: start });
       }
+    } else if (source.startsWith("|>", offset)) {
+      advance();
+      advance();
+      tokens.push({ kind: "pipe", location: start });
     } else if (character === "(" || character === ")") {
       advance();
       tokens.push({

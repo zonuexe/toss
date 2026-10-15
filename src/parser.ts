@@ -19,7 +19,7 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "fetch":
         return { kind: "fetch", name: token.name, location: token.location };
       case "openParen": {
-        const expression = keyword();
+        const expression = pipeline();
         if (current().kind !== "closeParen") {
           throw new TossSyntaxError(
             current().location,
@@ -32,6 +32,7 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "unary":
       case "keyword":
       case "period":
+      case "pipe":
       case "closeParen":
       case "eof":
         throw new TossSyntaxError(
@@ -62,7 +63,7 @@ export function parse(source: string, file: string): readonly Expression[] {
     return expression;
   }
 
-  function keyword(): Expression {
+  function keyword(input?: Expression): Expression {
     const receiver = unary();
     const location = current().location;
     let name = "";
@@ -71,16 +72,61 @@ export function parse(source: string, file: string): readonly Expression[] {
     while (token.kind === "keyword") {
       name += token.name;
       index++;
+      const following = current();
+      if (input !== undefined) {
+        switch (following.kind) {
+          case "period":
+          case "closeParen":
+          case "pipe":
+          case "eof":
+            return {
+              kind: "pipeline",
+              input,
+              receiver,
+              name,
+              arguments: args,
+              location,
+            };
+          case "string":
+          case "symbol":
+          case "fetch":
+          case "unary":
+          case "keyword":
+          case "openParen":
+            break;
+          default: {
+            const exhaustive: never = following;
+            throw new TypeError(
+              `Unexpected token: ${JSON.stringify(exhaustive)}`,
+            );
+          }
+        }
+      }
       args.push(unary());
       token = current();
+    }
+    if (input !== undefined) {
+      throw new TossSyntaxError(
+        current().location,
+        "Expected a keyword message with its final argument omitted after '|>'.",
+      );
     }
     return args.length === 0
       ? receiver
       : { kind: "send", receiver, name, arguments: args, location };
   }
 
+  function pipeline(): Expression {
+    let expression = keyword();
+    while (current().kind === "pipe") {
+      index++;
+      expression = keyword(expression);
+    }
+    return expression;
+  }
+
   while (current().kind !== "eof") {
-    expressions.push(keyword());
+    expressions.push(pipeline());
     if (current().kind !== "period") {
       throw new TossSyntaxError(
         current().location,
