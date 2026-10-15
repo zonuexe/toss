@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "compile": "deno run --allow-read --allow-write src/cli.ts",
+    "test": "deno test --allow-read --allow-write --allow-run=deno tests/",
+    "check": "deno fmt --check && deno lint && deno check src/cli.ts tests/*.ts"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true
+  },
+  "fmt": {
+    "include": ["src/", "tests/", "deno.json"]
+  },
+  "lint": {
+    "include": ["src/", "tests/"]
+  },
+  "exclude": ["out/"]
+}

@@ -11,4 +11,4 @@ mise exec -- deno task compile examples/hello.toss -o out/hello.js
 mise exec -- deno run out/hello.js
 ```
 
-These commands define the required interface; the compiler task is not implemented yet.
+These commands are implemented by the compiler task.
