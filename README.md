@@ -72,6 +72,34 @@ mise exec -- deno task compile examples/bindings.toss -o out/bindings.js
 mise exec -- deno run out/bindings.js
 ```
 
+### Dictionary objects
+
+Every generated file starts with a fresh `$Object`, a native object with no
+prototype. Clone it to create dictionaries with prototype inheritance:
+
+```text
+#parent bind: $Object clone.
+$parent at: 'greeting' put: 'Hello'.
+#child bind: $parent clone.
+($child at: 'greeting') print.
+$child at: 'greeting' put: 'Hi'.
+```
+
+`clone` copies no slots. A child sees parent changes until it writes an own
+override. `at:` reads through the prototype chain, and `at:put:` returns the
+stored value. Keys are strings or symbols, which remain distinct; blocks read
+from slots are returned as data. Missing keys and invalid key types are runtime
+errors. `__proto__`, `constructor`, and `toString` are safe ordinary keys.
+Unsupported object messages report `Object`.
+
+```sh
+mise exec -- deno task compile examples/objects.toss -o out/objects.js
+mise exec -- deno run out/objects.js
+```
+
+See [ADR-15](docs/adr/0015-dictionary-objects.md) for the scope of object
+message dispatch.
+
 ### Grouping expressions
 
 Parentheses group one expression, including a keyword message:

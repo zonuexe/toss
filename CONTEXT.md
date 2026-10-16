@@ -15,3 +15,6 @@ A value that identifies a name, written as `#name`. Named symbols are interned w
 
 **Fetch**:
 A lookup of the nearest named binding, starting in the current environment and searching outward, written as `$name`. Fetching an unbound name is an error.
+
+**Object**:
+A dictionary of slots keyed by strings or symbols. An object can inherit slots from its prototype, and an own slot takes precedence over an inherited one.

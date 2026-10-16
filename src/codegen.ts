@@ -2,6 +2,7 @@ import type { Expression } from "./ast.ts";
 import { blockValue, blockValueWithArguments } from "./prelude/block.ts";
 import { outputDump, outputPrint } from "./prelude/output.ts";
 import { stringInspect, stringToString } from "./prelude/string.ts";
+import { objectAt, objectAtPut, objectClone } from "./prelude/object.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
 import { runtimeJavaScript } from "./runtime.ts";
 
@@ -70,31 +71,32 @@ function emit(expression: Expression, scope = "environment"): string {
 }
 
 export function generate(expressions: readonly Expression[]): string {
-  const lines = ['"use strict";'];
-  if (expressions.length > 0) {
-    lines.push(
-      "const environment = {bindings: new Map(), parent: null};",
-      messageTable("blockMessages", [blockValue]),
-      `const blockKeywordSelector = new RegExp(${
-        JSON.stringify(blockValueWithArguments.selectorPattern)
-      });`,
-      `const blockKeywordMessage = ${blockValueWithArguments.javascript};`,
-      messageTable("stringMessages", [
-        stringToString,
-        stringInspect,
-        outputPrint,
-        outputDump,
-      ]),
-      messageTable("symbolMessages", [
-        symbolToString,
-        symbolInspect,
-        outputPrint,
-        outputDump,
-        symbolBind,
-      ]),
-      runtimeJavaScript,
-    );
-  }
+  const lines = [
+    '"use strict";',
+    "const environment = {bindings: new Map(), parent: null};",
+    messageTable("blockMessages", [blockValue]),
+    `const blockKeywordSelector = new RegExp(${
+      JSON.stringify(blockValueWithArguments.selectorPattern)
+    });`,
+    `const blockKeywordMessage = ${blockValueWithArguments.javascript};`,
+    messageTable("stringMessages", [
+      stringToString,
+      stringInspect,
+      outputPrint,
+      outputDump,
+    ]),
+    messageTable("symbolMessages", [
+      symbolToString,
+      symbolInspect,
+      outputPrint,
+      outputDump,
+      symbolBind,
+    ]),
+    messageTable("objectMessages", [objectClone, objectAt, objectAtPut]),
+    runtimeJavaScript,
+    "const objectRoot = Object.create(null);",
+    'environment.bindings.set(Symbol.for("Object"), objectRoot);',
+  ];
   for (const expression of expressions) lines.push(emit(expression) + ";");
   return lines.join("\n") + "\n";
 }

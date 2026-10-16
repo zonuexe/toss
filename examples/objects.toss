@@ -1,0 +1,10 @@
+#parent bind: $Object clone.
+$parent at: 'greeting' put: 'Hello'.
+
+#child bind: $parent clone.
+($child at: 'greeting') print.
+$child at: #label put: 'Toss'.
+($child at: #label) print.
+
+$parent at: 'greeting' put: 'Goodbye'.
+($child at: 'greeting') print.

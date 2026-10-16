@@ -8,14 +8,18 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
 }
 
 function send(receiver, message, context) {
-  const type = typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : "String";
-  const messages = type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : stringMessages;
+  const type = typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : receiver !== null && typeof receiver === "object" ? "Object" : "String";
+  const messages = type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : stringMessages;
   const implementation = messages.get(message.name) ??
     (type === "Block" && blockKeywordSelector.test(message.name) ? blockKeywordMessage : undefined);
   if (implementation === undefined) {
     throw new TossRuntimeError("Unknown message " + JSON.stringify(message.name) + " for " + type + ".", context.location);
   }
   return implementation(receiver, context, ...message.arguments);
+}
+
+function keyDescription(key) {
+  return typeof key === "symbol" ? "#" + Symbol.keyFor(key) : JSON.stringify(key);
 }
 
 function fetchBinding(name, context) {
