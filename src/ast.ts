@@ -4,7 +4,7 @@ export type Expression =
   | {
     readonly kind: "block";
     readonly parameters: readonly string[];
-    readonly body: readonly [Expression, ...Expression[]];
+    readonly body: readonly Expression[];
     readonly location: SourceLocation;
   }
   | {

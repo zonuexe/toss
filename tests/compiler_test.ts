@@ -86,7 +86,6 @@ const invalidCases = [
     reason: "Unexpected character",
   },
   { source: "('a'.).", line: 1, column: 5, reason: "Expected ')'" },
-  { source: "{}.", line: 1, column: 2, reason: "Expected an expression" },
   { source: "'a'\n'b'.", line: 2, column: 1, reason: "Expected '.'" },
 ] as const;
 

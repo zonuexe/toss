@@ -8,8 +8,8 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
 }
 
 function send(receiver, message, context) {
-  const type = typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : receiver !== null && typeof receiver === "object" ? "Object" : "String";
-  const messages = type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : stringMessages;
+  const type = receiver === null ? "Nil" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
+  const messages = type === "Nil" ? nilMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
   if (type === "Object" && Reflect.has(receiver, message.name)) {
     const slot = Reflect.get(receiver, message.name);
     if (typeof slot === "function") {

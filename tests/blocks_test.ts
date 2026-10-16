@@ -13,6 +13,26 @@ const cases = [
     output: "Hello\n",
   },
   {
+    name: "empty block returns Nil",
+    source: "({} value) print.",
+    output: "nil\n",
+  },
+  {
+    name: "empty block with multiple parameters",
+    source: "({ x,y -> } value: 'a' value: 'b') dump.",
+    output: "nil\n",
+  },
+  {
+    name: "comments only block",
+    source: "({ // nothing\n } value) print.",
+    output: "nil\n",
+  },
+  {
+    name: "empty block returns actual Nil when Nil is shadowed",
+    source: "#Nil bind: 'shadow'. ({} value) print.",
+    output: "nil\n",
+  },
+  {
     name: "one argument",
     source: "#echo bind: { name -> $name print }. $echo value: 'Toss'.",
     output: "Toss\n",
@@ -130,6 +150,16 @@ const failures = [
     output: "",
   },
   {
+    source: "{ x, y -> } value: 'one'.",
+    reason: "Block expects 2 argument(s), received 1.",
+    output: "",
+  },
+  {
+    source: "{} value: 'extra'.",
+    reason: "Block expects 0 argument(s), received 1.",
+    output: "",
+  },
+  {
     source: "{ 'never' print } value: 'extra'.",
     reason: "Block expects 0 argument(s), received 1.",
     output: "",
@@ -187,4 +217,26 @@ Deno.test("block arity errors use the call source location", async () => {
       "fixture.toss:2:6: RuntimeError: Block expects 1 argument(s), received 0.",
     ),
   );
+});
+
+Deno.test("empty block arity errors retain the call source location", async () => {
+  for (
+    const [source, location, reason] of [
+      ["{} value: 'extra'.", "fixture.toss:1:4", "0 argument(s), received 1"],
+      [
+        "{ x, y -> }\nvalue: 'one'.",
+        "fixture.toss:2:1",
+        "2 argument(s), received 1",
+      ],
+    ] as const
+  ) {
+    const result = await execute(source);
+    assert.notEqual(result.code, 0);
+    assert.ok(
+      text(result.stderr).includes(
+        `${location}: RuntimeError: Block expects ${reason}.`,
+      ),
+      text(result.stderr),
+    );
+  }
 });

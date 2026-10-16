@@ -10,7 +10,8 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 
 The current implementation supports single-quoted strings, named symbols,
 bindings and references, unary and keyword messages, expression grouping,
-pipelines, blocks and closures with parameters, multiple statements,
+pipelines, blocks and closures with parameters, Nil and empty blocks,
+multiple statements,
 and `//` line comments. Macros and effects described below are
 design goals and are not implemented yet.
 
@@ -156,6 +157,21 @@ mise exec -- deno task compile examples/pipeline.toss -o out/pipeline.js
 mise exec -- deno run out/pipeline.js
 ```
 
+### Nil and empty blocks
+
+`$Nil` is the absent-result value. It is an ordinary binding, so it can be
+shadowed. Nil converts to `nil` for `toString` and `inspect`; `print` and `dump`
+write `nil` and return Nil. Empty blocks, including blocks with parameters,
+return Nil when called with exactly the declared number of arguments:
+
+```text
+{} value print.
+({ unused -> } value: 'argument') dump.
+```
+
+Nil can be stored in an object slot. A present Nil slot reads as Nil, while a
+missing slot remains an error. Nil cannot be an object key.
+
 ### Blocks and closures
 
 Blocks defer execution until they receive `value` or `value:`:
@@ -190,7 +206,7 @@ $show value: 'Hello' value: 'Toss'.
 
 Arguments are evaluated from left to right. Wrong argument counts are runtime
 errors; duplicate parameter names and trailing commas are syntax errors.
-`value` remains the zero-argument call. Empty blocks are not supported yet.
+`value` remains the zero-argument call.
 
 ```sh
 mise exec -- deno task compile examples/blocks.toss -o out/blocks.js

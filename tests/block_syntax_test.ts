@@ -4,9 +4,6 @@ import { TossSyntaxError } from "../src/diagnostic.ts";
 
 for (
   const source of [
-    "{}.",
-    "{ // empty\n }.",
-    "{ x -> }.",
     "{ x 'body' }.",
     "{ x, y, -> $x }.",
     "{ -> 'body' }.",
@@ -19,6 +16,12 @@ for (
   ]
 ) {
   Deno.test(`rejects malformed or unsupported block ${JSON.stringify(source)}`, () => {
+    assert.throws(() => compile(source, "invalid.toss"), TossSyntaxError);
+  });
+}
+
+for (const source of ["{ . }.", "{ x -> . }.", "()."]) {
+  Deno.test(`rejects empty expression form ${JSON.stringify(source)}`, () => {
     assert.throws(() => compile(source, "invalid.toss"), TossSyntaxError);
   });
 }

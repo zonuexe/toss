@@ -4,6 +4,7 @@ import { outputDump, outputPrint } from "./prelude/output.ts";
 import { stringInspect, stringToString } from "./prelude/string.ts";
 import { objectAt, objectAtPut, objectClone } from "./prelude/object.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
+import { nilInspect, nilToString } from "./prelude/nil.ts";
 import { runtimeJavaScript } from "./runtime.ts";
 
 type PreludeMessage = { readonly name: string; readonly javascript: string };
@@ -37,7 +38,9 @@ function emit(expression: Expression, scope = "environment"): string {
       return `((captured) => function(${
         parameters.join(", ")
       }) {\nconst scope = {bindings: new Map(), parent: captured};\nif (this !== undefined) scope.bindings.set(Symbol.for("self"), this);\n${
-        [...bindings, ...body].join("\n")
+        [...bindings, ...(body.length === 0 ? ["return null;"] : body)].join(
+          "\n",
+        )
       }\n})(${scope})`;
     }
     case "string":
@@ -92,6 +95,12 @@ export function generate(expressions: readonly Expression[]): string {
       outputDump,
       symbolBind,
     ]),
+    messageTable("nilMessages", [
+      nilToString,
+      nilInspect,
+      outputPrint,
+      outputDump,
+    ]),
     messageTable("objectMessages", [
       objectClone,
       objectAt,
@@ -102,6 +111,7 @@ export function generate(expressions: readonly Expression[]): string {
     runtimeJavaScript,
     "const objectRoot = Object.create(null);",
     'environment.bindings.set(Symbol.for("Object"), objectRoot);',
+    'environment.bindings.set(Symbol.for("Nil"), null);',
   ];
   for (const expression of expressions) lines.push(emit(expression) + ";");
   return lines.join("\n") + "\n";

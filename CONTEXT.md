@@ -21,3 +21,6 @@ A lookup of the nearest named binding, starting in the current environment and s
 
 **Object**:
 A dictionary of slots keyed by strings or symbols. An object can inherit slots from its prototype, and an own slot takes precedence over an inherited one.
+
+**Nil**:
+The absent-result value.

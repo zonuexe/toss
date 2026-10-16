@@ -51,12 +51,14 @@ export function parse(source: string, file: string): readonly Expression[] {
           }
           index++;
         }
-        const first = pipeline();
-        const rest: Expression[] = [];
-        while (current().kind === "period") {
-          index++;
-          if (current().kind === "closeBrace") break;
-          rest.push(pipeline());
+        const body: Expression[] = [];
+        if (current().kind !== "closeBrace") {
+          body.push(pipeline());
+          while (current().kind === "period") {
+            index++;
+            if (current().kind === "closeBrace") break;
+            body.push(pipeline());
+          }
         }
         if (current().kind !== "closeBrace") {
           throw new TossSyntaxError(
@@ -68,7 +70,7 @@ export function parse(source: string, file: string): readonly Expression[] {
         return {
           kind: "block",
           parameters,
-          body: [first, ...rest],
+          body,
           location: token.location,
         };
       }

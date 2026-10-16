@@ -1,0 +1,6 @@
+({} value) print.
+({ name -> } value: 'unused') dump.
+$Nil inspect print.
+#object bind: $Object clone.
+$object at: 'empty' put: {}.
+(($object at: 'empty') value) print.
