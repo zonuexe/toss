@@ -90,15 +90,29 @@ override. `at:` reads through the prototype chain, and `at:put:` returns the
 stored value. Keys are strings or symbols, which remain distinct; blocks read
 from slots are returned as data. Missing keys and invalid key types are runtime
 errors. `__proto__`, `constructor`, and `toString` are safe ordinary keys.
-Unsupported object messages report `Object`.
+Unsupported object messages report `Object`. A matching string-keyed slot
+dispatches as a message before object prelude methods; blocks stored in slots
+run with the actual receiver bound as `$self`, while non-block slots answer
+unary messages as data. Inherited methods receive the child as `$self` too.
+Returned blocks keep their lexical `$self`, and ordinary `value` calls do not
+rebind it. Objects can customize `toString` and `inspect` for `print` and
+`dump`; both conversions must return strings.
 
 ```sh
 mise exec -- deno task compile examples/objects.toss -o out/objects.js
 mise exec -- deno run out/objects.js
 ```
 
-See [ADR-15](docs/adr/0015-dictionary-objects.md) for the scope of object
-message dispatch.
+Compile and run the methods example:
+
+```sh
+mise exec -- deno task compile examples/methods.toss -o out/methods.js
+mise exec -- deno run out/methods.js
+```
+
+See [ADR-15](docs/adr/0015-dictionary-objects.md) and
+[ADR-16](docs/adr/0016-method-dispatch-and-self.md) for object dispatch and
+method receiver behavior.
 
 ### Grouping expressions
 

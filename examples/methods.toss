@@ -1,0 +1,13 @@
+#person bind: $Object clone.
+$person at: 'name' put: 'Ada'.
+$person at: 'greet:' put: { greeting -> $greeting print. $self name }.
+($person greet: 'Hello') print.
+
+#child bind: $person clone.
+$child at: 'name' put: 'Grace'.
+($child greet: 'Hello') print.
+
+#makeReader bind: { { $self name } }.
+$person at: 'reader' put: $makeReader.
+#reader bind: $person reader.
+$reader value print.

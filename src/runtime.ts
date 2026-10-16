@@ -10,6 +10,17 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
 function send(receiver, message, context) {
   const type = typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : receiver !== null && typeof receiver === "object" ? "Object" : "String";
   const messages = type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : stringMessages;
+  if (type === "Object" && Reflect.has(receiver, message.name)) {
+    const slot = Reflect.get(receiver, message.name);
+    if (typeof slot === "function") {
+      return invokeBlock(slot, message.arguments, {
+        ...context,
+        methodReceiver: receiver,
+      });
+    }
+    if (message.arguments.length === 0) return slot;
+    throw new TossRuntimeError("Object slot " + JSON.stringify(message.name) + " is not callable.", context.location);
+  }
   const implementation = messages.get(message.name) ??
     (type === "Block" && blockKeywordSelector.test(message.name) ? blockKeywordMessage : undefined);
   if (implementation === undefined) {
@@ -36,7 +47,7 @@ function invokeBlock(receiver, args, context) {
   if (receiver.length !== args.length) {
     throw new TossRuntimeError("Block expects " + receiver.length + " argument(s), received " + args.length + ".", context.location);
   }
-  return receiver(...args);
+  return Reflect.apply(receiver, context.methodReceiver, args);
 }
 
 function writeOutput(receiver, conversion, context) {

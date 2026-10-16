@@ -36,7 +36,7 @@ function emit(expression: Expression, scope = "environment"): string {
       );
       return `((captured) => function(${
         parameters.join(", ")
-      }) {\nconst scope = {bindings: new Map(), parent: captured};\n${
+      }) {\nconst scope = {bindings: new Map(), parent: captured};\nif (this !== undefined) scope.bindings.set(Symbol.for("self"), this);\n${
         [...bindings, ...body].join("\n")
       }\n})(${scope})`;
     }
@@ -92,7 +92,13 @@ export function generate(expressions: readonly Expression[]): string {
       outputDump,
       symbolBind,
     ]),
-    messageTable("objectMessages", [objectClone, objectAt, objectAtPut]),
+    messageTable("objectMessages", [
+      objectClone,
+      objectAt,
+      objectAtPut,
+      outputPrint,
+      outputDump,
+    ]),
     runtimeJavaScript,
     "const objectRoot = Object.create(null);",
     'environment.bindings.set(Symbol.for("Object"), objectRoot);',
