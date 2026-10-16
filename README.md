@@ -10,7 +10,7 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 
 The current implementation supports single-quoted strings, named symbols,
 bindings and references, unary and keyword messages, expression grouping,
-pipelines, blocks and closures with zero or one parameter, multiple statements,
+pipelines, blocks and closures with parameters, multiple statements,
 and `//` line comments. Macros and effects described below are
 design goals and are not implemented yet.
 
@@ -137,12 +137,27 @@ Returned blocks retain access to the environment in which they were created.
 $read value print.
 ```
 
-Wrong argument counts are runtime errors. Empty blocks and multiple parameters
-are not supported yet. Block messages currently consist of `value` and `value:`.
+Use comma-separated names for multiple parameters and repeat `value:` once for
+each argument:
+
+```text
+#show bind: { first, second -> $first print. $second print }.
+$show value: 'Hello' value: 'Toss'.
+'Toss' |> $show value: 'Hello' value:.
+```
+
+Arguments are evaluated from left to right. Wrong argument counts are runtime
+errors; duplicate parameter names and trailing commas are syntax errors.
+`value` remains the zero-argument call. Empty blocks are not supported yet.
 
 ```sh
 mise exec -- deno task compile examples/blocks.toss -o out/blocks.js
 mise exec -- deno run out/blocks.js
+```
+
+```sh
+mise exec -- deno task compile examples/multi-argument-blocks.toss -o out/multi-argument-blocks.js
+mise exec -- deno run out/multi-argument-blocks.js
 ```
 
 Run the tests and code checks:

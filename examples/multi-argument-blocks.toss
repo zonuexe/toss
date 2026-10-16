@@ -1,0 +1,6 @@
+#show bind: { first, second ->
+    $first print.
+    $second print
+}.
+$show value: 'Hello' value: 'Toss'.
+'Pipeline' |> $show value: 'Hello' value:.

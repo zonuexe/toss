@@ -19,11 +19,30 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "fetch":
         return { kind: "fetch", name: token.name, location: token.location };
       case "openBrace": {
-        let parameters: readonly [] | readonly [string] = [];
-        const parameter = current();
+        const parameters: string[] = [];
+        const names = new Set<string>();
+        let parameter = current();
         if (parameter.kind === "unary") {
-          parameters = [parameter.name];
-          index++;
+          while (parameter.kind === "unary") {
+            if (names.has(parameter.name)) {
+              throw new TossSyntaxError(
+                parameter.location,
+                `Duplicate block parameter ${JSON.stringify(parameter.name)}.`,
+              );
+            }
+            names.add(parameter.name);
+            parameters.push(parameter.name);
+            index++;
+            if (current().kind !== "comma") break;
+            index++;
+            parameter = current();
+            if (parameter.kind !== "unary") {
+              throw new TossSyntaxError(
+                parameter.location,
+                "Expected a block parameter after ','.",
+              );
+            }
+          }
           if (current().kind !== "arrow") {
             throw new TossSyntaxError(
               current().location,
@@ -71,6 +90,7 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "closeParen":
       case "closeBrace":
       case "arrow":
+      case "comma":
       case "eof":
         throw new TossSyntaxError(
           token.location,
@@ -133,6 +153,7 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "openParen":
           case "openBrace":
           case "arrow":
+          case "comma":
             break;
           default: {
             const exhaustive: never = following;

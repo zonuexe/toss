@@ -3,7 +3,7 @@ import type { SourceLocation } from "./diagnostic.ts";
 export type Expression =
   | {
     readonly kind: "block";
-    readonly parameters: readonly [] | readonly [string];
+    readonly parameters: readonly string[];
     readonly body: readonly [Expression, ...Expression[]];
     readonly location: SourceLocation;
   }

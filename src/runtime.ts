@@ -10,7 +10,8 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
 function send(receiver, message, context) {
   const type = typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : "String";
   const messages = type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : stringMessages;
-  const implementation = messages.get(message.name);
+  const implementation = messages.get(message.name) ??
+    (type === "Block" && blockKeywordSelector.test(message.name) ? blockKeywordMessage : undefined);
   if (implementation === undefined) {
     throw new TossRuntimeError("Unknown message " + JSON.stringify(message.name) + " for " + type + ".", context.location);
   }

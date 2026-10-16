@@ -33,6 +33,7 @@ export type Token =
   | { readonly kind: "openBrace"; readonly location: SourceLocation }
   | { readonly kind: "closeBrace"; readonly location: SourceLocation }
   | { readonly kind: "arrow"; readonly location: SourceLocation }
+  | { readonly kind: "comma"; readonly location: SourceLocation }
   | { readonly kind: "eof"; readonly location: SourceLocation };
 
 export function lex(
@@ -133,6 +134,9 @@ export function lex(
         kind: character === "(" ? "openParen" : "closeParen",
         location: start,
       });
+    } else if (character === ",") {
+      advance();
+      tokens.push({ kind: "comma", location: start });
     } else if (character === ".") {
       advance();
       tokens.push({ kind: "period", location: start });

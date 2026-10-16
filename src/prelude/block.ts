@@ -5,9 +5,9 @@ export const blockValue = {
 }`,
 } as const;
 
-export const blockValueWithArgument = {
-  name: "value:",
-  javascript: `function value(receiver, context, argument) {
-  return invokeBlock(receiver, [argument], context);
+export const blockValueWithArguments = {
+  selectorPattern: "^(?:value:)+$",
+  javascript: `function valueWithArguments(receiver, context, ...args) {
+  return invokeBlock(receiver, args, context);
 }`,
 } as const;

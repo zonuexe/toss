@@ -1,5 +1,5 @@
 import type { Expression } from "./ast.ts";
-import { blockValue, blockValueWithArgument } from "./prelude/block.ts";
+import { blockValue, blockValueWithArguments } from "./prelude/block.ts";
 import { outputDump, outputPrint } from "./prelude/output.ts";
 import { stringInspect, stringToString } from "./prelude/string.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
@@ -74,7 +74,11 @@ export function generate(expressions: readonly Expression[]): string {
   if (expressions.length > 0) {
     lines.push(
       "const environment = {bindings: new Map(), parent: null};",
-      messageTable("blockMessages", [blockValue, blockValueWithArgument]),
+      messageTable("blockMessages", [blockValue]),
+      `const blockKeywordSelector = new RegExp(${
+        JSON.stringify(blockValueWithArguments.selectorPattern)
+      });`,
+      `const blockKeywordMessage = ${blockValueWithArguments.javascript};`,
       messageTable("stringMessages", [
         stringToString,
         stringInspect,
