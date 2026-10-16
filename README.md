@@ -168,6 +168,24 @@ Comparisons (`equals:`, `lessThan:`, `greaterThan:`, `lessThanOrEqual:`,
 bindings, and booleans receive `not`. Both types support the usual display
 messages. See [ADR-18](docs/adr/0018-numbers-and-booleans.md) for exact rules.
 
+Numbers also receive `times:`. A nonnegative safe integer count calls its block
+with no arguments that many times and returns the last result; zero returns
+Nil. For example:
+
+```text
+(3 times: { 'again' print }) print.
+```
+
+Compile and run the repetition example:
+
+```sh
+mise exec -- deno task compile examples/repetition.toss -o out/repetition.js
+mise exec -- deno run out/repetition.js
+```
+
+See [ADR-20](docs/adr/0020-counted-repetition.md) for validation and invocation
+rules.
+
 ```text
 (2 add: 3) print.
 (2 lessThan: 3) not dump.

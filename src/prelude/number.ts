@@ -27,6 +27,20 @@ const divide = (name: "divideBy:" | "remainder:", operator: "/" | "%") => ({
 
 export const numberMessages = [
   {
+    name: "times:",
+    javascript: `function times(receiver, context, block) {
+  if (!Number.isSafeInteger(receiver) || receiver < 0) {
+    throw new TossRuntimeError("Nonnegative safe integer required.", context.location);
+  }
+  const selected = blockArgument(block, context);
+  let result = null;
+  for (let index = 0; index < receiver; index++) {
+    result = invokeBlock(selected, [], context);
+  }
+  return result;
+}`,
+  },
+  {
     name: "toString",
     javascript: "function toString(receiver) { return String(receiver); }",
   },

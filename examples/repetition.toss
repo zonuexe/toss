@@ -1,0 +1,6 @@
+#counter bind: $Object clone.
+$counter at: 'value' put: 0.
+(3 times: {
+    $counter at: 'value' put: (($counter at: 'value') add: 1).
+    ($counter at: 'value') print
+}) print.
