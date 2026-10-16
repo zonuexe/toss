@@ -34,6 +34,11 @@ function numberArgument(value, context) {
   return value;
 }
 
+function blockArgument(value, context) {
+  if (typeof value !== "function") throw new TossRuntimeError("Block argument required.", context.location);
+  return value;
+}
+
 function finiteNumber(value, context) {
   if (!Number.isFinite(value)) throw new TossRuntimeError("Number result must be finite.", context.location);
   return value;

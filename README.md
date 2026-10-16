@@ -178,6 +178,24 @@ mise exec -- deno task compile examples/numbers.toss -o out/numbers.js
 mise exec -- deno run out/numbers.js
 ```
 
+Booleans also receive `ifTrue:`, `ifFalse:`, and `ifTrue:ifFalse:`. They
+accept blocks, run only the selected block, and return its result. A one-sided
+conditional returns Nil when its branch is skipped. The compound selector is
+one message whose keyword parts surround its block arguments:
+
+```text
+($True ifTrue: { 'yes' } ifFalse: { 'no' }) print.
+($False ifFalse: { 'also yes' }) print.
+```
+
+See [ADR-19](docs/adr/0019-boolean-conditionals.md) for argument checks and
+evaluation rules. Run the example with:
+
+```sh
+mise exec -- deno task compile examples/conditionals.toss -o out/conditionals.js
+mise exec -- deno run out/conditionals.js
+```
+
 ### Nil and empty blocks
 
 `$Nil` is the absent-result value. It is an ordinary binding, so it can be

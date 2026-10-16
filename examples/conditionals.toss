@@ -1,0 +1,4 @@
+($True ifTrue: { 'true branch' } ifFalse: { 'unused' }) print.
+($False ifTrue: { 'unused' } ifFalse: { 'false branch' }) print.
+$False ifTrue: { 'not run' }.
+$True ifFalse: { 'not run' }.
