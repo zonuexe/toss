@@ -2,6 +2,11 @@ import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
 
 export type Token =
   | {
+    readonly kind: "number";
+    readonly value: number;
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "string";
     readonly value: string;
     readonly location: SourceLocation;
@@ -90,6 +95,24 @@ export function lex(
     throw new TossSyntaxError(start, "Unterminated string.");
   }
 
+  function readNumber(start: SourceLocation): Token {
+    let text = "";
+    if (current() === "-") text += advance();
+    while (/[0-9]/.test(current())) text += advance();
+    if (current() === "." && /[0-9]/.test(source[offset + 1] ?? "")) {
+      text += advance();
+      while (/[0-9]/.test(current())) text += advance();
+    }
+    if (/[A-Za-z0-9_]/.test(current())) {
+      throw new TossSyntaxError(start, "Invalid numeric literal.");
+    }
+    const value = Number(text);
+    if (!Number.isFinite(value)) {
+      throw new TossSyntaxError(start, "Number literal must be finite.");
+    }
+    return { kind: "number", value, location: start };
+  }
+
   while (offset < source.length) {
     const start = location();
     const character = current();
@@ -118,6 +141,11 @@ export function lex(
       advance();
       advance();
       tokens.push({ kind: "arrow", location: start });
+    } else if (
+      /[0-9]/.test(character) ||
+      (character === "-" && /[0-9]/.test(source[offset + 1] ?? ""))
+    ) {
+      tokens.push(readNumber(start));
     } else if (character === "{" || character === "}") {
       advance();
       tokens.push({

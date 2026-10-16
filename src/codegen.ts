@@ -5,6 +5,8 @@ import { stringInspect, stringToString } from "./prelude/string.ts";
 import { objectAt, objectAtPut, objectClone } from "./prelude/object.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
 import { nilInspect, nilToString } from "./prelude/nil.ts";
+import { numberMessages } from "./prelude/number.ts";
+import { booleanMessages } from "./prelude/boolean.ts";
 import { runtimeJavaScript } from "./runtime.ts";
 
 type PreludeMessage = { readonly name: string; readonly javascript: string };
@@ -45,6 +47,8 @@ function emit(expression: Expression, scope = "environment"): string {
     }
     case "string":
       return JSON.stringify(expression.value);
+    case "number":
+      return Object.is(expression.value, -0) ? "-0" : String(expression.value);
     case "symbol":
       return `Symbol.for(${JSON.stringify(expression.name)})`;
     case "fetch":
@@ -88,6 +92,8 @@ export function generate(expressions: readonly Expression[]): string {
       outputPrint,
       outputDump,
     ]),
+    messageTable("numberMessages", numberMessages),
+    messageTable("booleanMessages", booleanMessages),
     messageTable("symbolMessages", [
       symbolToString,
       symbolInspect,
@@ -112,6 +118,8 @@ export function generate(expressions: readonly Expression[]): string {
     "const objectRoot = Object.create(null);",
     'environment.bindings.set(Symbol.for("Object"), objectRoot);',
     'environment.bindings.set(Symbol.for("Nil"), null);',
+    'environment.bindings.set(Symbol.for("True"), true);',
+    'environment.bindings.set(Symbol.for("False"), false);',
   ];
   for (const expression of expressions) lines.push(emit(expression) + ";");
   return lines.join("\n") + "\n";

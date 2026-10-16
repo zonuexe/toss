@@ -70,7 +70,6 @@ const invalidCases = [
     column: 1,
     reason: "Unexpected character",
   },
-  { source: "42 print.", line: 1, column: 1, reason: "Unexpected character" },
   { source: "'a'.\r\n$.", line: 2, column: 2, reason: "Expected a name" },
   {
     source: "'a' print:.",

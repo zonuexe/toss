@@ -24,3 +24,9 @@ A dictionary of slots keyed by strings or symbols. An object can inherit slots f
 
 **Nil**:
 The absent-result value.
+
+**Number**:
+A numeric value used for arithmetic and ordering.
+
+**Boolean**:
+A value that is either true or false.

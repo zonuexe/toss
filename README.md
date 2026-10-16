@@ -157,6 +157,27 @@ mise exec -- deno task compile examples/pipeline.toss -o out/pipeline.js
 mise exec -- deno run out/pipeline.js
 ```
 
+### Numbers and booleans
+
+Numbers support finite decimal literals such as `12`, `-2`, and `3.5`.
+They use JavaScript floating-point arithmetic. Send `add:`, `subtract:`,
+`multiplyBy:`, `divideBy:`, `remainder:`, or `negated` to calculate a value.
+Numeric arguments are required; zero division and nonfinite results are errors.
+Comparisons (`equals:`, `lessThan:`, `greaterThan:`, `lessThanOrEqual:`,
+`greaterThanOrEqual:`) return booleans. `$True` and `$False` are ordinary
+bindings, and booleans receive `not`. Both types support the usual display
+messages. See [ADR-18](docs/adr/0018-numbers-and-booleans.md) for exact rules.
+
+```text
+(2 add: 3) print.
+(2 lessThan: 3) not dump.
+```
+
+```sh
+mise exec -- deno task compile examples/numbers.toss -o out/numbers.js
+mise exec -- deno run out/numbers.js
+```
+
 ### Nil and empty blocks
 
 `$Nil` is the absent-result value. It is an ordinary binding, so it can be

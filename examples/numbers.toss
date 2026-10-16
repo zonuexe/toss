@@ -1,0 +1,8 @@
+(2 add: 3) print.
+((7 divideBy: 2) multiplyBy: -2) print.
+(-7 remainder: 3) print.
+(2 lessThan: 3) not print.
+$False dump not print.
+#o bind: $Object clone.
+4 |> $o at: 'count' put:.
+(2 |> ($o at: 'count') add:) print.

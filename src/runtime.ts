@@ -8,8 +8,8 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
 }
 
 function send(receiver, message, context) {
-  const type = receiver === null ? "Nil" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
-  const messages = type === "Nil" ? nilMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
+  const type = receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
+  const messages = type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
   if (type === "Object" && Reflect.has(receiver, message.name)) {
     const slot = Reflect.get(receiver, message.name);
     if (typeof slot === "function") {
@@ -27,6 +27,16 @@ function send(receiver, message, context) {
     throw new TossRuntimeError("Unknown message " + JSON.stringify(message.name) + " for " + type + ".", context.location);
   }
   return implementation(receiver, context, ...message.arguments);
+}
+
+function numberArgument(value, context) {
+  if (typeof value !== "number") throw new TossRuntimeError("Number argument required.", context.location);
+  return value;
+}
+
+function finiteNumber(value, context) {
+  if (!Number.isFinite(value)) throw new TossRuntimeError("Number result must be finite.", context.location);
+  return value;
 }
 
 function keyDescription(key) {

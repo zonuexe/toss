@@ -12,6 +12,8 @@ export function parse(source: string, file: string): readonly Expression[] {
     const token = current();
     index++;
     switch (token.kind) {
+      case "number":
+        return { kind: "number", value: token.value, location: token.location };
       case "string":
         return { kind: "string", value: token.value, location: token.location };
       case "symbol":
@@ -148,6 +150,7 @@ export function parse(source: string, file: string): readonly Expression[] {
               location,
             };
           case "string":
+          case "number":
           case "symbol":
           case "fetch":
           case "unary":

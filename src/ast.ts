@@ -13,6 +13,11 @@ export type Expression =
     readonly location: SourceLocation;
   }
   | {
+    readonly kind: "number";
+    readonly value: number;
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "symbol";
     readonly name: string;
     readonly location: SourceLocation;
