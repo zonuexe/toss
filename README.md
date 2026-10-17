@@ -22,13 +22,36 @@ one-argument Block from left to right and returns a fresh array. See
 [ADR-22](docs/adr/0022-array-map.md). Arrays also support `reduce:with:` with an
 initial accumulator and a two-argument Block. See
 [ADR-23](docs/adr/0023-array-reduce.md). Array display is not defined, so read
-and print elements explicitly.
+and print elements explicitly. `filter:` calls a one-argument Block that must
+return a Boolean, then returns matching original values in a fresh array. See
+[ADR-24](docs/adr/0024-array-filter.md). Grouped executable examples are in
+`examples/array-filter.toss`:
+
+```text
+#numbers bind: [1, 2, 3, 4, 5, 6].
+#even bind: ($numbers filter: { number ->
+  ($number remainder: 2) equals: 0
+}).
+#large bind: ($numbers filter: { number ->
+  $number greaterThan: 3
+}).
+($even length) print.
+($even at: 0) print.
+($even at: 1) print.
+($even at: 2) print.
+($large length) print.
+($large at: 0) print.
+($large at: 1) print.
+($large at: 2) print.
+```
 
 ```sh
 mise exec -- deno task compile examples/array-map.toss -o out/array-map.js
 mise exec -- deno run out/array-map.js
 mise exec -- deno task compile examples/array-reduce.toss -o out/array-reduce.js
 mise exec -- deno run out/array-reduce.js
+mise exec -- deno task compile examples/array-filter.toss -o out/array-filter.js
+mise exec -- deno run out/array-filter.js
 ```
 
 Use mise to install the pinned Deno version, then compile and run the example:

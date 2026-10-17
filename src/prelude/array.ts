@@ -1,5 +1,21 @@
 export const arrayMessages = [
   {
+    name: "filter:",
+    javascript: `function filter(receiver, context, block) {
+  const selected = blockArgument(block, context);
+  const values = receiver.slice();
+  const result = [];
+  for (const value of values) {
+    const accepted = invokeBlock(selected, [value], context);
+    if (typeof accepted !== "boolean") {
+      throw new TossRuntimeError("Boolean result required.", context.location);
+    }
+    if (accepted) result.push(value);
+  }
+  return result;
+}`,
+  },
+  {
     name: "reduce:with:",
     javascript: `function reduceWith(receiver, context, initial, block) {
   const selected = blockArgument(block, context);
