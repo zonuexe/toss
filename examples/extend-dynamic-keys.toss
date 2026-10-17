@@ -1,0 +1,10 @@
+#field bind: 'score'.
+#tag bind: #metadata.
+#record bind: ($Object clone |> #extend(
+  label: 'record',
+  ($field): 42,
+  ($tag): 'info'
+)).
+$record label print.
+($record at: $field) print.
+($record at: $tag) print.

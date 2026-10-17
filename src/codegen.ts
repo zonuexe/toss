@@ -76,7 +76,7 @@ function emit(expression: Expression, scope = "environment"): string {
     case "extend": {
       const entries = expression.entries.map((entry) =>
         `send(extendTarget, {name: "at:put:", arguments: [${
-          JSON.stringify(entry.key)
+          emit(entry.key, scope)
         }, ${emit(entry.value, scope)}]}, {location: ${
           JSON.stringify(entry.location)
         }, environment: ${scope}});`

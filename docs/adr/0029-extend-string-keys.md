@@ -33,9 +33,10 @@ changes how subsequent entries are written. There is no privileged setter.
 Implicit setter errors point to the opening quote of a quoted label; value
 and method-body errors keep their own source locations.
 
-Quoted labels are only accepted inside `#extend`. Dynamic key expressions and
-symbol labels remain deferred. No AST, code generation, runtime, or selector
-type-checking extension is required.
+Quoted labels are only accepted inside `#extend`.
+[ADR-30](0030-extend-dynamic-keys.md) adds parenthesized key expressions.
+Unparenthesized symbol labels remain unsupported. This string-label step
+requires no AST, code generation, runtime, or selector type-checking extension.
 
 ```sh
 mise exec -- deno task compile examples/extend-string-keys.toss -o out/extend-string-keys.js

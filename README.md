@@ -188,14 +188,29 @@ Single-quoted string keys also support keyword Methods:
 
 Quoted labels retain the whole string, including selector colons. Bare `name:`
 and quoted `'name':` address the same slot; `'name:':` addresses a different
-slot. Arbitrary string keys can be read through `at:`. Dynamic and symbol key
-labels remain deferred. See [ADR-29](docs/adr/0029-extend-string-keys.md).
+slot. Arbitrary string keys can be read through `at:`. See
+[ADR-29](docs/adr/0029-extend-string-keys.md).
+
+Computed keys use `(expression): value`. Their default setter accepts strings
+and symbols, with their usual separate identities:
+
+```text
+#field bind: 'score'.
+#record bind: ($Object clone |> #extend(($field): 42, (#tag): 'info')).
+($record at: $field) print.
+($record at: #tag) print.
+```
+
+Each key is evaluated before its value in the caller's scope. Updates still
+use ordinary `at:put:`. See [ADR-30](docs/adr/0030-extend-dynamic-keys.md).
 
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
 mise exec -- deno run out/extend.js
 mise exec -- deno task compile examples/extend-string-keys.toss -o out/extend-string-keys.js
 mise exec -- deno run out/extend-string-keys.js
+mise exec -- deno task compile examples/extend-dynamic-keys.toss -o out/extend-dynamic-keys.js
+mise exec -- deno run out/extend-dynamic-keys.js
 ```
 
 ```sh

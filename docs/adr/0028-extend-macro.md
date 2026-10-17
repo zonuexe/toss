@@ -16,8 +16,8 @@ Entries use ASCII identifier labels followed by full Toss expressions. `name:`
 means the string key `'name'`, not a symbol or a keyword selector containing a
 colon. Commas separate entries; trailing commas and holes are errors. Empty
 `#extend()` is allowed. [ADR-29](0029-extend-string-keys.md) adds quoted string
-keys, including keyword-method selectors. Dynamic and symbol keys remain
-outside this syntax; existing `at:put:` still supports such slots.
+keys, including keyword-method selectors. [ADR-30](0030-extend-dynamic-keys.md)
+adds parenthesized key expressions, including symbol-valued keys.
 
 Evaluate the input once, then require an Object before evaluating any entries,
 even for an empty extension. Nil, Arrays, Blocks, and other primitive values

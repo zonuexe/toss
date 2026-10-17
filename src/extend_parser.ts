@@ -14,31 +14,57 @@ export function parseExtend(
   location: Token["location"],
 ): Expression {
   const entries: {
-    readonly key: string;
+    readonly key: Expression;
     readonly value: Expression;
     readonly location: Token["location"];
   }[] = [];
   while (cursor.current().kind !== "closeParen") {
     const label = cursor.current();
-    if (label.kind !== "keyword" && label.kind !== "string") {
+    let key: Expression;
+    const entryLocation = label.location;
+    if (label.kind === "openParen") {
+      cursor.advance();
+      const expression = cursor.current().kind === "closeParen"
+        ? undefined
+        : cursor.pipeline();
+      if (expression === undefined || cursor.current().kind !== "closeParen") {
+        throw new TossSyntaxError(
+          cursor.current().location,
+          "Expected one expression and ')' in a dynamic extension entry label.",
+        );
+      }
+      cursor.advance();
+      if (cursor.current().kind !== "colon") {
+        throw new TossSyntaxError(
+          cursor.current().location,
+          "Expected ':' after a dynamic extension entry label.",
+        );
+      }
+      cursor.advance();
+      key = expression;
+    } else if (label.kind === "keyword" || label.kind === "string") {
+      cursor.advance();
+      if (label.kind === "keyword") {
+        key = {
+          kind: "string",
+          value: label.name.slice(0, -1),
+          location: label.location,
+        };
+      } else {
+        if (cursor.current().kind !== "colon") {
+          throw new TossSyntaxError(
+            cursor.current().location,
+            "Expected ':' after a quoted extension entry label.",
+          );
+        }
+        cursor.advance();
+        key = { kind: "string", value: label.value, location: label.location };
+      }
+    } else {
       throw new TossSyntaxError(
         label.location,
         "Expected an extension entry label.",
       );
-    }
-    cursor.advance();
-    let key: string;
-    if (label.kind === "keyword") {
-      key = label.name.slice(0, -1);
-    } else {
-      if (cursor.current().kind !== "colon") {
-        throw new TossSyntaxError(
-          cursor.current().location,
-          "Expected ':' after a quoted extension entry label.",
-        );
-      }
-      cursor.advance();
-      key = label.value;
     }
     const next = cursor.current();
     if (
@@ -53,7 +79,7 @@ export function parseExtend(
     entries.push({
       key,
       value: cursor.pipeline(),
-      location: label.location,
+      location: entryLocation,
     });
     if (cursor.current().kind !== "comma") break;
     cursor.advance();

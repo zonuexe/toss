@@ -44,7 +44,7 @@ export type Expression =
     readonly kind: "extend";
     readonly input: Expression;
     readonly entries: readonly {
-      readonly key: string;
+      readonly key: Expression;
       readonly value: Expression;
       readonly location: SourceLocation;
     }[];
