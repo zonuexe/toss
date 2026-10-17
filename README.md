@@ -19,12 +19,16 @@ Array literals use commas, for example `[1, 'two', [3]]`. Arrays support
 `length`, `at:`, `at:put:`, and `map:`; indexes are checked. `map:` calls a
 one-argument Block from left to right and returns a fresh array. See
 [ADR-21](docs/adr/0021-array-literals-and-indexing.md) and
-[ADR-22](docs/adr/0022-array-map.md). Array display is not defined, so read and
-print elements explicitly.
+[ADR-22](docs/adr/0022-array-map.md). Arrays also support `reduce:with:` with an
+initial accumulator and a two-argument Block. See
+[ADR-23](docs/adr/0023-array-reduce.md). Array display is not defined, so read
+and print elements explicitly.
 
 ```sh
 mise exec -- deno task compile examples/array-map.toss -o out/array-map.js
 mise exec -- deno run out/array-map.js
+mise exec -- deno task compile examples/array-reduce.toss -o out/array-reduce.js
+mise exec -- deno run out/array-reduce.js
 ```
 
 Use mise to install the pinned Deno version, then compile and run the example:

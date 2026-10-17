@@ -1,5 +1,17 @@
 export const arrayMessages = [
   {
+    name: "reduce:with:",
+    javascript: `function reduceWith(receiver, context, initial, block) {
+  const selected = blockArgument(block, context);
+  const values = receiver.slice();
+  let accumulator = initial;
+  for (const value of values) {
+    accumulator = invokeBlock(selected, [accumulator, value], context);
+  }
+  return accumulator;
+}`,
+  },
+  {
     name: "map:",
     javascript: `function map(receiver, context, block) {
   const selected = blockArgument(block, context);
