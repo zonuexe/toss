@@ -1,0 +1,8 @@
+#Dog bind: ($Object clone |> #extend(
+  name: 'Pochi',
+  bark: { $self name print }
+)).
+$Dog bark.
+#Child bind: ($Dog clone |> #extend(name: 'Child')).
+$Child bark.
+$Dog bark.

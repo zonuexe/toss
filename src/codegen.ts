@@ -73,6 +73,23 @@ function emit(expression: Expression, scope = "environment"): string {
           "piped",
         ].join(", ")
       }]}, ${context}))(${emit(expression.input, scope)})`;
+    case "extend": {
+      const entries = expression.entries.map((entry) =>
+        `send(extendTarget, {name: "at:put:", arguments: [${
+          JSON.stringify(entry.key)
+        }, ${emit(entry.value, scope)}]}, {location: ${
+          JSON.stringify(entry.location)
+        }, environment: ${scope}});`
+      );
+      const body = [
+        `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget)) throw new TossRuntimeError("#extend target must be an Object.", ${context}.location);`,
+        ...entries,
+        "return extendTarget;",
+      ].join("\n");
+      return `((extendTarget) => {\n${body}\n})(${
+        emit(expression.input, scope)
+      })`;
+    }
     default: {
       const exhaustive: never = expression;
       throw new TypeError(

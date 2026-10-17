@@ -20,6 +20,7 @@ export type Token =
     readonly name: string;
     readonly location: SourceLocation;
   }
+  | { readonly kind: "extendOpen"; readonly location: SourceLocation }
   | {
     readonly kind: "fetch";
     readonly name: string;
@@ -146,6 +147,9 @@ export function lex(
       arithmeticDepth++;
       arithmeticMacros.push(arithmeticDepth);
       tokens.push({ kind: "arithmeticOpen", location: start });
+    } else if (character === "#" && source.startsWith("#extend(", offset)) {
+      for (let index = 0; index < 8; index++) advance();
+      tokens.push({ kind: "extendOpen", location: start });
     } else if (character === "#" || character === "$") {
       advance();
       tokens.push({

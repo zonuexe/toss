@@ -9,3 +9,6 @@ A unary-only right side, a fully supplied keyword message, or a missing earlier 
 Only `bind:` is currently provided as a keyword message; other valid selectors still fail at runtime after their arguments are evaluated.
 
 This extends the pipeline restriction from [ADR-9](0009-file-environment-bindings.md).
+
+[ADR-28](0028-extend-macro.md) adds `#extend(...)` as a built-in pipeline macro
+alongside keyword-message stages.

@@ -16,8 +16,8 @@ available as `$(1 + 2 * 3)` and lowers operators to ordinary messages. Its
 operands are limited to numbers, `$name` fetches, arithmetic groups, and nested
 arithmetic macros; unary and keyword messages inside operands are not accepted.
 It also supports `<`, `<=`, `>`, `>=`, `==`, and `!=`, with one comparison per
-unparenthesized arithmetic group. Other macro forms and effects remain design
-goals. See
+unparenthesized arithmetic group. The `#extend(...)` object macro is described
+below. Further macro forms and effects remain design goals. See
 [ADR-26](docs/adr/0026-arithmetic-macro.md) and
 [ADR-27](docs/adr/0027-comparison-macro.md) for the implemented limits.
 
@@ -157,6 +157,29 @@ unary messages as data. Inherited methods receive the child as `$self` too.
 Returned blocks keep their lexical `$self`, and ordinary `value` calls do not
 rebind it. Objects can customize `toString` and `inspect` for `print` and
 `dump`; both conversions must return strings.
+
+Use the built-in `#extend(...)` macro to set several slots:
+
+```text
+#Dog bind: ($Object clone |> #extend(
+  name: 'Pochi',
+  bark: { $self name print }
+)).
+$Dog bark.
+```
+
+It updates and returns the original Object. Each label becomes a string key;
+values are evaluated and assigned from left to right through `at:put:`.
+Values use the caller's scope, and Blocks become Methods under the existing
+`$self` rules. Empty extensions are allowed. Use `clone` explicitly for a new
+child. Trailing commas, quoted keys, and standalone macro calls are unsupported;
+plain `#extend` remains an ordinary symbol. See
+[ADR-28](docs/adr/0028-extend-macro.md) for the full contract.
+
+```sh
+mise exec -- deno task compile examples/extend.toss -o out/extend.js
+mise exec -- deno run out/extend.js
+```
 
 ```sh
 mise exec -- deno task compile examples/objects.toss -o out/objects.js

@@ -1,6 +1,8 @@
 import type { Expression } from "./ast.ts";
 import { parseArithmeticBody } from "./arithmetic_parser.ts";
+import { parseBlock } from "./block_parser.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
+import { parseExtend } from "./extend_parser.ts";
 import { lex, type Token } from "./lexer.ts";
 
 export function parse(source: string, file: string): readonly Expression[] {
@@ -53,60 +55,7 @@ export function parse(source: string, file: string): readonly Expression[] {
         return { kind: "array", elements, location: token.location };
       }
       case "openBrace": {
-        const parameters: string[] = [];
-        const names = new Set<string>();
-        let parameter = current();
-        if (parameter.kind === "unary") {
-          while (parameter.kind === "unary") {
-            if (names.has(parameter.name)) {
-              throw new TossSyntaxError(
-                parameter.location,
-                `Duplicate block parameter ${JSON.stringify(parameter.name)}.`,
-              );
-            }
-            names.add(parameter.name);
-            parameters.push(parameter.name);
-            index++;
-            if (current().kind !== "comma") break;
-            index++;
-            parameter = current();
-            if (parameter.kind !== "unary") {
-              throw new TossSyntaxError(
-                parameter.location,
-                "Expected a block parameter after ','.",
-              );
-            }
-          }
-          if (current().kind !== "arrow") {
-            throw new TossSyntaxError(
-              current().location,
-              "Expected '->' after block parameter.",
-            );
-          }
-          index++;
-        }
-        const body: Expression[] = [];
-        if (current().kind !== "closeBrace") {
-          body.push(pipeline());
-          while (current().kind === "period") {
-            index++;
-            if (current().kind === "closeBrace") break;
-            body.push(pipeline());
-          }
-        }
-        if (current().kind !== "closeBrace") {
-          throw new TossSyntaxError(
-            current().location,
-            "Expected '}' after block body.",
-          );
-        }
-        index++;
-        return {
-          kind: "block",
-          parameters,
-          body,
-          location: token.location,
-        };
+        return parseBlock({ current, advance, pipeline }, token.location);
       }
       case "openParen": {
         const expression = pipeline();
@@ -121,6 +70,7 @@ export function parse(source: string, file: string): readonly Expression[] {
       }
       case "arithmeticClose":
       case "arithmeticOperator":
+      case "extendOpen":
       case "unary":
       case "keyword":
       case "period":
@@ -179,6 +129,7 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "pipe":
           case "arithmeticClose":
           case "arithmeticOperator":
+          case "extendOpen":
           case "eof":
             return {
               kind: "pipeline",
@@ -226,7 +177,17 @@ export function parse(source: string, file: string): readonly Expression[] {
     let expression = keyword();
     while (current().kind === "pipe") {
       index++;
-      expression = keyword(expression);
+      if (current().kind === "extendOpen") {
+        const location = current().location;
+        index++;
+        expression = parseExtend(
+          { current, advance, pipeline },
+          expression,
+          location,
+        );
+      } else {
+        expression = keyword(expression);
+      }
     }
     return expression;
   }

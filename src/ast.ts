@@ -41,6 +41,16 @@ export type Expression =
     readonly location: SourceLocation;
   }
   | {
+    readonly kind: "extend";
+    readonly input: Expression;
+    readonly entries: readonly {
+      readonly key: string;
+      readonly value: Expression;
+      readonly location: SourceLocation;
+    }[];
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "send";
     readonly receiver: Expression;
     readonly name: string;
