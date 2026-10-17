@@ -172,13 +172,30 @@ It updates and returns the original Object. Each label becomes a string key;
 values are evaluated and assigned from left to right through `at:put:`.
 Values use the caller's scope, and Blocks become Methods under the existing
 `$self` rules. Empty extensions are allowed. Use `clone` explicitly for a new
-child. Trailing commas, quoted keys, and standalone macro calls are unsupported;
+child. Trailing commas and standalone macro calls are unsupported;
 plain `#extend` remains an ordinary symbol. See
 [ADR-28](docs/adr/0028-extend-macro.md) for the full contract.
+
+Single-quoted string keys also support keyword Methods:
+
+```text
+#counter bind: ($Object clone |> #extend(
+  base: 10,
+  'add:': { n -> $self base add: $n }
+)).
+($counter add: 3) print.
+```
+
+Quoted labels retain the whole string, including selector colons. Bare `name:`
+and quoted `'name':` address the same slot; `'name:':` addresses a different
+slot. Arbitrary string keys can be read through `at:`. Dynamic and symbol key
+labels remain deferred. See [ADR-29](docs/adr/0029-extend-string-keys.md).
 
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
 mise exec -- deno run out/extend.js
+mise exec -- deno task compile examples/extend-string-keys.toss -o out/extend-string-keys.js
+mise exec -- deno run out/extend-string-keys.js
 ```
 
 ```sh

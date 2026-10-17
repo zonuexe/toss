@@ -80,6 +80,7 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "closeBracket":
       case "arrow":
       case "comma":
+      case "colon":
       case "eof":
         throw new TossSyntaxError(
           token.location,
@@ -126,6 +127,7 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "closeBrace":
           case "closeBracket":
           case "comma":
+          case "colon":
           case "pipe":
           case "arithmeticClose":
           case "arithmeticOperator":

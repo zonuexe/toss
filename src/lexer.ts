@@ -52,7 +52,7 @@ export type Token =
   | { readonly kind: "openBracket"; readonly location: SourceLocation }
   | { readonly kind: "closeBracket"; readonly location: SourceLocation }
   | { readonly kind: "arrow"; readonly location: SourceLocation }
-  | { readonly kind: "comma"; readonly location: SourceLocation }
+  | { readonly kind: "comma" | "colon"; readonly location: SourceLocation }
   | { readonly kind: "eof"; readonly location: SourceLocation };
 
 export function lex(
@@ -211,10 +211,7 @@ export function lex(
         /[0-9]/.test(source[offset + 1] ?? ""))
     ) {
       tokens.push(readNumber(start));
-    } else if (
-      character === "{" || character === "}" || character === "[" ||
-      character === "]"
-    ) {
+    } else if ("{}[]()".includes(character)) {
       advance();
       tokens.push({
         kind: character === "{"
@@ -223,25 +220,27 @@ export function lex(
           ? "closeBrace"
           : character === "["
           ? "openBracket"
-          : "closeBracket",
+          : character === "]"
+          ? "closeBracket"
+          : character === "("
+          ? "openParen"
+          : "closeParen",
         location: start,
       });
     } else if (source.startsWith("|>", offset)) {
       advance();
       advance();
       tokens.push({ kind: "pipe", location: start });
-    } else if (character === "(" || character === ")") {
+    } else if (",.:".includes(character)) {
       advance();
       tokens.push({
-        kind: character === "(" ? "openParen" : "closeParen",
+        kind: character === ","
+          ? "comma"
+          : character === ":"
+          ? "colon"
+          : "period",
         location: start,
       });
-    } else if (character === ",") {
-      advance();
-      tokens.push({ kind: "comma", location: start });
-    } else if (character === ".") {
-      advance();
-      tokens.push({ kind: "period", location: start });
     } else {
       throw new TossSyntaxError(
         start,

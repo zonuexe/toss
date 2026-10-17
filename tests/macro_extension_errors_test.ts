@@ -26,7 +26,6 @@ for (
     "$Object clone |> #extend(,value: 1).",
     "$Object clone |> #extend(value 1).",
     "$Object clone |> #extend(value: 1.",
-    "$Object clone |> #extend('key': 1).",
     "$Object clone |> #extend(#key: 1).",
     "$Object clone |> #extend(value: 1,, other: 2).",
     "$Object clone |> #extend (value: 1).",

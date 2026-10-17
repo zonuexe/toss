@@ -20,13 +20,26 @@ export function parseExtend(
   }[] = [];
   while (cursor.current().kind !== "closeParen") {
     const label = cursor.current();
-    if (label.kind !== "keyword") {
+    if (label.kind !== "keyword" && label.kind !== "string") {
       throw new TossSyntaxError(
         label.location,
         "Expected an extension entry label.",
       );
     }
     cursor.advance();
+    let key: string;
+    if (label.kind === "keyword") {
+      key = label.name.slice(0, -1);
+    } else {
+      if (cursor.current().kind !== "colon") {
+        throw new TossSyntaxError(
+          cursor.current().location,
+          "Expected ':' after a quoted extension entry label.",
+        );
+      }
+      cursor.advance();
+      key = label.value;
+    }
     const next = cursor.current();
     if (
       next.kind === "closeParen" || next.kind === "comma" ||
@@ -38,7 +51,7 @@ export function parseExtend(
       );
     }
     entries.push({
-      key: label.name.slice(0, -1),
+      key,
       value: cursor.pipeline(),
       location: label.location,
     });

@@ -91,6 +91,7 @@ function operand(cursor: ArithmeticCursor): Expression {
     case "closeBracket":
     case "arrow":
     case "comma":
+    case "colon":
     case "eof":
       throw new TossSyntaxError(
         token.location,
