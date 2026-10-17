@@ -35,6 +35,13 @@ export type Token =
   | { readonly kind: "pipe"; readonly location: SourceLocation }
   | { readonly kind: "openParen"; readonly location: SourceLocation }
   | { readonly kind: "closeParen"; readonly location: SourceLocation }
+  | { readonly kind: "arithmeticOpen"; readonly location: SourceLocation }
+  | { readonly kind: "arithmeticClose"; readonly location: SourceLocation }
+  | {
+    readonly kind: "arithmeticOperator";
+    readonly operator: "+" | "-" | "*" | "/" | "%";
+    readonly location: SourceLocation;
+  }
   | { readonly kind: "openBrace"; readonly location: SourceLocation }
   | { readonly kind: "closeBrace"; readonly location: SourceLocation }
   | { readonly kind: "openBracket"; readonly location: SourceLocation }
@@ -51,6 +58,8 @@ export function lex(
   let line = 1;
   let column = 1;
   const tokens: Token[] = [];
+  let arithmeticDepth = 0;
+  const arithmeticMacros: number[] = [];
   const location = (): SourceLocation => ({ file, line, column });
   const current = (): string => {
     const point = source.codePointAt(offset);
@@ -124,6 +133,12 @@ export function lex(
       while (offset < source.length && !/[\r\n]/.test(current())) advance();
     } else if (character === "'") {
       tokens.push({ kind: "string", value: readString(), location: start });
+    } else if (character === "$" && source[offset + 1] === "(") {
+      advance();
+      advance();
+      arithmeticDepth++;
+      arithmeticMacros.push(arithmeticDepth);
+      tokens.push({ kind: "arithmeticOpen", location: start });
     } else if (character === "#" || character === "$") {
       advance();
       tokens.push({
@@ -143,9 +158,39 @@ export function lex(
       advance();
       advance();
       tokens.push({ kind: "arrow", location: start });
+    } else if (arithmeticDepth > 0 && "+-*/%".includes(character)) {
+      advance();
+      const operator = character === "+"
+        ? "+"
+        : character === "-"
+        ? "-"
+        : character === "*"
+        ? "*"
+        : character === "/"
+        ? "/"
+        : "%";
+      tokens.push({
+        kind: "arithmeticOperator",
+        operator,
+        location: start,
+      });
+    } else if (arithmeticDepth > 0 && character === "(") {
+      advance();
+      arithmeticDepth++;
+      tokens.push({ kind: "openParen", location: start });
+    } else if (arithmeticDepth > 0 && character === ")") {
+      advance();
+      arithmeticDepth--;
+      const macroClose = arithmeticMacros.at(-1) === arithmeticDepth + 1;
+      if (macroClose) arithmeticMacros.pop();
+      tokens.push({
+        kind: macroClose ? "arithmeticClose" : "closeParen",
+        location: start,
+      });
     } else if (
       /[0-9]/.test(character) ||
-      (character === "-" && /[0-9]/.test(source[offset + 1] ?? ""))
+      (arithmeticDepth === 0 && character === "-" &&
+        /[0-9]/.test(source[offset + 1] ?? ""))
     ) {
       tokens.push(readNumber(start));
     } else if (

@@ -1,4 +1,5 @@
 import type { Expression } from "./ast.ts";
+import { parseArithmeticBody } from "./arithmetic_parser.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import { lex, type Token } from "./lexer.ts";
 
@@ -6,12 +7,19 @@ export function parse(source: string, file: string): readonly Expression[] {
   const { tokens, end } = lex(source, file);
   let index = 0;
   const current = (): Token => tokens[index] ?? end;
+  const advance = (): Token => {
+    const token = current();
+    index++;
+    return token;
+  };
   const expressions: Expression[] = [];
 
   function primary(): Expression {
     const token = current();
     index++;
     switch (token.kind) {
+      case "arithmeticOpen":
+        return parseArithmeticBody({ current, advance });
       case "number":
         return { kind: "number", value: token.value, location: token.location };
       case "string":
@@ -111,6 +119,8 @@ export function parse(source: string, file: string): readonly Expression[] {
         index++;
         return expression;
       }
+      case "arithmeticClose":
+      case "arithmeticOperator":
       case "unary":
       case "keyword":
       case "period":
@@ -167,6 +177,8 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "closeBracket":
           case "comma":
           case "pipe":
+          case "arithmeticClose":
+          case "arithmeticOperator":
           case "eof":
             return {
               kind: "pipeline",
@@ -183,6 +195,7 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "unary":
           case "keyword":
           case "openParen":
+          case "arithmeticOpen":
           case "openBrace":
           case "openBracket":
           case "arrow":

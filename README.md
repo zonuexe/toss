@@ -11,9 +11,17 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 The current implementation supports single-quoted strings, named symbols,
 bindings and references, unary and keyword messages, expression grouping,
 pipelines, blocks and closures with parameters, Nil and empty blocks,
-multiple statements,
-and `//` line comments. Macros and effects described below are
-design goals and are not implemented yet.
+multiple statements, and `//` line comments. The built-in arithmetic macro is
+available as `$(1 + 2 * 3)` and lowers operators to ordinary messages. Its
+operands are limited to numbers, `$name` fetches, arithmetic groups, and nested
+arithmetic macros; unary and keyword messages inside operands are not accepted.
+Other macro forms and effects remain design goals. See
+[ADR-26](docs/adr/0026-arithmetic-macro.md) for the implemented limits.
+
+```sh
+mise exec -- deno task compile examples/arithmetic.toss -o out/arithmetic.js
+mise exec -- deno run out/arithmetic.js
+```
 
 Array literals use commas, for example `[1, 'two', [3]]`. Arrays support
 `length`, `at:`, `at:put:`, and `map:`; indexes are checked. `map:` calls a
