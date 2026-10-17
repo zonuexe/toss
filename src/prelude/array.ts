@@ -1,4 +1,18 @@
+import { outputDump, outputPrint } from "./output.ts";
+
 export const arrayMessages = [
+  {
+    name: "toString",
+    javascript:
+      "function toString(receiver, context) { return inspectArray(receiver, context); }",
+  },
+  {
+    name: "inspect",
+    javascript:
+      "function inspect(receiver, context) { return inspectArray(receiver, context); }",
+  },
+  outputPrint,
+  outputDump,
   {
     name: "filter:",
     javascript: `function filter(receiver, context, block) {

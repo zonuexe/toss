@@ -1,0 +1,3 @@
+#values bind: [1, 'two', [3, 4]].
+$values print.
+$values dump.

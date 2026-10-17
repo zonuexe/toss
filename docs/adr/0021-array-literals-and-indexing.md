@@ -14,6 +14,6 @@ keys or indexes.
 
 Array dispatch uses only the explicit array prelude. Native JavaScript methods
 and properties are not Toss messages, and unknown messages identify the
-receiver as `Array`. Array display, cloning, prototypes, and additional
-collection messages are not part of this decision. To show contents, read and
-print the elements explicitly.
+receiver as `Array`. Display is defined in [ADR-25](0025-array-display.md).
+Cloning, prototypes, and additional collection messages are not part of this
+decision.

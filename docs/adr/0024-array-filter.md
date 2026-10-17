@@ -38,5 +38,5 @@ mise exec -- deno task compile examples/array-filter.toss -o out/array-filter.js
 mise exec -- deno run out/array-filter.js
 ```
 
-Array display remains undefined; read elements explicitly. Native JavaScript
+Array display is defined in [ADR-25](0025-array-display.md). Native JavaScript
 array methods are not Toss messages.

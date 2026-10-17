@@ -7,6 +7,25 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
   }
 }
 
+const activeArrayInspections = new Set();
+
+function inspectArray(receiver, context) {
+  if (activeArrayInspections.has(receiver)) return "[...]";
+  activeArrayInspections.add(receiver);
+  try {
+    const values = receiver.slice();
+    return "[" + values.map((value) => {
+      const inspected = send(value, {name: "inspect", arguments: []}, context);
+      if (typeof inspected !== "string") {
+        throw new TossRuntimeError("inspect must return a string.", context.location);
+      }
+      return inspected;
+    }).join(", ") + "]";
+  } finally {
+    activeArrayInspections.delete(receiver);
+  }
+}
+
 function send(receiver, message, context) {
   const type = Array.isArray(receiver) ? "Array" : receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
   const messages = type === "Array" ? arrayMessages : type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();

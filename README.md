@@ -21,9 +21,11 @@ one-argument Block from left to right and returns a fresh array. See
 [ADR-21](docs/adr/0021-array-literals-and-indexing.md) and
 [ADR-22](docs/adr/0022-array-map.md). Arrays also support `reduce:with:` with an
 initial accumulator and a two-argument Block. See
-[ADR-23](docs/adr/0023-array-reduce.md). Array display is not defined, so read
-and print elements explicitly. `filter:` calls a one-argument Block that must
-return a Boolean, then returns matching original values in a fresh array. See
+[ADR-23](docs/adr/0023-array-reduce.md). `inspect` and `toString` return
+bracketed element representations, and `print` and `dump` write those forms
+with a newline while returning the array. Cycles display as `[...]`. See
+[ADR-25](docs/adr/0025-array-display.md). `filter:` calls a one-argument Block
+that must return a Boolean, then returns matching original values in a fresh array. See
 [ADR-24](docs/adr/0024-array-filter.md). Grouped executable examples are in
 `examples/array-filter.toss`:
 
@@ -52,7 +54,12 @@ mise exec -- deno task compile examples/array-reduce.toss -o out/array-reduce.js
 mise exec -- deno run out/array-reduce.js
 mise exec -- deno task compile examples/array-filter.toss -o out/array-filter.js
 mise exec -- deno run out/array-filter.js
+mise exec -- deno task compile examples/array-display.toss -o out/array-display.js
+mise exec -- deno run out/array-display.js
 ```
+
+Future collection candidates, including `filterMap` and `flatMap`, are recorded
+in [Future work](docs/future-work.md).
 
 Use mise to install the pinned Deno version, then compile and run the example:
 
