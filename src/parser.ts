@@ -20,6 +20,30 @@ export function parse(source: string, file: string): readonly Expression[] {
         return { kind: "symbol", name: token.name, location: token.location };
       case "fetch":
         return { kind: "fetch", name: token.name, location: token.location };
+      case "openBracket": {
+        const elements: Expression[] = [];
+        if (current().kind !== "closeBracket") {
+          elements.push(pipeline());
+          while (current().kind === "comma") {
+            index++;
+            if (current().kind === "closeBracket") {
+              throw new TossSyntaxError(
+                current().location,
+                "Expected an expression after ','.",
+              );
+            }
+            elements.push(pipeline());
+          }
+        }
+        if (current().kind !== "closeBracket") {
+          throw new TossSyntaxError(
+            current().location,
+            "Expected ']' after array elements.",
+          );
+        }
+        index++;
+        return { kind: "array", elements, location: token.location };
+      }
       case "openBrace": {
         const parameters: string[] = [];
         const names = new Set<string>();
@@ -93,6 +117,7 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "pipe":
       case "closeParen":
       case "closeBrace":
+      case "closeBracket":
       case "arrow":
       case "comma":
       case "eof":
@@ -139,6 +164,8 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "period":
           case "closeParen":
           case "closeBrace":
+          case "closeBracket":
+          case "comma":
           case "pipe":
           case "eof":
             return {
@@ -157,8 +184,8 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "keyword":
           case "openParen":
           case "openBrace":
+          case "openBracket":
           case "arrow":
-          case "comma":
             break;
           default: {
             const exhaustive: never = following;

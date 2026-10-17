@@ -7,6 +7,7 @@ import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
 import { nilInspect, nilToString } from "./prelude/nil.ts";
 import { numberMessages } from "./prelude/number.ts";
 import { booleanMessages } from "./prelude/boolean.ts";
+import { arrayMessages } from "./prelude/array.ts";
 import { runtimeJavaScript } from "./runtime.ts";
 
 type PreludeMessage = { readonly name: string; readonly javascript: string };
@@ -53,6 +54,10 @@ function emit(expression: Expression, scope = "environment"): string {
       return `Symbol.for(${JSON.stringify(expression.name)})`;
     case "fetch":
       return `fetchBinding(${JSON.stringify(expression.name)}, ${context})`;
+    case "array":
+      return `[${
+        expression.elements.map((item) => emit(item, scope)).join(", ")
+      }]`;
     case "send":
       return `send(${emit(expression.receiver, scope)}, {name: ${
         JSON.stringify(expression.name)
@@ -94,6 +99,7 @@ export function generate(expressions: readonly Expression[]): string {
     ]),
     messageTable("numberMessages", numberMessages),
     messageTable("booleanMessages", booleanMessages),
+    messageTable("arrayMessages", arrayMessages),
     messageTable("symbolMessages", [
       symbolToString,
       symbolInspect,

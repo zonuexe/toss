@@ -30,3 +30,6 @@ A numeric value used for arithmetic and ordering.
 
 **Boolean**:
 A value that is either true or false.
+
+**Array**:
+A mutable, ordered sequence of values accessed by zero-based indexes.

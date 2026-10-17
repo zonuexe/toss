@@ -15,6 +15,11 @@ multiple statements,
 and `//` line comments. Macros and effects described below are
 design goals and are not implemented yet.
 
+Array literals use commas, for example `[1, 'two', [3]]`. Arrays support
+`length`, `at:`, and `at:put:` with checked indexes; see
+[ADR-21](docs/adr/0021-array-literals-and-indexing.md). Array display is not
+defined yet, so read and print elements explicitly.
+
 Use mise to install the pinned Deno version, then compile and run the example:
 
 ```sh

@@ -28,6 +28,11 @@ export type Expression =
     readonly location: SourceLocation;
   }
   | {
+    readonly kind: "array";
+    readonly elements: readonly Expression[];
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "pipeline";
     readonly input: Expression;
     readonly receiver: Expression;

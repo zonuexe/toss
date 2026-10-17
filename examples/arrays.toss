@@ -1,0 +1,7 @@
+#values bind: [1, 'Toss', [$True, $False]].
+$values length print.
+($values at: 0) print.
+(($values at: 1) print).
+(($values at: 2) at: 0) print.
+$values at: 0 put: 7.
+($values at: 0) print.

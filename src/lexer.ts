@@ -37,6 +37,8 @@ export type Token =
   | { readonly kind: "closeParen"; readonly location: SourceLocation }
   | { readonly kind: "openBrace"; readonly location: SourceLocation }
   | { readonly kind: "closeBrace"; readonly location: SourceLocation }
+  | { readonly kind: "openBracket"; readonly location: SourceLocation }
+  | { readonly kind: "closeBracket"; readonly location: SourceLocation }
   | { readonly kind: "arrow"; readonly location: SourceLocation }
   | { readonly kind: "comma"; readonly location: SourceLocation }
   | { readonly kind: "eof"; readonly location: SourceLocation };
@@ -146,10 +148,19 @@ export function lex(
       (character === "-" && /[0-9]/.test(source[offset + 1] ?? ""))
     ) {
       tokens.push(readNumber(start));
-    } else if (character === "{" || character === "}") {
+    } else if (
+      character === "{" || character === "}" || character === "[" ||
+      character === "]"
+    ) {
       advance();
       tokens.push({
-        kind: character === "{" ? "openBrace" : "closeBrace",
+        kind: character === "{"
+          ? "openBrace"
+          : character === "}"
+          ? "closeBrace"
+          : character === "["
+          ? "openBracket"
+          : "closeBracket",
         location: start,
       });
     } else if (source.startsWith("|>", offset)) {

@@ -8,8 +8,8 @@ export const runtimeJavaScript = `class TossRuntimeError extends Error {
 }
 
 function send(receiver, message, context) {
-  const type = receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
-  const messages = type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
+  const type = Array.isArray(receiver) ? "Array" : receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
+  const messages = type === "Array" ? arrayMessages : type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
   if (type === "Object" && Reflect.has(receiver, message.name)) {
     const slot = Reflect.get(receiver, message.name);
     if (typeof slot === "function") {
@@ -32,6 +32,15 @@ function send(receiver, message, context) {
 function numberArgument(value, context) {
   if (typeof value !== "number") throw new TossRuntimeError("Number argument required.", context.location);
   return value;
+}
+
+function arrayIndex(receiver, index, context) {
+  if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) {
+    throw new TossRuntimeError("Array index must be a nonnegative safe integer.", context.location);
+  }
+  if (index >= receiver.length) {
+    throw new TossRuntimeError("Array index is out of bounds.", context.location);
+  }
 }
 
 function blockArgument(value, context) {
