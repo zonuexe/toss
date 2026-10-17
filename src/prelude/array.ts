@@ -1,5 +1,17 @@
 export const arrayMessages = [
   {
+    name: "map:",
+    javascript: `function map(receiver, context, block) {
+  const selected = blockArgument(block, context);
+  const values = receiver.slice();
+  const result = [];
+  for (const value of values) {
+    result.push(invokeBlock(selected, [value], context));
+  }
+  return result;
+}`,
+  },
+  {
     name: "length",
     javascript: "function length(receiver) { return receiver.length; }",
   },

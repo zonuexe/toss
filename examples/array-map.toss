@@ -1,0 +1,6 @@
+#numbers bind: [1, 2, 3].
+#doubled bind: ($numbers map: { number -> $number multiplyBy: 2 }).
+$doubled length print.
+($doubled at: 0) print.
+($doubled at: 1) print.
+($doubled at: 2) print.

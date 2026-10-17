@@ -16,9 +16,16 @@ and `//` line comments. Macros and effects described below are
 design goals and are not implemented yet.
 
 Array literals use commas, for example `[1, 'two', [3]]`. Arrays support
-`length`, `at:`, and `at:put:` with checked indexes; see
-[ADR-21](docs/adr/0021-array-literals-and-indexing.md). Array display is not
-defined yet, so read and print elements explicitly.
+`length`, `at:`, `at:put:`, and `map:`; indexes are checked. `map:` calls a
+one-argument Block from left to right and returns a fresh array. See
+[ADR-21](docs/adr/0021-array-literals-and-indexing.md) and
+[ADR-22](docs/adr/0022-array-map.md). Array display is not defined, so read and
+print elements explicitly.
+
+```sh
+mise exec -- deno task compile examples/array-map.toss -o out/array-map.js
+mise exec -- deno run out/array-map.js
+```
 
 Use mise to install the pinned Deno version, then compile and run the example:
 
