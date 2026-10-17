@@ -15,6 +15,28 @@ const selectors = {
   "%": "remainder:",
 } as const;
 
+const comparisons = {
+  "<": "lessThan:",
+  "<=": "lessThanOrEqual:",
+  ">": "greaterThan:",
+  ">=": "greaterThanOrEqual:",
+  "==": "equals:",
+  "!=": "equals:",
+} as const;
+
+type Comparison = keyof typeof comparisons;
+type ArithmeticOperator = keyof typeof selectors;
+
+function isArithmeticOperator(
+  operator: string,
+): operator is ArithmeticOperator {
+  return Object.hasOwn(selectors, operator);
+}
+
+function isComparison(operator: string): operator is Comparison {
+  return Object.hasOwn(comparisons, operator);
+}
+
 function operand(cursor: ArithmeticCursor): Expression {
   const token = cursor.current();
   switch (token.kind) {
@@ -44,7 +66,7 @@ function operand(cursor: ArithmeticCursor): Expression {
       return parseArithmeticBody(cursor);
     case "openParen": {
       cursor.advance();
-      const expression = binary(cursor, 0);
+      const expression = comparison(cursor);
       if (cursor.current().kind !== "closeParen") {
         throw new TossSyntaxError(
           cursor.current().location,
@@ -80,7 +102,7 @@ function operand(cursor: ArithmeticCursor): Expression {
   }
 }
 
-function precedence(operator: string): number {
+function arithmeticPrecedence(operator: string): number {
   return operator === "*" || operator === "/" || operator === "%" ? 2 : 1;
 }
 
@@ -88,13 +110,17 @@ function binary(cursor: ArithmeticCursor, minimum: number): Expression {
   let left = operand(cursor);
   let token = cursor.current();
   while (token.kind === "arithmeticOperator") {
-    if (precedence(token.operator) < minimum) break;
+    if (
+      !isArithmeticOperator(token.operator) ||
+      arithmeticPrecedence(token.operator) < minimum
+    ) break;
     cursor.advance();
-    const right = binary(cursor, precedence(token.operator) + 1);
+    const operator = token.operator;
+    const right = binary(cursor, arithmeticPrecedence(operator) + 1);
     left = {
       kind: "send",
       receiver: left,
-      name: selectors[token.operator],
+      name: selectors[operator],
       arguments: [right],
       location: token.location,
     };
@@ -103,8 +129,39 @@ function binary(cursor: ArithmeticCursor, minimum: number): Expression {
   return left;
 }
 
+function comparison(cursor: ArithmeticCursor): Expression {
+  const left = binary(cursor, 0);
+  const token = cursor.current();
+  if (token.kind !== "arithmeticOperator" || !isComparison(token.operator)) {
+    return left;
+  }
+  const operator = token.operator;
+  cursor.advance();
+  const right = binary(cursor, 0);
+  const name = comparisons[operator];
+  const result: Expression = {
+    kind: "send",
+    receiver: left,
+    name,
+    arguments: [right],
+    location: token.location,
+  };
+  if (operator !== "!=") return result;
+  return {
+    kind: "send",
+    receiver: result,
+    name: "not",
+    arguments: [],
+    location: token.location,
+  };
+}
+
 export function parseArithmeticBody(cursor: ArithmeticCursor): Expression {
-  const expression = binary(cursor, 0);
+  const expression = comparison(cursor);
+  const extra = cursor.current();
+  if (extra.kind === "arithmeticOperator" && isComparison(extra.operator)) {
+    throw new TossSyntaxError(extra.location, "Comparisons cannot be chained.");
+  }
   if (cursor.current().kind !== "arithmeticClose") {
     throw new TossSyntaxError(
       cursor.current().location,

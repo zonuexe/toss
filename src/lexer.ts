@@ -1,4 +1,8 @@
 import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
+import {
+  type ArithmeticOperator,
+  comparisonOperatorAt,
+} from "./comparison_operator.ts";
 
 export type Token =
   | {
@@ -39,7 +43,7 @@ export type Token =
   | { readonly kind: "arithmeticClose"; readonly location: SourceLocation }
   | {
     readonly kind: "arithmeticOperator";
-    readonly operator: "+" | "-" | "*" | "/" | "%";
+    readonly operator: ArithmeticOperator;
     readonly location: SourceLocation;
   }
   | { readonly kind: "openBrace"; readonly location: SourceLocation }
@@ -127,6 +131,9 @@ export function lex(
   while (offset < source.length) {
     const start = location();
     const character = current();
+    const comparisonOperator = arithmeticDepth > 0
+      ? comparisonOperatorAt(source, offset)
+      : undefined;
     if (/[ \t\r\n]/.test(character)) {
       advance();
     } else if (source.startsWith("//", offset)) {
@@ -158,6 +165,13 @@ export function lex(
       advance();
       advance();
       tokens.push({ kind: "arrow", location: start });
+    } else if (comparisonOperator !== undefined) {
+      for (let index = 0; index < comparisonOperator.length; index++) advance();
+      tokens.push({
+        kind: "arithmeticOperator",
+        operator: comparisonOperator,
+        location: start,
+      });
     } else if (arithmeticDepth > 0 && "+-*/%".includes(character)) {
       advance();
       const operator = character === "+"

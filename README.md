@@ -15,12 +15,17 @@ multiple statements, and `//` line comments. The built-in arithmetic macro is
 available as `$(1 + 2 * 3)` and lowers operators to ordinary messages. Its
 operands are limited to numbers, `$name` fetches, arithmetic groups, and nested
 arithmetic macros; unary and keyword messages inside operands are not accepted.
-Other macro forms and effects remain design goals. See
-[ADR-26](docs/adr/0026-arithmetic-macro.md) for the implemented limits.
+It also supports `<`, `<=`, `>`, `>=`, `==`, and `!=`, with one comparison per
+unparenthesized arithmetic group. Other macro forms and effects remain design
+goals. See
+[ADR-26](docs/adr/0026-arithmetic-macro.md) and
+[ADR-27](docs/adr/0027-comparison-macro.md) for the implemented limits.
 
 ```sh
 mise exec -- deno task compile examples/arithmetic.toss -o out/arithmetic.js
 mise exec -- deno run out/arithmetic.js
+mise exec -- deno task compile examples/comparisons.toss -o out/comparisons.js
+mise exec -- deno run out/comparisons.js
 ```
 
 Array literals use commas, for example `[1, 'two', [3]]`. Arrays support

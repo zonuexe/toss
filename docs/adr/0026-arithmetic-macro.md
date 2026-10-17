@@ -27,6 +27,8 @@ This implements only the arithmetic macro slice described here. It does not
 implement the broader macro system or aspirational syntax in the language
 tour.
 
+Comparison operators extend this form in [ADR-27](0027-comparison-macro.md).
+
 ```text
 $(1 + 2 * 3) print.
 #x bind: 10.
