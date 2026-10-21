@@ -12,6 +12,16 @@ export const symbolInspect = {
 }`,
 } as const;
 
+export const symbolEquals = {
+  name: "equals:",
+  javascript: `function equals(receiver, context, argument) {
+  if (typeof argument !== "symbol") {
+    throw new TossRuntimeError("Symbol argument required.", context.location);
+  }
+  return receiver === argument;
+}`,
+} as const;
+
 export const symbolGenerateUnique = `function generateUnique() {
   return Symbol();
 }`;

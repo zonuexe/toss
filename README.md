@@ -269,6 +269,13 @@ Unique keys display as `<unique>` and inspect as `#<unique>`; these labels do
 not encode identity. Anyone holding a key can use it, so key sharing affects
 access. See [ADR-34](docs/adr/0034-unique-symbols.md).
 
+Symbols receive `equals:` with another Symbol and return a Boolean based on
+identity. Aliases and repeated interned names compare equal; separate Unique
+symbols compare unequal even though their display labels match. Other
+argument types are runtime errors. Arithmetic `==` and `!=` also work on
+fetched Symbols through ordinary message dispatch. See
+[ADR-35](docs/adr/0035-symbol-equality.md).
+
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
 mise exec -- deno run out/extend.js
@@ -282,6 +289,8 @@ mise exec -- deno task compile examples/perform-arguments.toss -o out/perform-ar
 mise exec -- deno run out/perform-arguments.js
 mise exec -- deno task compile examples/unique-symbols.toss -o out/unique-symbols.js
 mise exec -- deno run out/unique-symbols.js
+mise exec -- deno task compile examples/symbol-equality.toss -o out/symbol-equality.js
+mise exec -- deno run out/symbol-equality.js
 ```
 
 ```sh

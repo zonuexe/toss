@@ -1,0 +1,9 @@
+(#name equals: #name) print.
+(#name equals: #other) print.
+#key bind: $Symbol generateUnique.
+#alias bind: $key.
+#other bind: $Symbol generateUnique.
+($key equals: $alias) print.
+($key equals: $other) print.
+$($key != $other) print.
+([$key,$other,$key] filter: { item -> $item equals: $key }) length print.

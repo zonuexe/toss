@@ -11,6 +11,7 @@ import {
 } from "./prelude/object.ts";
 import {
   symbolBind,
+  symbolEquals,
   symbolGenerateUnique,
   symbolInspect,
   symbolToString,
@@ -131,6 +132,7 @@ export function generate(expressions: readonly Expression[]): string {
     messageTable("symbolMessages", [
       symbolToString,
       symbolInspect,
+      symbolEquals,
       outputPrint,
       outputDump,
       symbolBind,
