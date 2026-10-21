@@ -204,6 +204,26 @@ and symbols, with their usual separate identities:
 Each key is evaluated before its value in the caller's scope. Updates still
 use ordinary `at:put:`. See [ADR-30](docs/adr/0030-extend-dynamic-keys.md).
 
+Use `perform:` to select a message dynamically and call it without arguments:
+
+```text
+#action bind: #greet.
+#obj bind: ($Object clone |> #extend(
+  name: 'Toss',
+  ($action): { $self name }
+)).
+($obj perform: $action) print.
+($obj perform: 'name') print.
+```
+
+Inherited Methods receive the actual Object as `$self`. Non-block slots return
+their value. String and Symbol keys remain distinct: `#greet` does not select
+`'greet'`. Any String can select a stored slot. String selectors also support
+Object prelude messages such as `'clone'`; selecting a prelude that requires
+arguments is a runtime error. `perform:` is provided only for Objects, and
+argument-bearing dynamic calls are deferred. See
+[ADR-31](docs/adr/0031-perform-without-arguments.md).
+
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
 mise exec -- deno run out/extend.js
@@ -211,6 +231,8 @@ mise exec -- deno task compile examples/extend-string-keys.toss -o out/extend-st
 mise exec -- deno run out/extend-string-keys.js
 mise exec -- deno task compile examples/extend-dynamic-keys.toss -o out/extend-dynamic-keys.js
 mise exec -- deno run out/extend-dynamic-keys.js
+mise exec -- deno task compile examples/perform.toss -o out/perform.js
+mise exec -- deno run out/perform.js
 ```
 
 ```sh

@@ -29,8 +29,9 @@ function inspectArray(receiver, context) {
 function send(receiver, message, context) {
   const type = Array.isArray(receiver) ? "Array" : receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
   const messages = type === "Array" ? arrayMessages : type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
-  if (type === "Object" && Reflect.has(receiver, message.name)) {
-    const slot = Reflect.get(receiver, message.name);
+  const key = message.name;
+  if (type === "Object" && Reflect.has(receiver, key)) {
+    const slot = Reflect.get(receiver, key);
     if (typeof slot === "function") {
       return invokeBlock(slot, message.arguments, {
         ...context,
@@ -38,12 +39,12 @@ function send(receiver, message, context) {
       });
     }
     if (message.arguments.length === 0) return slot;
-    throw new TossRuntimeError("Object slot " + JSON.stringify(message.name) + " is not callable.", context.location);
+    throw new TossRuntimeError("Object slot " + keyDescription(key) + " is not callable.", context.location);
   }
-  const implementation = messages.get(message.name) ??
-    (type === "Block" && blockKeywordSelector.test(message.name) ? blockKeywordMessage : undefined);
+  const implementation = typeof key === "string" ? messages.get(key) ??
+    (type === "Block" && blockKeywordSelector.test(key) ? blockKeywordMessage : undefined) : undefined;
   if (implementation === undefined) {
-    throw new TossRuntimeError("Unknown message " + JSON.stringify(message.name) + " for " + type + ".", context.location);
+    throw new TossRuntimeError("Unknown message " + keyDescription(key) + " for " + type + ".", context.location);
   }
   return implementation(receiver, context, ...message.arguments);
 }

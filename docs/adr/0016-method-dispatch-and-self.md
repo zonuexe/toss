@@ -3,7 +3,8 @@
 For dictionary objects, a string slot matching the complete message selector has
 priority over object prelude messages. Lookup includes inherited slots. String
 keys and symbol keys remain distinct; identifier messages use string keys.
-Dynamic `perform:` and symbol-key selector syntax are deferred.
+Dynamic `perform:` is specified in [ADR-31](0031-perform-without-arguments.md).
+Symbol-key selector syntax remains deferred.
 
 A block in a matching slot is called with the message arguments and the
 receiving object as `self`. A non-block slot is returned for a unary message;

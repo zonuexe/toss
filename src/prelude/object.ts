@@ -28,3 +28,17 @@ export const objectAtPut = {
   return value;
 }`,
 } as const;
+
+export const objectPerform = {
+  name: "perform:",
+  javascript: `function perform(receiver, context, key) {
+  if (typeof key !== "string" && typeof key !== "symbol") {
+    throw new TossRuntimeError("Object key must be a string or symbol.", context.location);
+  }
+  if (typeof key === "string" && key.includes(":") &&
+    !Reflect.has(receiver, key) && objectMessages.has(key)) {
+    throw new TossRuntimeError("Message " + keyDescription(key) + " requires arguments.", context.location);
+  }
+  return send(receiver, {name: key, arguments: []}, context);
+}`,
+} as const;

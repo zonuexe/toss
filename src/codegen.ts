@@ -2,7 +2,12 @@ import type { Expression } from "./ast.ts";
 import { blockValue, blockValueWithArguments } from "./prelude/block.ts";
 import { outputDump, outputPrint } from "./prelude/output.ts";
 import { stringInspect, stringToString } from "./prelude/string.ts";
-import { objectAt, objectAtPut, objectClone } from "./prelude/object.ts";
+import {
+  objectAt,
+  objectAtPut,
+  objectClone,
+  objectPerform,
+} from "./prelude/object.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
 import { nilInspect, nilToString } from "./prelude/nil.ts";
 import { numberMessages } from "./prelude/number.ts";
@@ -134,6 +139,7 @@ export function generate(expressions: readonly Expression[]): string {
       objectClone,
       objectAt,
       objectAtPut,
+      objectPerform,
       outputPrint,
       outputDump,
     ]),
