@@ -42,3 +42,24 @@ export const objectPerform = {
   return send(receiver, {name: key, arguments: []}, context);
 }`,
 } as const;
+
+export const objectPerformWithArguments = {
+  name: "perform:withArguments:",
+  javascript:
+    `function performWithArguments(receiver, context, key, argumentsList) {
+  if (typeof key !== "string" && typeof key !== "symbol") {
+    throw new TossRuntimeError("Object key must be a string or symbol.", context.location);
+  }
+  if (!Array.isArray(argumentsList)) {
+    throw new TossRuntimeError("Arguments must be an Array.", context.location);
+  }
+  if (typeof key === "string" && !Reflect.has(receiver, key) && objectMessages.has(key)) {
+    const expected = [...key].filter((character) => character === ":").length;
+    if (argumentsList.length !== expected) {
+      throw new TossRuntimeError("Message " + keyDescription(key) + " expects " + expected +
+        " argument(s), received " + argumentsList.length + ".", context.location);
+    }
+  }
+  return send(receiver, {name: key, arguments: argumentsList.slice()}, context);
+}`,
+} as const;

@@ -134,6 +134,19 @@ $Dog bark.
 
 ブロック内で `$self` を参照すると、ランタイム（またはコンパイル時のα変換）によってレシーバ自身が解決されます。JSにコンパイルする際は、レキシカルスコープの恩恵を受けて衛生的に変換されます。
 
+### 動的なメッセージ呼び出し（実装済み）
+
+Object は `perform:` で引数なし、`perform:withArguments:` で配列に並べた引数を渡せます。文字列とシンボルのキーは区別され、継承先を検索します。メソッドの `$self` は実際のレシーバです。
+
+```text
+#obj bind: ($Object clone |> %extend(
+    (#sum): { left, right -> $left add: $right }
+)).
+($obj perform: #sum withArguments: [2, 3]) print.
+```
+
+引数の数は Block のパラメータ数と一致させます。キーの綴りやコロンの数は、保存した Block の引数の数を制約しません。String で prelude を選ぶ場合は、そのメッセージの引数の数を検証します。詳しくは [ADR-31](adr/0031-perform-without-arguments.md) と [ADR-33](adr/0033-perform-with-arguments.md) を参照してください。
+
 ---
 
 ## 5. モジュールとカプセル化

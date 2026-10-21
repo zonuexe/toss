@@ -7,6 +7,7 @@ import {
   objectAtPut,
   objectClone,
   objectPerform,
+  objectPerformWithArguments,
 } from "./prelude/object.ts";
 import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
 import { nilInspect, nilToString } from "./prelude/nil.ts";
@@ -140,6 +141,7 @@ export function generate(expressions: readonly Expression[]): string {
       objectAt,
       objectAtPut,
       objectPerform,
+      objectPerformWithArguments,
       outputPrint,
       outputDump,
     ]),

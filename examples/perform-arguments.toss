@@ -1,0 +1,9 @@
+#operation bind: #sum.
+#parent bind: ($Object clone |> %extend(
+  base: 10,
+  ($operation): { left, right -> $self base add: ($left add: $right) }
+)).
+#child bind: ($parent clone |> %extend(base: 20)).
+($child perform: $operation withArguments: [2, 3]) print.
+$child perform: 'at:put:' withArguments: ['name', 'Toss'].
+($child perform: 'at:' withArguments: ['name']) print.

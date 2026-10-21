@@ -241,9 +241,25 @@ Inherited Methods receive the actual Object as `$self`. Non-block slots return
 their value. String and Symbol keys remain distinct: `#greet` does not select
 `'greet'`. Any String can select a stored slot. String selectors also support
 Object prelude messages such as `'clone'`; selecting a prelude that requires
-arguments is a runtime error. `perform:` is provided only for Objects, and
-argument-bearing dynamic calls are deferred. See
+arguments is a runtime error. `perform:` is provided only for Objects. See
 [ADR-31](docs/adr/0031-perform-without-arguments.md).
+
+Use `perform:withArguments:` to pass an Array of arguments:
+
+```text
+#obj bind: ($Object clone |> %extend(
+  (#sum): { left, right -> $left add: $right }
+)).
+($obj perform: #sum withArguments: [2, 3]) print.
+```
+
+It keeps the same key lookup and `$self` rules. Block parameter counts are
+checked independently of the slot key's spelling. String prelude selectors
+check their required argument counts too. Empty Arrays allow zero-argument
+calls; non-block slots reject nonempty argument Arrays. The argument list is
+shallow-snapshotted, and the result is returned unchanged. This message is
+also provided only for Objects. See
+[ADR-33](docs/adr/0033-perform-with-arguments.md).
 
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
@@ -254,6 +270,8 @@ mise exec -- deno task compile examples/extend-dynamic-keys.toss -o out/extend-d
 mise exec -- deno run out/extend-dynamic-keys.js
 mise exec -- deno task compile examples/perform.toss -o out/perform.js
 mise exec -- deno run out/perform.js
+mise exec -- deno task compile examples/perform-arguments.toss -o out/perform-arguments.js
+mise exec -- deno run out/perform-arguments.js
 ```
 
 ```sh

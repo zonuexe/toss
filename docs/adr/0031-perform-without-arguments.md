@@ -3,8 +3,8 @@
 Objects receive `perform:` with a String or Symbol key. It selects and sends a
 message with no arguments, then returns its result. This implements the first
 dynamic-send case deferred by [ADR-16](0016-method-dispatch-and-self.md) and
-[ADR-30](0030-extend-dynamic-keys.md). Argument-bearing dynamic sends remain
-deferred.
+[ADR-30](0030-extend-dynamic-keys.md). Argument-bearing dynamic sends are
+specified in [ADR-33](0033-perform-with-arguments.md).
 
 ```text
 #action bind: #greet.
