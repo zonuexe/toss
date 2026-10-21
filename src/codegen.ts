@@ -9,7 +9,12 @@ import {
   objectPerform,
   objectPerformWithArguments,
 } from "./prelude/object.ts";
-import { symbolBind, symbolInspect, symbolToString } from "./prelude/symbol.ts";
+import {
+  symbolBind,
+  symbolGenerateUnique,
+  symbolInspect,
+  symbolToString,
+} from "./prelude/symbol.ts";
 import { nilInspect, nilToString } from "./prelude/nil.ts";
 import { numberMessages } from "./prelude/number.ts";
 import { booleanMessages } from "./prelude/boolean.ts";
@@ -148,6 +153,9 @@ export function generate(expressions: readonly Expression[]): string {
     runtimeJavaScript,
     "const objectRoot = Object.create(null);",
     'environment.bindings.set(Symbol.for("Object"), objectRoot);',
+    "const symbolRoot = Object.create(null);",
+    `Object.defineProperty(symbolRoot, "generateUnique", {value: ${symbolGenerateUnique}, writable: true, enumerable: true, configurable: true});`,
+    'environment.bindings.set(Symbol.for("Symbol"), symbolRoot);',
     'environment.bindings.set(Symbol.for("Nil"), null);',
     'environment.bindings.set(Symbol.for("True"), true);',
     'environment.bindings.set(Symbol.for("False"), false);',

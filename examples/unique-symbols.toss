@@ -1,0 +1,11 @@
+#key bind: $Symbol generateUnique.
+#other bind: $Symbol generateUnique.
+#obj bind: ($Object clone |> %extend(
+  name: 'Toss',
+  ($key): { $self name },
+  ($other): 'separate'
+)).
+($obj perform: $key) print.
+($obj at: $other) print.
+$key print.
+$key dump.

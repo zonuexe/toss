@@ -74,7 +74,9 @@ function finiteNumber(value, context) {
 }
 
 function keyDescription(key) {
-  return typeof key === "symbol" ? "#" + Symbol.keyFor(key) : JSON.stringify(key);
+  if (typeof key !== "symbol") return JSON.stringify(key);
+  const name = Symbol.keyFor(key);
+  return name === undefined ? "#<unique>" : "#" + name;
 }
 
 function fetchBinding(name, context) {

@@ -25,6 +25,9 @@ A dictionary of named bindings. Each file has a root environment, and each block
 **Named symbol**:
 A value that identifies a name, written as `#name`. Named symbols are interned within one execution, and receive `bind:` to store a value under that name in the current environment.
 
+**Unique symbol**:
+A Symbol with fresh identity on every creation, independent of any name. Possession of the key allows access to slots stored under it.
+
 **Fetch**:
 A lookup of the nearest named binding, starting in the current environment and searching outward, written as `$name`. Fetching an unbound name is an error.
 

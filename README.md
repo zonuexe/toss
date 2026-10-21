@@ -261,6 +261,14 @@ shallow-snapshotted, and the result is returned unchanged. This message is
 also provided only for Objects. See
 [ADR-33](docs/adr/0033-perform-with-arguments.md).
 
+`$Symbol generateUnique` creates a fresh Symbol key on each call. Unlike
+interned `#name` Symbols, generated keys cannot be recreated from a name.
+They work with computed `%extend` labels, slot access and dynamic messages.
+The factory is an ordinary Object with an overridable zero-argument method.
+Unique keys display as `<unique>` and inspect as `#<unique>`; these labels do
+not encode identity. Anyone holding a key can use it, so key sharing affects
+access. See [ADR-34](docs/adr/0034-unique-symbols.md).
+
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
 mise exec -- deno run out/extend.js
@@ -272,6 +280,8 @@ mise exec -- deno task compile examples/perform.toss -o out/perform.js
 mise exec -- deno run out/perform.js
 mise exec -- deno task compile examples/perform-arguments.toss -o out/perform-arguments.js
 mise exec -- deno run out/perform-arguments.js
+mise exec -- deno task compile examples/unique-symbols.toss -o out/unique-symbols.js
+mise exec -- deno run out/unique-symbols.js
 ```
 
 ```sh

@@ -42,7 +42,7 @@ No iterable, Array-like Object or Block is accepted in place of an Array.
 Validation, lookup and invocation arity errors use the outer dynamic-send
 position. Errors evaluating its expressions, or inside the selected method,
 retain their own positions. A failure stops later statements. Unique symbols
-and parent calls remain separate future work.
+are specified in [ADR-34](0034-unique-symbols.md); parent calls remain future work.
 
 ```sh
 mise exec -- deno task compile examples/perform-arguments.toss -o out/perform-arguments.js

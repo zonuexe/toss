@@ -38,7 +38,7 @@ arguments to such a prelude.
 
 `perform:` itself remains an ordinary overridable prelude message. It is
 provided only for Objects. Arrays, Blocks, and primitive values do not receive
-it in this slice. Unique symbols remain deferred.
+it in this slice. Unique symbols are specified in [ADR-34](0034-unique-symbols.md).
 
 The receiver is evaluated once, then the key expression once, as for any
 keyword message. Invalid key types, missing keys, and invocation arity errors
