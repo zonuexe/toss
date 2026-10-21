@@ -1,21 +1,24 @@
 # ADR-28: Extend object slots with a pipeline macro
 
-`input |> #extend(name: value, method: { ... })` updates the input object and
+The macro spelling is updated to `%extend` by
+[ADR-32](0032-macro-and-annotation-sigils.md); the behavior below is unchanged.
+
+`input |> %extend(name: value, method: { ... })` updates the input object and
 returns that same object. It does not clone it. Use `clone` explicitly when a
 new child is needed. This adds a built-in macro on a pipeline's right side to
 the keyword-message pipelines in [ADR-12](0012-pipeline-final-argument.md).
 Further pipeline stages work normally; group the full pipeline before sending
 messages to its result.
 
-The opener must be the exact adjacent text `#extend(`. A plain `#extend` remains
+The opener must be the exact adjacent text `%extend(`. A plain `#extend` remains
 an ordinary named symbol, including in `#extend bind:`. The macro is recognized
-independently of that symbol's runtime binding. Standalone `#extend(...)` has no
+independently of that symbol's runtime binding. Standalone `%extend(...)` has no
 target and is a syntax error. Other named macros remain deferred.
 
 Entries use ASCII identifier labels followed by full Toss expressions. `name:`
 means the string key `'name'`, not a symbol or a keyword selector containing a
 colon. Commas separate entries; trailing commas and holes are errors. Empty
-`#extend()` is allowed. [ADR-29](0029-extend-string-keys.md) adds quoted string
+`%extend()` is allowed. [ADR-29](0029-extend-string-keys.md) adds quoted string
 keys, including keyword-method selectors. [ADR-30](0030-extend-dynamic-keys.md)
 adds parenthesized key expressions, including symbol-valued keys.
 
@@ -40,7 +43,7 @@ there is no rollback. Value and method-body errors retain their original
 locations. Implicit setter errors use the entry label's location.
 
 ```text
-#Dog bind: ($Object clone |> #extend(
+#Dog bind: ($Object clone |> %extend(
   name: 'Pochi',
   bark: { $self name print }
 )).

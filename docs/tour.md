@@ -1,11 +1,13 @@
 # Toss Language Tour
 
+この文書は将来設計を含む言語ツアーです。実装済みの範囲は [README](../README.md) を参照してください。名前付きマクロは `%name`、シンボルは `#name`、呼び出しに関わる annotation は `@name` に分けます。[ADR-32](adr/0032-macro-and-annotation-sigils.md) に判断を記録しています。
+
 ## 1. 言語のコア哲学
 
 * **すべてはオブジェクトであり、すべては辞書である。**
 * **すべての計算は「オブジェクトへのメッセージ送信」によって行われる。**（二項演算子は存在しない）
 * 構文規則は極小。キーワードなどの予約語は持たず、制御構文や変数宣言すらもメッセージとマクロで解決する。
-* **実行環境はJavaScript（Node.js/Deno）への逐語的コンパイルを前提とする。**
+* **JavaScriptをコンパイル先とし、必要なランタイムコードを許容する。**
 
 ---
 
@@ -45,18 +47,20 @@ myArray at: 1 put: 'Apple'.
 
 ### ④ マクロ (Macro / DSL)
 
-コンパイル時にASTを展開・変換するための仕組みです。中身はトークンツリーとしてマクロ関数に渡されます。
+コンパイル時にASTを展開・変換するための仕組みです。名前付きマクロは `%name` を使い、`#name` は常にシンボルです。将来の汎用マクロでは、中身をトークンツリーとしてマクロ関数に渡す方針です。
 数式の解決（二項演算子のエミュレート）にはビルトインマクロ `$()` を使います。
+
+現在実装されているのは `$()` とパイプライン右辺の `%extend(...)` です。以下の `%regex`・`%let`・`%const`・`%import` は将来設計です。未定義・未対応のマクロ呼び出しはコンパイルエラーになり、シンボルとしての解釈には切り替わりません。
 
 ```
 // インラインマクロ
 $(1 + 2 * 3) print.
-#regex(^abc.*$) match: 'abcdef'.
+%regex(^abc.*$) match: 'abcdef'.
 
-// ステートメントマクロ（括弧を省略すると、ピリオドまでを引数とする行マクロになる）
-#let x = 100.
-#const secret = 42.
-#import $Math as: M.
+// ステートメントマクロ（文の先頭で使い、対応する括弧の外にあるピリオドまでを引数とする）
+%let x = 100.
+%const secret = 42.
+%import $Math as: M.
 ```
 
 ### ⑤ パイプライン演算子 (`|>`)
@@ -97,13 +101,13 @@ $x print.
 
 ## 4. オブジェクトモデル（プロトタイプベース）
 
-クラスは存在しません。既存のオブジェクト（辞書）を複製（`clone`）し、スロット（プロパティやブロック）を拡張（`#extend` マクロ）することで新しいオブジェクトを定義します。未知のメッセージは暗黙的に親（プロトタイプ）へ委譲されます。
+クラスは存在しません。既存のオブジェクト（辞書）を複製（`clone`）し、スロット（プロパティやブロック）を拡張（`%extend` マクロ）することで新しいオブジェクトを定義します。未知のメッセージは暗黙的に親（プロトタイプ）へ委譲されます。
 
 ### オブジェクトの定義と継承
 
 ```
 // 親オブジェクトの定義
-#Animal bind: $Object clone |> #extend(
+#Animal bind: $Object clone |> %extend(
     name: 'Unknown',
     bark: {
         $self name print.
@@ -112,12 +116,12 @@ $x print.
 ).
 
 // 子オブジェクトの定義（継承）
-#Dog bind: $Animal clone |> #extend(
+#Dog bind: $Animal clone |> %extend(
     name: 'Pochi',
 
     // メソッドのオーバーライドとsuper呼び出し
     bark: {
-        #super(bark).
+        %super(bark).
         'Woooo!' print.
     }
 ).
@@ -146,7 +150,7 @@ $Dog bark.
 #internalCalc bind: { x -> $(x * $secretMultiplier) }.
 
 // 外部への公開
-$module |> #exports bind: ( $Object clone |> #extend(
+$module |> #exports bind: ( $Object clone |> %extend(
     pi: 3.14159,
     calc: { x -> $internalCalc value: x }
 ) ).
@@ -159,7 +163,7 @@ $module |> #exports bind: ( $Object clone |> #extend(
 ```
 #PRIVATE_DIGEST bind: $Symbol generateUnique.
 
-$module |> #exports bind: ( $Animal clone |> #extend(
+$module |> #exports bind: ( $Animal clone |> %extend(
     eat: { food ->
         // 内部メッセージの呼び出し
         $self perform: $PRIVATE_DIGEST.
@@ -210,7 +214,7 @@ $(x > 0)
 {
     // 何らかの処理
     $Effect perform: #FileNotFound.
-} handleWith: ( $Object clone |> #extend(
+} handleWith: ( $Object clone |> %extend(
     FileNotFound: { resume ->
         'Warning!' print.
         // デフォルト値を返して処理を再開させる
@@ -223,12 +227,20 @@ $(x > 0)
 
 ## 7. 型注釈（オプション）
 
-推論器やLSP（Language Server Protocol）を助けるため、TypeScriptライクなコロン `:` による型注釈をサポートします。これらはコンパイル時にメタデータとして処理され、実行時のオーバーヘッドにはなりません。
+将来機能として、推論器やLSP（Language Server Protocol）を助けるコロン `:` による型注釈を検討しています。コンパイル時の型情報として扱う方針で、以下の構文は未実装です。呼び出しに関わる `@name` annotation とは別の機能であり、両者の関係は未決定です。
 
 ```
-#let count: Int = 0.
+%let count: Int = 0.
 
 #greet bind: { name: String ->
     $('Hello, ' + name)
 }.
 ```
+
+## 8. Annotations と Attributes（将来設計）
+
+`@name` は呼び出しに関わる annotation 用の接頭辞です。annotation の宣言によって、実行時の呼び出しとして処理するか、コンパイル時に展開するかを決める方針です。コンパイラが展開方法を知る宣言であれば、annotation 自体への呼び出しを生成せずに済みます。ただし、展開結果に検査などの実行時処理が残る場合もあり、実行時コストが常にゼロになる保証ではありません。
+
+明示的な `%name` マクロと annotation は、内部の展開機構を共有することが考えられます。annotation の宣言方法・適用対象・引数・合成・名前解決の詳細は未決定で、`@name` は未実装です。
+
+Attributes は対象にデータを付ける仕組みで、それ自体は呼び出しへの介入を要求しません。表現・付与・取得・寿命の決定は延期し、接頭辞も割り当てません。

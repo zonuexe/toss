@@ -4,9 +4,29 @@
 
 **Toss** (Working Title) is a minimalist, purely object-oriented programming language that distills the most beautiful concepts in computer science history into just **five syntax rules**.
 
-Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power of Lisp, and the frictionless prototype chain of JavaScript, Toss is designed to make coding feel like a lightweight, rhythmic game of catch between objects. It transpiles 1:1 to clean, modern JavaScript, running seamlessly on Node.js and Deno.
+Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power of Lisp, and the prototype chain of JavaScript, Toss targets modern JavaScript with a small runtime. The current compiler uses Deno.
 
 ## Try the first compiler
+
+### Symbols, macros, and annotations
+
+| Form | Role | Status |
+| --- | --- | --- |
+| `#name` | Named symbol: a runtime value | Implemented |
+| `$name` | Fetch a binding | Implemented |
+| `%name(...)` | Explicit named compiler macro | Only `%extend(...)` is implemented |
+| `%name ... .` | Statement macro | Planned |
+| `@name` | Call-related Annotation | Planned; declaration and application details are undecided |
+| `$()` | Dedicated arithmetic macro | Implemented; `%` inside arithmetic remains remainder |
+
+An Annotation's declaration will select runtime invocation or compile-time
+expansion. Expansion can omit the call to the Annotation itself, but may
+still generate runtime work. Attributes represent attached data; their
+representation and syntax are undecided. `@name` is reserved for Annotations.
+Optional colon type annotations are a separate future facility. See
+[ADR-32](docs/adr/0032-macro-and-annotation-sigils.md).
+
+### Implemented subset
 
 The current implementation supports single-quoted strings, named symbols,
 bindings and references, unary and keyword messages, expression grouping,
@@ -16,7 +36,7 @@ available as `$(1 + 2 * 3)` and lowers operators to ordinary messages. Its
 operands are limited to numbers, `$name` fetches, arithmetic groups, and nested
 arithmetic macros; unary and keyword messages inside operands are not accepted.
 It also supports `<`, `<=`, `>`, `>=`, `==`, and `!=`, with one comparison per
-unparenthesized arithmetic group. The `#extend(...)` object macro is described
+unparenthesized arithmetic group. The `%extend(...)` object macro is described
 below. Further macro forms and effects remain design goals. See
 [ADR-26](docs/adr/0026-arithmetic-macro.md) and
 [ADR-27](docs/adr/0027-comparison-macro.md) for the implemented limits.
@@ -158,10 +178,10 @@ Returned blocks keep their lexical `$self`, and ordinary `value` calls do not
 rebind it. Objects can customize `toString` and `inspect` for `print` and
 `dump`; both conversions must return strings.
 
-Use the built-in `#extend(...)` macro to set several slots:
+Use the built-in `%extend(...)` macro to set several slots:
 
 ```text
-#Dog bind: ($Object clone |> #extend(
+#Dog bind: ($Object clone |> %extend(
   name: 'Pochi',
   bark: { $self name print }
 )).
@@ -173,13 +193,14 @@ values are evaluated and assigned from left to right through `at:put:`.
 Values use the caller's scope, and Blocks become Methods under the existing
 `$self` rules. Empty extensions are allowed. Use `clone` explicitly for a new
 child. Trailing commas and standalone macro calls are unsupported;
-plain `#extend` remains an ordinary symbol. See
+`#extend` is always an ordinary symbol; the old `#extend(...)` macro spelling
+is no longer accepted. See
 [ADR-28](docs/adr/0028-extend-macro.md) for the full contract.
 
 Single-quoted string keys also support keyword Methods:
 
 ```text
-#counter bind: ($Object clone |> #extend(
+#counter bind: ($Object clone |> %extend(
   base: 10,
   'add:': { n -> $self base add: $n }
 )).
@@ -196,7 +217,7 @@ and symbols, with their usual separate identities:
 
 ```text
 #field bind: 'score'.
-#record bind: ($Object clone |> #extend(($field): 42, (#tag): 'info')).
+#record bind: ($Object clone |> %extend(($field): 42, (#tag): 'info')).
 ($record at: $field) print.
 ($record at: #tag) print.
 ```
@@ -208,7 +229,7 @@ Use `perform:` to select a message dynamically and call it without arguments:
 
 ```text
 #action bind: #greet.
-#obj bind: ($Object clone |> #extend(
+#obj bind: ($Object clone |> %extend(
   name: 'Toss',
   ($action): { $self name }
 )).
@@ -420,21 +441,24 @@ mise exec -- deno task check
 
 ## ✨ Why Toss?
 
-* **Zero Reserved Keywords:** No `class`, `if`, or `let`. Control flows and declarations are elegantly handled through messages and hygienic macros (`#`).
+* **Zero Reserved Keywords:** No `class`, `if`, or `let`. Control flows and declarations are elegantly handled through messages and hygienic macros (`%`).
 * **Pure Message Passing:** Computation happens exclusively by tossing messages to objects (dictionaries). Unary, keyword, and block messages handle everything.
 * **Pipeline by Default:** The `|>` operator allows data to flow naturally from left to right, injecting results as the final argument of the next message.
-* **Seamless JS Interop & Transpilation:** Compiles perfectly to JavaScript with zero runtime overhead. Hygenic α-conversion handles `$self` binding automatically.
+* **JavaScript Target:** Compiles to JavaScript with runtime support for message dispatch and `$self`. JavaScript interop and further optimizations are planned.
 * **Algebraic Effects Built-in:** Advanced error handling and state management without the `try/catch` boilerplate, powered entirely by blocks and dictionaries.
 
 ## 🚀 A Glimpse of the Syntax
 
+This design sketch includes planned statement macros and module support.
+The implemented subset and runnable examples are described above.
+
 ```
 // 1. Statement Macros for clean declarations
-#import $Math as: M.
-#const baseRate = 10.
+%import $Math as: M.
+%const baseRate = 10.
 
 // 2. Prototype-based inheritance & 3. Block closures
-#Dog bind: $Animal clone |> #extend(
+#Dog bind: $Animal clone |> %extend(
     name: 'Pochi',
     bark: { 
         $self name print.

@@ -75,6 +75,12 @@ const cases = [
     source: "#unbound. #unbound print.",
     output: "unbound\n",
   },
+  {
+    name: "planned macro names remain named symbols",
+    source:
+      "#extend bind: 'extend'. #import bind: 'import'. #let bind: 'let'. #const bind: 'const'. #regex bind: 'regex'. #super bind: 'super'. #extend inspect print. #import inspect print. #let inspect print. #const inspect print. #regex inspect print. #super inspect print.",
+    output: "#extend\n#import\n#let\n#const\n#regex\n#super\n",
+  },
 ] as const;
 
 for (const fixture of cases) {

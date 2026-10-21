@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { compile } from "../src/compiler.ts";
 import { TossSyntaxError } from "../src/diagnostic.ts";
+import { lex } from "../src/lexer.ts";
 import { execute, executeJavaScript, text } from "./helpers.ts";
 
 for (
@@ -9,7 +10,7 @@ for (
   for (const entries of ["", "value: 'unexpected' print"]) {
     Deno.test(`extend rejects ${target} before values: ${entries}`, async () => {
       const result = await execute(
-        `'before' print. ${target} |> #extend(${entries}).`,
+        `'before' print. ${target} |> %extend(${entries}).`,
       );
       assert.notEqual(result.code, 0);
       assert.equal(text(result.stdout), "before\n");
@@ -20,15 +21,17 @@ for (
 
 for (
   const source of [
+    "%extend().",
     "#extend().",
-    "$Object clone |> #extend(value:).",
-    "$Object clone |> #extend(value: 1,).",
-    "$Object clone |> #extend(,value: 1).",
-    "$Object clone |> #extend(value 1).",
-    "$Object clone |> #extend(value: 1.",
-    "$Object clone |> #extend(#key: 1).",
-    "$Object clone |> #extend(value: 1,, other: 2).",
-    "$Object clone |> #extend (value: 1).",
+    "$Object clone |> #extend(value: 1).",
+    "$Object clone |> %extend(value:).",
+    "$Object clone |> %extend(value: 1,).",
+    "$Object clone |> %extend(,value: 1).",
+    "$Object clone |> %extend(value 1).",
+    "$Object clone |> %extend(value: 1.",
+    "$Object clone |> %extend(#key: 1).",
+    "$Object clone |> %extend(value: 1,, other: 2).",
+    "$Object clone |> %extend (value: 1).",
     "$Object clone |> #other(value: 1).",
   ]
 ) {
@@ -39,16 +42,48 @@ for (
 
 Deno.test("invalid extension targets report the original macro position", async () => {
   const result = await execute(
-    "'before' print.\r\n  [] |> #extend(value: 'unexpected' print).",
+    "'before' print.\r\n  [] |> %extend(value: 'unexpected' print).",
   );
   assert.notEqual(result.code, 0);
   assert.equal(text(result.stdout), "before\n");
   assert.match(text(result.stderr), /fixture\.toss:2:9: RuntimeError:/);
 });
 
+Deno.test("ordinary symbols followed by grouping keep separate tokens", () => {
+  const { tokens } = lex("#extend(value)", "tokens.toss");
+  assert.deepEqual(tokens.map(({ kind }) => kind), [
+    "symbol",
+    "openParen",
+    "unary",
+    "closeParen",
+  ]);
+});
+
+for (
+  const [source, line, column] of [
+    ["  %future().", 1, 3],
+    ["'first'.\n  @annotation.", 2, 3],
+  ] as const
+) {
+  Deno.test(`unsupported sigil reports its location: ${source}`, () => {
+    assert.throws(
+      () => compile(source, "sigil.toss"),
+      (error: unknown) => {
+        assert.ok(error instanceof TossSyntaxError);
+        assert.deepEqual(error.location, {
+          file: "sigil.toss",
+          line,
+          column,
+        });
+        return true;
+      },
+    );
+  });
+}
+
 Deno.test("a non-callable setter fails at its entry after evaluating the value", async () => {
   const result = await execute(
-    "#o bind: $Object clone.\n$o at: 'at:put:' put: 7.\n$o |> #extend(\n  first: 'first' print,\n  later: 'later' print\n).",
+    "#o bind: $Object clone.\n$o at: 'at:put:' put: 7.\n$o |> %extend(\n  first: 'first' print,\n  later: 'later' print\n).",
   );
   assert.notEqual(result.code, 0);
   assert.equal(text(result.stdout), "first\n");
@@ -60,7 +95,7 @@ Deno.test("a non-callable setter fails at its entry after evaluating the value",
 
 Deno.test("extension failures keep earlier writes at the JavaScript boundary", async () => {
   const setup = compile(
-    "#state bind: $Object clone.\n#work bind: {\n  $state |> #extend(\n    first: 1,\n    second: $missing,\n    later: 'later' print\n  )\n}.",
+    "#state bind: $Object clone.\n#work bind: {\n  $state |> %extend(\n    first: 1,\n    second: $missing,\n    later: 'later' print\n  )\n}.",
     "fixture.toss",
   );
   const result = await executeJavaScript(

@@ -1,10 +1,10 @@
 #action bind: #greet.
-#parent bind: ($Object clone |> #extend(
+#parent bind: ($Object clone |> %extend(
   name: 'parent',
   ($action): { $self name },
   greet: { 'string key' }
 )).
-#child bind: ($parent clone |> #extend(name: 'child')).
+#child bind: ($parent clone |> %extend(name: 'child')).
 ($child perform: $action) print.
 ($child perform: 'greet') print.
 ($child perform: 'name') print.

@@ -5,7 +5,7 @@ import { execute, text } from "./helpers.ts";
 
 Deno.test("quoted extension labels support message selector keys", async () => {
   const result = await execute(
-    "#counter bind: ($Object clone |> #extend(base: 10, 'add:': { n -> $self base add: $n })). ($counter add: 3) print.",
+    "#counter bind: ($Object clone |> %extend(base: 10, 'add:': { n -> $self base add: $n })). ($counter add: 3) print.",
   );
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), "13\n");
@@ -14,7 +14,7 @@ Deno.test("quoted extension labels support message selector keys", async () => {
 
 Deno.test("multi-part selector keys preserve block arity and inherited self", async () => {
   const result = await execute(
-    "#parent bind: ($Object clone |> #extend(label: 'parent', 'add:with:': { left, right -> [$self label, $left add: $right] })). #child bind: $parent clone. ($child add: 2 with: 3) dump.",
+    "#parent bind: ($Object clone |> %extend(label: 'parent', 'add:with:': { left, right -> [$self label, $left add: $right] })). #child bind: $parent clone. ($child add: 2 with: 3) dump.",
   );
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), '["parent", 5]\n');
@@ -22,7 +22,7 @@ Deno.test("multi-part selector keys preserve block arity and inherited self", as
 
 Deno.test("quoted labels allow arbitrary strings and existing escapes", async () => {
   const result = await execute(
-    "#o bind: ($Object clone |> #extend('': 1, '空 白!::': 2, 'quote\\'\\\\': 3)). [$o at: '', $o at: '空 白!::', $o at: 'quote\\'\\\\'] dump.",
+    "#o bind: ($Object clone |> %extend('': 1, '空 白!::': 2, 'quote\\'\\\\': 3)). [$o at: '', $o at: '空 白!::', $o at: 'quote\\'\\\\'] dump.",
   );
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), "[1, 2, 3]\n");
@@ -30,7 +30,7 @@ Deno.test("quoted labels allow arbitrary strings and existing escapes", async ()
 
 Deno.test("quoted and bare labels share string key overwrite order", async () => {
   const result = await execute(
-    "#o bind: ($Object clone |> #extend(key: 1, 'key': 2, key: 3)). $o key print.",
+    "#o bind: ($Object clone |> %extend(key: 1, 'key': 2, key: 3)). $o key print.",
   );
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), "3\n");
@@ -38,7 +38,7 @@ Deno.test("quoted and bare labels share string key overwrite order", async () =>
 
 Deno.test("quoted entries support nesting, blocks, and whitespace before colon", async () => {
   const result = await execute(
-    "#o bind: ($Object clone |> #extend('child' // label\n : ($Object clone |> #extend('value' : 8)), reader: { $self child value })). ($o reader) print.",
+    "#o bind: ($Object clone |> %extend('child' // label\n : ($Object clone |> %extend('value' : 8)), reader: { $self child value })). ($o reader) print.",
   );
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), "8\n");
@@ -46,7 +46,7 @@ Deno.test("quoted entries support nesting, blocks, and whitespace before colon",
 
 Deno.test("quoted entry setter errors point at the opening quote", async () => {
   const result = await execute(
-    "#o bind: $Object clone.\n$o at: 'at:put:' put: 7.\n$o |> #extend(\n  'selector:': 1\n).",
+    "#o bind: $Object clone.\n$o at: 'at:put:' put: 7.\n$o |> %extend(\n  'selector:': 1\n).",
   );
   assert.notEqual(result.code, 0);
   assert.match(
@@ -57,11 +57,11 @@ Deno.test("quoted entry setter errors point at the opening quote", async () => {
 
 for (
   const source of [
-    "$Object clone |> #extend('key' 1).",
-    "$Object clone |> #extend('key':).",
-    "$Object clone |> #extend('key': 1,).",
-    "$Object clone |> #extend(#key: 1).",
-    "$Object clone |> #extend('key': 1,, other: 2).",
+    "$Object clone |> %extend('key' 1).",
+    "$Object clone |> %extend('key':).",
+    "$Object clone |> %extend('key': 1,).",
+    "$Object clone |> %extend(#key: 1).",
+    "$Object clone |> %extend('key': 1,, other: 2).",
     "'quoted': 1.",
   ]
 ) {

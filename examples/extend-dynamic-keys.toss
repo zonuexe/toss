@@ -1,6 +1,6 @@
 #field bind: 'score'.
 #tag bind: #metadata.
-#record bind: ($Object clone |> #extend(
+#record bind: ($Object clone |> %extend(
   label: 'record',
   ($field): 42,
   ($tag): 'info'

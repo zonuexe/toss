@@ -1,6 +1,6 @@
 # ADR-30: Computed keys in object extensions
 
-`#extend` accepts a parenthesized expression followed by `:` as an entry key.
+`%extend` accepts a parenthesized expression followed by `:` as an entry key.
 This follows the computed-key form in the language tour and extends
 [ADR-28](0028-extend-macro.md) and [ADR-29](0029-extend-string-keys.md).
 The group contains exactly one full Toss expression, with no period inside.
@@ -10,7 +10,7 @@ syntax errors. Bare symbol or fetch labels still require parentheses.
 ```text
 #field bind: 'score'.
 #tag bind: #metadata.
-#record bind: ($Object clone |> #extend(
+#record bind: ($Object clone |> %extend(
   label: 'record',
   ($field): 42,
   ($tag): 'info'

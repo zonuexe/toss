@@ -1,9 +1,9 @@
-#counter bind: ($Object clone |> #extend(
+#counter bind: ($Object clone |> %extend(
   base: 10,
   'add:': { n -> $self base add: $n },
   'add:with:': { a, b -> ($self base add: $a) add: $b }
 )).
 ($counter add: 3) print.
 ($counter add: 3 with: 4) print.
-#child bind: ($counter clone |> #extend(base: 20)).
+#child bind: ($counter clone |> %extend(base: 20)).
 ($child add: 3) print.

@@ -8,11 +8,11 @@ deferred.
 
 ```text
 #action bind: #greet.
-#parent bind: ($Object clone |> #extend(
+#parent bind: ($Object clone |> %extend(
   name: 'parent',
   ($action): { $self name }
 )).
-#child bind: ($parent clone |> #extend(name: 'child')).
+#child bind: ($parent clone |> %extend(name: 'child')).
 ($child perform: $action) print.
 ```
 

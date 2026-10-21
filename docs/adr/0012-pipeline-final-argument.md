@@ -10,5 +10,5 @@ Only `bind:` is currently provided as a keyword message; other valid selectors s
 
 This extends the pipeline restriction from [ADR-9](0009-file-environment-bindings.md).
 
-[ADR-28](0028-extend-macro.md) adds `#extend(...)` as a built-in pipeline macro
+[ADR-28](0028-extend-macro.md) adds `%extend(...)` as a built-in pipeline macro
 alongside keyword-message stages.

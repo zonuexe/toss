@@ -87,7 +87,7 @@ function emit(expression: Expression, scope = "environment"): string {
         }, environment: ${scope}});`
       );
       const body = [
-        `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget)) throw new TossRuntimeError("#extend target must be an Object.", ${context}.location);`,
+        `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);`,
         ...entries,
         "return extendTarget;",
       ].join("\n");

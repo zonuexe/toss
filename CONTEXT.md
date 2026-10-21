@@ -10,6 +10,15 @@ A block used as an object's response to a message, with its receiver called `sel
 **Prelude library**:
 The library that provides Toss's basic messages, including `print`.
 
+**Macro**:
+A compile-time transformation of syntax. Named macros use `%name`.
+
+**Annotation**:
+A modifier of invocation behavior, planned with the prefix `@name`. Its declaration selects runtime invocation or compile-time expansion.
+
+**Attribute**:
+Data attached to a target, without invocation interception of its own. Its representation is undecided.
+
 **Environment**:
 A dictionary of named bindings. Each file has a root environment, and each block call has a local environment linked to its defining environment.
 
