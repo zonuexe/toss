@@ -7,6 +7,7 @@ export type LocalMacroDefinition = {
   readonly location: SourceLocation;
   readonly bodyStart: SourceLocation;
   readonly bodyEnd: SourceLocation;
+  readonly visibleAt?: SourceLocation;
 };
 
 export class LocalMacroRegistry {
@@ -24,7 +25,9 @@ export class LocalMacroRegistry {
     return [...this.definitions].reverse().find((definition) =>
       definition.name === name &&
       (precedes(definition.location, location) ||
-        within(definition.bodyStart, definition.bodyEnd, location))
+        within(definition.bodyStart, definition.bodyEnd, location) ||
+        (definition.visibleAt !== undefined &&
+          precedes(definition.visibleAt, location)))
     );
   }
 }

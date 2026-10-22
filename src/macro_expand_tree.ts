@@ -18,6 +18,7 @@ import {
   syntaxToken,
 } from "./syntax.ts";
 import { appendSyntaxTrace } from "./syntax_trace.ts";
+import { rejectGeneratedMacroImport } from "./macro_import_syntax.ts";
 
 const LIMIT = 10000;
 
@@ -65,9 +66,10 @@ export function expandSyntax(
           "%super",
           "%async",
           "%await",
+          "%macroImport",
         ].includes(node.spelling)
       ) {
-        if (node.spelling === "%quote") {
+        if (node.spelling === "%quote" || node.spelling === "%macroImport") {
           output.push(node, following);
         } else {
           output.push(
@@ -144,6 +146,7 @@ export function expandSyntax(
             depth + 1,
             activeDefinition,
           );
+          rejectGeneratedMacroImport(nested);
           parseSyntaxExpression(nested, node.origin.location);
         } catch (error) {
           if (!(error instanceof TossSyntaxError)) throw error;

@@ -7,6 +7,15 @@ import { readSyntax } from "./syntax_reader.ts";
 import { parseTokens } from "./parser.ts";
 import { tokensFromSyntax } from "./syntax_tokens.ts";
 import { type SyntaxGroup, syntaxGroup, type SyntaxNode } from "./syntax.ts";
+import {
+  macroImport,
+  registerImported,
+  type ResolvedMacroImport,
+  sameLocation,
+} from "./macro_import_syntax.ts";
+import { parseMacroLibrary as parseLibrary } from "./macro_library.ts";
+export type { ResolvedMacroImport } from "./macro_import_syntax.ts";
+export { findMacroImports } from "./macro_import_syntax.ts";
 
 const BUILTINS = new Set([
   "quote",
@@ -18,8 +27,9 @@ const BUILTINS = new Set([
   "super",
   "async",
   "await",
+  "macroImport",
 ]);
-type MacroDeclaration = {
+export type MacroDeclaration = {
   readonly name: string;
   readonly blockSyntax: SyntaxGroup;
   readonly location: SyntaxGroup["origin"]["location"];
@@ -28,6 +38,7 @@ type MacroDeclaration = {
 export function expandProgram(
   source: string,
   file: string,
+  imports: readonly ResolvedMacroImport[] = [],
 ): readonly Expression[] {
   const program = readSyntax(source, { file, deferUnclosedGroups: true });
   const registry = new LocalMacroRegistry();
@@ -45,7 +56,21 @@ export function expandProgram(
         );
       }
       const declared = declaration(statement);
-      if (declared === undefined) {
+      const imported = macroImport(statement);
+      if (imported !== undefined) {
+        const resolved = imports.find((item) =>
+          sameLocation(item.location, imported.location)
+        );
+        if (resolved === undefined) {
+          throw new TossSyntaxError(
+            imported.location,
+            "%macroImport requires compileFile so its library can be resolved.",
+          );
+        }
+        for (const definition of resolved.definitions) {
+          registerImported(definition, imported.location, registry);
+        }
+      } else if (declared === undefined) {
         const expanded = expandSyntax(statement, registry);
         rejectGeneratedDeclarations(expanded);
         if (expanded.length > 0) {
@@ -64,6 +89,15 @@ export function expandProgram(
     } else statement.push(node);
   }
   if (statement.length > 0) {
+    if (macroImport(statement) !== undefined) {
+      const imported = macroImport(statement);
+      if (imported !== undefined) {
+        throw new TossSyntaxError(
+          imported.location,
+          "%macroImport declaration must end with a period.",
+        );
+      }
+    }
     const declared = declaration(statement);
     if (declared !== undefined) {
       throw new TossSyntaxError(
@@ -86,6 +120,13 @@ export function expandProgram(
     parseTokens(converted.tokens, converted.end, file);
   }
   return expressions;
+}
+
+export function parseMacroLibrary(
+  source: string,
+  file: string,
+): readonly LocalMacroRegistry["definitions"][number][] {
+  return parseLibrary(source, file, { declaration, register });
 }
 
 function declaration(
@@ -180,8 +221,10 @@ function rejectGeneratedDeclarations(nodes: readonly SyntaxNode[]): void {
   const visit = (node: SyntaxNode): void => {
     if (
       node.kind === "token" && node.flavor === "macro" &&
-      (node.spelling === "%macro" || node.spelling === "%export") &&
-      (node.origin.trace.length > 0 || node.spelling === "%macro")
+      (node.spelling === "%macro" || node.spelling === "%export" ||
+        node.spelling === "%macroImport") &&
+      (node.origin.trace.length > 0 || node.spelling === "%macro" ||
+        node.spelling === "%macroImport")
     ) {
       throw new TossSyntaxError(
         node.origin.location,

@@ -3,7 +3,12 @@ import type { Expression } from "./ast.ts";
 import { type BundleModule, generateBundle } from "./codegen.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import { analyzeModule, type ModuleImport } from "./module_analysis.ts";
-import { expandProgram } from "./macro_compile.ts";
+import {
+  expandProgram,
+  findMacroImports,
+  parseMacroLibrary,
+  type ResolvedMacroImport,
+} from "./macro_compile.ts";
 
 type LoadedModule = {
   readonly canonical: string;
@@ -30,6 +35,7 @@ export async function compileFile(
 ): Promise<string> {
   const entryCanonical = await Deno.realPath(input);
   const modules: LoadedModule[] = [];
+  const macroLibraries = new Set<string>();
   const ids = new Map<string, number>();
   const edges: {
     readonly from: number;
@@ -64,7 +70,57 @@ export async function compileFile(
         `Unable to read imported file ${JSON.stringify(display)}.`,
       );
     }
-    const expressions = expandProgram(source, display);
+    const macroImports: ResolvedMacroImport[] = [];
+    const importedLibraries = new Set<string>();
+    for (const request of findMacroImports(source, display)) {
+      const candidate = resolve(dirname(canonical), request.path);
+      let libraryCanonical: string;
+      try {
+        libraryCanonical = await Deno.realPath(candidate);
+      } catch (error) {
+        if (
+          !(error instanceof Deno.errors.NotFound ||
+            error instanceof Deno.errors.NotCapable ||
+            error instanceof Deno.errors.PermissionDenied ||
+            error instanceof Deno.errors.NotADirectory ||
+            error instanceof Deno.errors.IsADirectory)
+        ) throw error;
+        const detail = error instanceof Deno.errors.NotFound
+          ? "Macro library not found"
+          : "Unable to resolve macro library";
+        throw new TossSyntaxError(
+          request.location,
+          `${detail}: ${JSON.stringify(request.path)}.`,
+        );
+      }
+      macroLibraries.add(libraryCanonical);
+      if (importedLibraries.has(libraryCanonical)) {
+        macroImports.push({ location: request.location, definitions: [] });
+        continue;
+      }
+      importedLibraries.add(libraryCanonical);
+      let librarySource: string;
+      try {
+        librarySource = await Deno.readTextFile(libraryCanonical);
+      } catch (error) {
+        if (
+          !(error instanceof Deno.errors.NotFound ||
+            error instanceof Deno.errors.NotCapable ||
+            error instanceof Deno.errors.PermissionDenied ||
+            error instanceof Deno.errors.IsADirectory ||
+            error instanceof Deno.errors.NotADirectory)
+        ) throw error;
+        throw new TossSyntaxError(
+          request.location,
+          `Unable to read macro library ${JSON.stringify(request.path)}.`,
+        );
+      }
+      macroImports.push({
+        location: request.location,
+        definitions: parseMacroLibrary(librarySource, libraryCanonical),
+      });
+    }
+    const expressions = expandProgram(source, display, macroImports);
     const analysis = analyzeModule(expressions, display, imported);
     modules.push({
       canonical,
@@ -111,7 +167,10 @@ export async function compileFile(
   const entry = await load(entryCanonical, input, false);
   if (output !== undefined) {
     const canonicalOutput = await outputPath(output);
-    if (modules.some((module) => module.canonical === canonicalOutput)) {
+    if (
+      modules.some((module) => module.canonical === canonicalOutput) ||
+      macroLibraries.has(canonicalOutput)
+    ) {
       throw new TossSyntaxError(
         { file: input, line: 1, column: 1 },
         "Output must not overwrite a module source file.",

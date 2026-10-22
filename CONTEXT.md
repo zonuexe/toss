@@ -16,6 +16,9 @@ The library that provides Toss's basic messages, including `print`.
 **Macro**:
 A compile-time transformation of syntax. Named macros use `%name`.
 
+**Macro library**:
+A source of reusable macro definitions, loaded explicitly into a consumer's compile-time context without runtime initialization.
+
 **Syntax object**:
 An immutable token or group that keeps source position and lexical scope. Arrays can hold syntax objects for inspection and assembly by macros.
 

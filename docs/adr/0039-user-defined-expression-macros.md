@@ -121,5 +121,6 @@ Expansion failures, invalid output, unavailable forms and execution-limit
 failures are compile errors. Runtime errors in generated code retain syntax
 provenance and the relevant expansion path.
 
-Cross-file macro imports, statement macros, new DSL lexers, runtime quotation,
-intentional capture APIs and expansion-stopping forms remain deferred.
+ADR-43 adds explicit imports from macro-only libraries. Statement macros, new
+DSL lexers, runtime quotation, intentional capture APIs and expansion-stopping
+forms remain deferred.
