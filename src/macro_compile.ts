@@ -14,34 +14,40 @@ import {
   sameLocation,
 } from "./macro_import_syntax.ts";
 import { parseMacroLibrary as parseLibrary } from "./macro_library.ts";
+import {
+  declaration,
+  register,
+  rejectGeneratedDeclarations,
+  rejectReplForms,
+} from "./macro_declaration.ts";
+import type { SourceLocation } from "./diagnostic.ts";
 export type { ResolvedMacroImport } from "./macro_import_syntax.ts";
+export type { MacroDeclaration } from "./macro_declaration.ts";
+export { LocalMacroRegistry } from "./macro_registry.ts";
 export { findMacroImports } from "./macro_import_syntax.ts";
 
-const BUILTINS = new Set([
-  "quote",
-  "js",
-  "jsImport",
-  "import",
-  "export",
-  "extend",
-  "super",
-  "async",
-  "await",
-  "macroImport",
-]);
-export type MacroDeclaration = {
-  readonly name: string;
-  readonly blockSyntax: SyntaxGroup;
-  readonly location: SyntaxGroup["origin"]["location"];
+export type MacroCompilationContext = {
+  readonly file: string;
+  readonly imports?: readonly ResolvedMacroImport[];
+  readonly registry?: LocalMacroRegistry;
+  readonly startLocation?: SourceLocation;
+  readonly repl?: boolean;
 };
 
 export function expandProgram(
   source: string,
-  file: string,
-  imports: readonly ResolvedMacroImport[] = [],
+  context: MacroCompilationContext,
 ): readonly Expression[] {
-  const program = readSyntax(source, { file, deferUnclosedGroups: true });
-  const registry = new LocalMacroRegistry();
+  const program = readSyntax(source, {
+    file: context.file,
+    deferUnclosedGroups: true,
+    ...(context.startLocation === undefined
+      ? {}
+      : { startLocation: context.startLocation }),
+  });
+  const registry = context.registry ?? new LocalMacroRegistry();
+  registry.expansions = 0;
+  if (context.repl === true) rejectReplForms(program.children);
   const expressions: Expression[] = [];
   let statement: SyntaxNode[] = [];
   for (const node of program.children) {
@@ -58,7 +64,7 @@ export function expandProgram(
       const declared = declaration(statement);
       const imported = macroImport(statement);
       if (imported !== undefined) {
-        const resolved = imports.find((item) =>
+        const resolved = (context.imports ?? []).find((item) =>
           sameLocation(item.location, imported.location)
         );
         if (resolved === undefined) {
@@ -73,53 +79,60 @@ export function expandProgram(
       } else if (declared === undefined) {
         const expanded = expandSyntax(statement, registry);
         rejectGeneratedDeclarations(expanded);
+        if (context.repl === true) rejectReplForms(expanded);
         if (expanded.length > 0) {
-          expressions.push(
-            parseSyntaxExpression(
-              expanded,
-              statement[0]?.origin.location ?? node.origin.location,
-              node.origin.location,
-            ),
-          );
+          expressions.push(parseSyntaxExpression(
+            expanded,
+            statement[0]?.origin.location ?? node.origin.location,
+            node.origin.location,
+          ));
         }
-      } else {
-        register(declared, registry);
-      }
+      } else register(declared, registry);
       statement = [];
     } else statement.push(node);
   }
-  if (statement.length > 0) {
-    if (macroImport(statement) !== undefined) {
-      const imported = macroImport(statement);
-      if (imported !== undefined) {
-        throw new TossSyntaxError(
-          imported.location,
-          "%macroImport declaration must end with a period.",
-        );
-      }
-    }
-    const declared = declaration(statement);
-    if (declared !== undefined) {
-      throw new TossSyntaxError(
-        declared.location,
-        "%macro declaration must end with a period.",
-      );
-    }
-    const expanded = expandSyntax(statement, registry);
-    rejectGeneratedDeclarations(expanded);
-    const origin = expanded[0]?.origin ?? statement[0]?.origin ??
-      program.origin;
-    const fragment = syntaxGroup(
-      "",
-      expanded,
-      origin,
-      "",
-      program.endLocation,
-    );
-    const converted = tokensFromSyntax(fragment);
-    parseTokens(converted.tokens, converted.end, file);
-  }
+  validatePending(statement, program, {
+    registry,
+    repl: context.repl === true,
+  });
   return expressions;
+}
+
+function validatePending(
+  statement: readonly SyntaxNode[],
+  program: SyntaxGroup,
+  context: {
+    readonly registry: LocalMacroRegistry;
+    readonly repl: boolean;
+  },
+): void {
+  if (statement.length === 0) return;
+  const imported = macroImport(statement);
+  if (imported !== undefined) {
+    throw new TossSyntaxError(
+      imported.location,
+      "%macroImport declaration must end with a period.",
+    );
+  }
+  const declared = declaration(statement);
+  if (declared !== undefined) {
+    throw new TossSyntaxError(
+      declared.location,
+      "%macro declaration must end with a period.",
+    );
+  }
+  const expanded = expandSyntax(statement, context.registry);
+  rejectGeneratedDeclarations(expanded);
+  if (context.repl) rejectReplForms(expanded);
+  const fragment = syntaxGroup(
+    "",
+    expanded,
+    expanded[0]?.origin ?? statement[0]?.origin ?? program.origin,
+    "",
+    program.endLocation,
+  );
+  const converted = tokensFromSyntax(fragment);
+  parseTokens(converted.tokens, converted.end, program.origin.location.file);
 }
 
 export function parseMacroLibrary(
@@ -127,112 +140,4 @@ export function parseMacroLibrary(
   file: string,
 ): readonly LocalMacroRegistry["definitions"][number][] {
   return parseLibrary(source, file, { declaration, register });
-}
-
-function declaration(
-  nodes: readonly SyntaxNode[],
-): MacroDeclaration | undefined {
-  const head = nodes[0];
-  if (
-    head?.kind !== "token" || head.spelling !== "%macro" ||
-    !head.macroAdjacent
-  ) return undefined;
-  const form = nodes[1];
-  if (nodes.length !== 2 || form?.kind !== "group" || form.delimiter !== "()") {
-    throw new TossSyntaxError(
-      head.origin.location,
-      "Expected standalone %macro(#name, { parameter -> ... }). declaration.",
-    );
-  }
-  const children = form.children;
-  const name = children[0];
-  const comma = children[1];
-  const block = children[2];
-  if (
-    children.length !== 3 || name?.kind !== "token" ||
-    name.flavor !== "symbol" ||
-    comma?.kind !== "token" || comma.spelling !== "," ||
-    block?.kind !== "group" || block.delimiter !== "{}"
-  ) {
-    throw new TossSyntaxError(
-      head.origin.location,
-      "%macro requires a literal Named Symbol and a literal Block.",
-    );
-  }
-  return {
-    name: name.spelling.slice(1),
-    blockSyntax: block,
-    location: head.origin.location,
-  };
-}
-
-function register(
-  declaration: MacroDeclaration,
-  registry: LocalMacroRegistry,
-): void {
-  if (BUILTINS.has(declaration.name) || declaration.name === "macro") {
-    throw new TossSyntaxError(
-      declaration.location,
-      `Cannot replace built-in macro %${declaration.name}.`,
-    );
-  }
-  if (
-    registry.definitions.some((definition) =>
-      definition.name === declaration.name
-    )
-  ) {
-    throw new TossSyntaxError(
-      declaration.location,
-      `Duplicate macro %${declaration.name}.`,
-    );
-  }
-  const preparedNodes = expandSyntax(
-    declaration.blockSyntax.children,
-    registry,
-    0,
-    declaration.name,
-  );
-  const preparedGroup = syntaxGroup(
-    "{}",
-    preparedNodes,
-    declaration.blockSyntax.origin,
-  );
-  const expression = parseSyntaxExpression(
-    [preparedGroup],
-    declaration.location,
-  );
-  if (expression.kind !== "block" || expression.parameters.length !== 1) {
-    throw new TossSyntaxError(
-      declaration.location,
-      "Macro expander must be a literal Block with exactly one parameter.",
-    );
-  }
-  registry.register({
-    name: declaration.name,
-    block: expression,
-    location: declaration.location,
-    bodyStart: declaration.blockSyntax.origin.location,
-    bodyEnd: preparedNodes.at(-1)?.origin.location ??
-      declaration.blockSyntax.origin.location,
-  });
-}
-
-function rejectGeneratedDeclarations(nodes: readonly SyntaxNode[]): void {
-  const visit = (node: SyntaxNode): void => {
-    if (
-      node.kind === "token" && node.flavor === "macro" &&
-      (node.spelling === "%macro" || node.spelling === "%export" ||
-        node.spelling === "%macroImport") &&
-      (node.origin.trace.length > 0 || node.spelling === "%macro" ||
-        node.spelling === "%macroImport")
-    ) {
-      throw new TossSyntaxError(
-        node.origin.location,
-        `${node.spelling} cannot be generated by a macro.`,
-      );
-    }
-    if (node.kind === "group") node.children.forEach(visit);
-    if (node.kind === "token") node.rawJavaScript?.prefix.forEach(visit);
-  };
-  nodes.forEach(visit);
 }

@@ -14,6 +14,14 @@ export class LocalMacroRegistry {
   readonly definitions: LocalMacroDefinition[] = [];
   expansions = 0;
 
+  constructor(definitions: readonly LocalMacroDefinition[] = []) {
+    this.definitions.push(...definitions);
+  }
+
+  copy(): LocalMacroRegistry {
+    return new LocalMacroRegistry(this.definitions);
+  }
+
   register(definition: LocalMacroDefinition): void {
     this.definitions.push(definition);
   }

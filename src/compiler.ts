@@ -5,7 +5,7 @@ import { compileFile } from "./module_loader.ts";
 import { expandProgram } from "./macro_compile.ts";
 
 export function compile(source: string, file: string): string {
-  const expressions = expandProgram(source, file);
+  const expressions = expandProgram(source, { file });
   const analysis = analyzeModule(expressions, file, false);
   const unresolved = analysis.imports[0];
   if (unresolved !== undefined) {

@@ -6,6 +6,58 @@
 
 Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power of Lisp, and the prototype chain of JavaScript, Toss targets modern JavaScript with a small runtime. The current compiler uses Deno.
 
+## Try the REPL
+
+Start a persistent session with Deno:
+
+```sh
+mise exec -- deno task repl
+```
+
+Terminal input uses Deno's built-in `node:readline`, with cursor editing and
+Up/Down navigation through the current process's line history. History is not
+saved to disk.
+
+Use the usual final period. Incomplete input continues on the next line:
+
+```text
+toss> #n bind: 4.
+=> 4
+toss> $n add: 3.
+=> 7
+toss> {
+...>   $n multiplyBy: 2
+...> } value.
+=> 8
+```
+
+Each completed submission runs once. Bindings, objects, closures and local
+macro definitions remain available in later submissions. The last runtime
+value is shown with `inspect`; macro-only submissions show no value. Explicit
+`print` output is followed by the normal result display because `print`
+returns its receiver.
+
+Values without an `inspect` message, such as a plain Block or Object, report
+a display error after evaluation. A binding created by that evaluation still
+exists and can be used in later input.
+
+| Command | Action |
+| --- | --- |
+| `:help` | Show commands without discarding pending input |
+| `:cancel` | Discard pending input and keep the session |
+| `:reset` | Clear bindings and local macros by starting a new session |
+| `:quit` | Exit |
+
+Syntax errors do not execute the submission or register its macros. Runtime
+errors keep effects that already happened, and later input can continue.
+Piped input has no prompts; diagnostics go to stderr and a failed submission
+makes the batch exit status nonzero. Incomplete input at EOF is an error.
+
+The first REPL does not support `%import`, `%jsImport`, `%macroImport` or
+`%export`. Ordinary `%js` remains available. Root `%await`, automatic waiting,
+disk history and completion are deferred. See
+[ADR-44](docs/adr/0044-initial-repl.md).
+
 ## Try the first compiler
 
 ### Symbols, macros, and annotations

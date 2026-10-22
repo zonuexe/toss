@@ -48,6 +48,12 @@ export class TossSyntaxError extends Error {
   }
 }
 
+export class IncompleteJavaScriptError extends TossSyntaxError {
+  constructor(location: SourceLocation) {
+    super(location, "Incomplete JavaScript expression.");
+  }
+}
+
 function formatTrace(trace: SourceLocation["trace"]): string {
   return trace?.map((entry) =>
     `\n  expanded ${entry.name} at ${entry.invocation.file}:${entry.invocation.line}:${entry.invocation.column} (defined at ${entry.definition.file}:${entry.definition.line}:${entry.definition.column})`

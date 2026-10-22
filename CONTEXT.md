@@ -31,6 +31,9 @@ Data attached to a target, without invocation interception of its own. Its repre
 **Environment**:
 A dictionary of named bindings. Each file has a root environment, and each block call has a local environment linked to its defining environment.
 
+**REPL session**:
+An interactive evaluation context that keeps bindings, values and local macro definitions across submitted cells.
+
 **Module**:
 A Toss file with private bindings and one public value. Local imports share the same initialized value for each canonical file within an execution.
 

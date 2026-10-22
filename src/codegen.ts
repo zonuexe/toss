@@ -116,6 +116,15 @@ export function generate(expressions: readonly Expression[]): string {
   return lines.join("\n") + "\n";
 }
 
+export function generateFragment(expressions: readonly Expression[]): string {
+  const previous = expressions.slice(0, -1).map((expression) =>
+    emit(expression) + ";"
+  );
+  const final = expressions.at(-1);
+  if (final === undefined) return "";
+  return `(function(){\n${previous.join("\n")}\nreturn ${emit(final)};\n})()`;
+}
+
 export type BundleModule = {
   readonly expressions: readonly Expression[];
   readonly imports: readonly { readonly path: string; readonly id: number }[];
