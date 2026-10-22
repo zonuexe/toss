@@ -25,6 +25,9 @@ Data attached to a target, without invocation interception of its own. Its repre
 **Environment**:
 A dictionary of named bindings. Each file has a root environment, and each block call has a local environment linked to its defining environment.
 
+**Module**:
+A Toss file with private bindings and one public value. Local imports share the same initialized value for each canonical file within an execution.
+
 **Named symbol**:
 A value that identifies a name, written as `#name`. Named symbols are interned within one execution, and receive `bind:` to store a value under that name in the current environment.
 

@@ -1,0 +1,3 @@
+#Math bind: %import('./math.toss').
+$Math pi print.
+($Math addOffset: 3) print.

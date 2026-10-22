@@ -50,7 +50,7 @@ myArray at: 1 put: 'Apple'.
 コンパイル時にASTを展開・変換するための仕組みです。名前付きマクロは `%name` を使い、`#name` は常にシンボルです。将来の汎用マクロでは、中身をトークンツリーとしてマクロ関数に渡す方針です。
 数式の解決（二項演算子のエミュレート）にはビルトインマクロ `$()` を使います。
 
-現在実装されているのは `$()`、パイプライン右辺の `%extend(...)`、親実装を呼ぶ `%super(...)` です。以下の `%regex`・`%let`・`%const`・`%import` は将来設計です。未定義・未対応のマクロ呼び出しはコンパイルエラーになり、シンボルとしての解釈には切り替わりません。
+現在実装されているのは `$()`、パイプライン右辺の `%extend(...)`、親実装を呼ぶ `%super(...)`、ローカルモジュールの `%import(...)`・`%export(...)` です。以下の `%regex`・`%let`・`%const` は将来設計です。未定義・未対応のマクロ呼び出しはコンパイルエラーになり、シンボルとしての解釈には切り替わりません。
 
 ```
 // インラインマクロ
@@ -60,7 +60,9 @@ $(1 + 2 * 3) print.
 // ステートメントマクロ（文の先頭で使い、対応する括弧の外にあるピリオドまでを引数とする）
 %let x = 100.
 %const secret = 42.
-%import $Math as: M.
+
+// ローカルモジュール（実装済み。通常のバインドで別名を付ける）
+#M bind: %import('./math.toss').
 ```
 
 ### ⑤ パイプライン演算子 (`|>`)
@@ -155,10 +157,12 @@ Object は `perform:` で引数なし、`perform:withArguments:` で配列に並
 
 ## 5. モジュールとカプセル化
 
-ファイルごとに独立した環境（辞書）が生成されます（Node.jsスタイル）。外部に公開したいものだけを `$module exports` にバインドします。
+ファイルごとに独立した環境（辞書）と `$Object`・`$Symbol` のルート Object を作り、ランタイムコードは共有します。`%export(値).` で1つの任意の値を公開し、`%import('./math.toss')` で取得します。公開した Block は定義元の環境を保持します。依存先にはファイル直下の export が1つ必要で、エントリーファイルでは省略できます。export 後も処理を続け、ファイル全体が正常終了してから公開値を返します。
+
+相対パスは import 元から解決し、`.toss` を明記します。Block 内での import も可能で、初期化は最初に式を実行した時の一度だけです。依存先の収集・検証は未実行の分岐も含めてコンパイル時に行い、循環参照はエラーにします。公開値と初期化失敗はファイル単位でキャッシュし、同じファイルを再実行しません。標準ライブラリの参照方法は延期し、URL・パッケージ・JavaScript の import は今回扱いません。[ADR-37](adr/0037-local-modules.md) に記録しています。
 
 ```
-// --- math.ext ---
+// --- math.toss ---
 
 // ファイル内だけのプライベート変数（自動的にカプセル化される）
 #secretMultiplier bind: 42.
@@ -167,20 +171,24 @@ Object は `perform:` で引数なし、`perform:withArguments:` で配列に並
 #internalCalc bind: { x -> $(x * $secretMultiplier) }.
 
 // 外部への公開
-$module |> #exports bind: ( $Object clone |> %extend(
+%export($Object clone |> %extend(
     pi: 3.14159,
-    calc: { x -> $internalCalc value: x }
-) ).
+    'calc:': { x -> $internalCalc value: $x }
+)).
+
+// --- main.toss ---
+#Math bind: %import('./math.toss').
+($Math calc: 2) print.
 ```
 
 ### ユニークキーによるメソッドへのアクセス（Symbolの活用）
 
-`$Symbol generateUnique` は実装済みで、呼び出すたびに新しいシンボルを作ります。辞書のキーとして使い、キーを共有した相手だけがそのメッセージを選択できます。名前付きシンボルから同じキーを再生成することはできませんが、キーの共有や将来の相互運用も含めた絶対的な秘匿性を保証するものではありません。表示は `<unique>`、検査用表示は `#<unique>` で、表示文字列は識別子ではありません。[ADR-34](adr/0034-unique-symbols.md) を参照してください。以下のモジュール構文は将来設計です。
+`$Symbol generateUnique` は実装済みで、呼び出すたびに新しいシンボルを作ります。辞書のキーとして使い、キーを共有した相手だけがそのメッセージを選択できます。名前付きシンボルから同じキーを再生成することはできませんが、キーの共有や将来の相互運用も含めた絶対的な秘匿性を保証するものではありません。表示は `<unique>`、検査用表示は `#<unique>` で、表示文字列は識別子ではありません。[ADR-34](adr/0034-unique-symbols.md) を参照してください。
 
 ```
 #PRIVATE_DIGEST bind: $Symbol generateUnique.
 
-$module |> #exports bind: ( $Animal clone |> %extend(
+%export($Object clone |> %extend(
     eat: { food ->
         // 内部メッセージの呼び出し
         $self perform: $PRIVATE_DIGEST.
@@ -189,7 +197,7 @@ $module |> #exports bind: ( $Animal clone |> %extend(
     ($PRIVATE_DIGEST): {
         'Digesting in secret...' print.
     }
-) ).
+)).
 ```
 
 ---

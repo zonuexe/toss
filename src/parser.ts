@@ -3,6 +3,7 @@ import { parseArithmeticBody } from "./arithmetic_parser.ts";
 import { parseBlock } from "./block_parser.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import { parseExtend } from "./extend_parser.ts";
+import { parseExport, parseImport } from "./module_parser.ts";
 import { lex, type Token } from "./lexer.ts";
 
 export function parse(source: string, file: string): readonly Expression[] {
@@ -20,6 +21,12 @@ export function parse(source: string, file: string): readonly Expression[] {
     const token = current();
     index++;
     switch (token.kind) {
+      case "importOpen": {
+        return parseImport({ current, advance }, token.location);
+      }
+      case "exportOpen": {
+        return parseExport({ current, advance, pipeline }, token.location);
+      }
       case "arithmeticOpen":
         return parseArithmeticBody({ current, advance });
       case "superOpen": {
@@ -177,6 +184,8 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "openBracket":
           case "arrow":
           case "superOpen":
+          case "importOpen":
+          case "exportOpen":
             break;
           default: {
             const exhaustive: never = following;

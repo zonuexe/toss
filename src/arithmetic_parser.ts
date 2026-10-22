@@ -80,6 +80,8 @@ function operand(cursor: ArithmeticCursor): Expression {
     case "symbol":
     case "extendOpen":
     case "superOpen":
+    case "importOpen":
+    case "exportOpen":
     case "unary":
     case "keyword":
     case "period":

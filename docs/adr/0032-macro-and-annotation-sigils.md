@@ -22,7 +22,8 @@ it no longer starts a macro before a parenthesis.
 The planned general forms are `%name(...)` for delimited macro input and
 `%name ... .` at statement start for input ending at a period outside nested
 delimiters. These are design directions, not a general macro implementation.
-`%import`, `%let`, `%const` and `%regex` remain unimplemented. Parent calls
+`%let`, `%const` and `%regex` remain unimplemented. Local import/export
+expressions are specified in [ADR-37](0037-local-modules.md). Parent calls
 through `%super` are specified in [ADR-36](0036-parent-calls.md).
 Unknown or unsupported macro invocations are compilation errors; they never
 fall back to runtime Symbols. Macro definition, import and expansion APIs

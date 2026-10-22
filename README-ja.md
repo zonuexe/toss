@@ -12,7 +12,7 @@ Smalltalkの動的なメッセージパシング、Lispのメタプログラミ�
 | --- | --- | --- |
 | `#name` | 実行時の値である名前付きシンボル | 実装済み |
 | `$name` | バインディングの参照 | 実装済み |
-| `%name(...)` | 名前付きコンパイラマクロの明示的な呼び出し | `%extend(...)`・`%super(...)` が実装済み |
+| `%name(...)` | 名前付きコンパイラマクロの明示的な呼び出し | `%extend(...)`・`%super(...)`・`%import(...)`・`%export(...)` が実装済み |
 | `%name ... .` | ステートメントマクロ | 将来設計 |
 | `@name` | 呼び出しに関わる annotation | 将来設計。宣言・適用構文の詳細は未決定 |
 | `$()` | 専用の数式マクロ | 実装済み。数式内の `%` は剰余演算子 |
@@ -24,6 +24,8 @@ Attributes はデータの付与を表し、その表現・構文の決定は延
 既存の `#extend(...)` は `%extend(...)` に変更しました。`#extend` 自体は通常のシンボルです。実装済みの範囲と実行可能な例は [README](README.md) にあります。
 
 ## ✨ Tossの特徴
+
+ローカルモジュールは `#Math bind: %import('./math.toss').` で読み込みます。依存先はファイル直下の `%export(値).` で1つの値を公開し、ファイル全体の実行後に返します。初期化は最初の import 実行時に一度だけ行い、依存先をまとめた単一 JavaScript を生成します。標準ライブラリの参照方法は未決定です。[ADR-37](docs/adr/0037-local-modules.md) と [実行例](examples/modules/main.toss) を参照してください。
 
 Object の動的呼び出しは `perform:` と、引数を配列で渡す `perform:withArguments:` に対応しています。文字列とシンボルは別のキーとして扱い、継承したメソッドにも実際のレシーバを `$self` として渡します。実行例は [perform-arguments.toss](examples/perform-arguments.toss)、仕様は [ADR-33](docs/adr/0033-perform-with-arguments.md) を参照してください。
 
@@ -41,11 +43,11 @@ Object の動的呼び出しは `perform:` と、引数を配列で渡す `perfo
 
 ## 🚀 A Glimpse of the Syntax
 
-以下は将来の言語設計を含む例です。`%import`・`%const` やモジュールは未実装です。
+以下は将来の言語設計を含む例です。`%const` のようなステートメントマクロは未実装です。
 
 ```
 // 1. Statement Macros for clean declarations
-%import $Math as: M.
+#M bind: %import('./math.toss').
 %const baseRate = 10.
 
 // 2. Prototype-based inheritance & 3. Block closures

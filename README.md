@@ -14,7 +14,7 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 | --- | --- | --- |
 | `#name` | Named symbol: a runtime value | Implemented |
 | `$name` | Fetch a binding | Implemented |
-| `%name(...)` | Explicit named compiler macro | `%extend(...)` and `%super(...)` are implemented |
+| `%name(...)` | Explicit named compiler macro | `%extend(...)`, `%super(...)`, `%import(...)`, and `%export(...)` are implemented |
 | `%name ... .` | Statement macro | Planned |
 | `@name` | Call-related Annotation | Planned; declaration and application details are undecided |
 | `$()` | Dedicated arithmetic macro | Implemented; `%` inside arithmetic remains remainder |
@@ -489,6 +489,40 @@ mise exec -- deno task test
 mise exec -- deno task check
 ```
 
+## Local modules
+
+An import returns one value; use an Object to group public members. Each file
+keeps its bindings private, including bindings used by exported Blocks:
+
+```text
+// math.toss
+#offset bind: 10.
+%export($Object clone |> %extend(
+  'addOffset:': { n -> $n add: $offset }
+)).
+
+// main.toss
+#Math bind: %import('./math.toss').
+($Math addOffset: 3) print.
+```
+
+Paths are literal relative `.toss` paths resolved from the importing file.
+Each dependency requires one standalone top-level `%export(value).`; the entry
+may omit it. Export records a value and execution continues to the end of the
+file. Import expressions can be delayed inside Blocks; initialization runs
+once at first use, and both values and failures are cached. All dependencies
+are validated at compile time, including unused imports, and cycles are errors.
+Runtime code is shared, while root Environments and root Objects are separate.
+Standard-library paths, packages, URLs and JavaScript imports are future work.
+See [ADR-37](docs/adr/0037-local-modules.md).
+
+```sh
+mise exec -- deno task compile examples/modules/main.toss -o out/modules.js
+mise exec -- deno run out/modules.js
+```
+
+The output contains the dependencies and needs no Toss source files at runtime.
+
 ## ✨ Why Toss?
 
 * **Zero Reserved Keywords:** No `class`, `if`, or `let`. Control flows and declarations are elegantly handled through messages and hygienic macros (`%`).
@@ -499,12 +533,12 @@ mise exec -- deno task check
 
 ## 🚀 A Glimpse of the Syntax
 
-This design sketch includes planned statement macros and module support.
+This design sketch includes planned statement macros.
 The implemented subset and runnable examples are described above.
 
 ```
 // 1. Statement Macros for clean declarations
-%import $Math as: M.
+#M bind: %import('./math.toss').
 %const baseRate = 10.
 
 // 2. Prototype-based inheritance & 3. Block closures

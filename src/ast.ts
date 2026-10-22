@@ -61,4 +61,14 @@ export type Expression =
     readonly kind: "super";
     readonly arguments: readonly Expression[];
     readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "import";
+    readonly path: string;
+    readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "export";
+    readonly value: Expression;
+    readonly location: SourceLocation;
   };

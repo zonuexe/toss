@@ -66,6 +66,12 @@ function emit(expression: Expression, scope = "environment"): string {
       return `Symbol.for(${JSON.stringify(expression.name)})`;
     case "fetch":
       return `fetchBinding(${JSON.stringify(expression.name)}, ${context})`;
+    case "import":
+      return `initializeModule(moduleImports.get(${
+        JSON.stringify(expression.path)
+      }), ${context}.location)`;
+    case "export":
+      return `(moduleExport = ${emit(expression.value, scope)})`;
     case "array":
       return `[${
         expression.elements.map((item) => emit(item, scope)).join(", ")
@@ -115,10 +121,9 @@ function emit(expression: Expression, scope = "environment"): string {
   }
 }
 
-export function generate(expressions: readonly Expression[]): string {
-  const lines = [
+function runtimePreludeLines(): string[] {
+  return [
     '"use strict";',
-    "const environment = {bindings: new Map(), parent: null};",
     messageTable("blockMessages", [blockValue]),
     `const blockKeywordSelector = new RegExp(${
       JSON.stringify(blockValueWithArguments.selectorPattern)
@@ -157,6 +162,14 @@ export function generate(expressions: readonly Expression[]): string {
       outputDump,
     ]),
     runtimeJavaScript,
+  ];
+}
+
+function fileRootSetupLines(imports: readonly string[] = []): string[] {
+  return [
+    "const environment = {bindings: new Map(), parent: null};",
+    "let moduleExport = null;",
+    `const moduleImports = new Map([${imports.join(", ")}]);`,
     "const objectRoot = Object.create(null);",
     'environment.bindings.set(Symbol.for("Object"), objectRoot);',
     "const symbolRoot = Object.create(null);",
@@ -166,6 +179,56 @@ export function generate(expressions: readonly Expression[]): string {
     'environment.bindings.set(Symbol.for("True"), true);',
     'environment.bindings.set(Symbol.for("False"), false);',
   ];
+}
+
+export function generate(expressions: readonly Expression[]): string {
+  const lines = [...runtimePreludeLines(), ...fileRootSetupLines()];
   for (const expression of expressions) lines.push(emit(expression) + ";");
+  return lines.join("\n") + "\n";
+}
+
+export type BundleModule = {
+  readonly expressions: readonly Expression[];
+  readonly imports: readonly { readonly path: string; readonly id: number }[];
+};
+
+export function generateBundle(
+  modules: readonly BundleModule[],
+  entry: number,
+): string {
+  const lines = [
+    ...runtimePreludeLines(),
+    "const moduleInitializers = [];",
+    "const moduleStates = new Map();",
+  ];
+  modules.forEach((module, id) => {
+    const imports = module.imports.map(({ path, id: dependency }) =>
+      `[${JSON.stringify(path)}, ${dependency}]`
+    );
+    const statements = module.expressions.map((expression) =>
+      `${emit(expression)};`
+    );
+    lines.push(`moduleInitializers[${id}] = function() {`);
+    lines.push(...fileRootSetupLines(imports));
+    lines.push(...statements, "return moduleExport;", "};");
+  });
+  lines.push("function initializeModule(id, location) {");
+  lines.push("const previous = moduleStates.get(id);");
+  lines.push("if (previous?.state === 'done') return previous.value;");
+  lines.push("if (previous?.state === 'failed') throw previous.error;");
+  lines.push(
+    "if (previous?.state === 'running') throw new TossRuntimeError('Module initialization re-entered.', location);",
+  );
+  lines.push("moduleStates.set(id, {state: 'running'});");
+  lines.push(
+    "try { const value = moduleInitializers[id](); moduleStates.set(id, {state: 'done', value}); return value; }",
+  );
+  lines.push(
+    "catch (error) { moduleStates.set(id, {state: 'failed', error}); throw error; }",
+  );
+  lines.push("}");
+  lines.push(
+    `initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});`,
+  );
   return lines.join("\n") + "\n";
 }

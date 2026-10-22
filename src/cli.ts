@@ -1,5 +1,5 @@
 import { dirname, resolve } from "node:path";
-import { compile } from "./compiler.ts";
+import { compileFile } from "./compiler.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 
 const usage = "Usage: deno task compile <source.toss> -o <output.js>";
@@ -32,8 +32,7 @@ export async function main(args: readonly string[]): Promise<void> {
       return;
     }
     const { input, output } = parseArguments(args);
-    const source = await Deno.readTextFile(input);
-    const javascript = compile(source, input);
+    const javascript = await compileFile(input, output);
     await Deno.mkdir(dirname(output), { recursive: true });
     await Deno.writeTextFile(output, javascript);
   } catch (error) {

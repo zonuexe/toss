@@ -1,60 +1,7 @@
 import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
-import {
-  type ArithmeticOperator,
-  comparisonOperatorAt,
-} from "./comparison_operator.ts";
-
-export type Token =
-  | {
-    readonly kind: "number";
-    readonly value: number;
-    readonly location: SourceLocation;
-  }
-  | {
-    readonly kind: "string";
-    readonly value: string;
-    readonly location: SourceLocation;
-  }
-  | {
-    readonly kind: "symbol";
-    readonly name: string;
-    readonly location: SourceLocation;
-  }
-  | { readonly kind: "extendOpen"; readonly location: SourceLocation }
-  | { readonly kind: "superOpen"; readonly location: SourceLocation }
-  | {
-    readonly kind: "fetch";
-    readonly name: string;
-    readonly location: SourceLocation;
-  }
-  | {
-    readonly kind: "unary";
-    readonly name: string;
-    readonly location: SourceLocation;
-  }
-  | {
-    readonly kind: "keyword";
-    readonly name: string;
-    readonly location: SourceLocation;
-  }
-  | { readonly kind: "period"; readonly location: SourceLocation }
-  | { readonly kind: "pipe"; readonly location: SourceLocation }
-  | { readonly kind: "openParen"; readonly location: SourceLocation }
-  | { readonly kind: "closeParen"; readonly location: SourceLocation }
-  | { readonly kind: "arithmeticOpen"; readonly location: SourceLocation }
-  | { readonly kind: "arithmeticClose"; readonly location: SourceLocation }
-  | {
-    readonly kind: "arithmeticOperator";
-    readonly operator: ArithmeticOperator;
-    readonly location: SourceLocation;
-  }
-  | { readonly kind: "openBrace"; readonly location: SourceLocation }
-  | { readonly kind: "closeBrace"; readonly location: SourceLocation }
-  | { readonly kind: "openBracket"; readonly location: SourceLocation }
-  | { readonly kind: "closeBracket"; readonly location: SourceLocation }
-  | { readonly kind: "arrow"; readonly location: SourceLocation }
-  | { readonly kind: "comma" | "colon"; readonly location: SourceLocation }
-  | { readonly kind: "eof"; readonly location: SourceLocation };
+import { comparisonOperatorAt } from "./comparison_operator.ts";
+import { type Token } from "./token.ts";
+export type { Token } from "./token.ts";
 
 export function lex(
   source: string,
@@ -148,6 +95,12 @@ export function lex(
       arithmeticDepth++;
       arithmeticMacros.push(arithmeticDepth);
       tokens.push({ kind: "arithmeticOpen", location: start });
+    } else if (character === "%" && source.startsWith("%import(", offset)) {
+      for (let index = 0; index < 8; index++) advance();
+      tokens.push({ kind: "importOpen", location: start });
+    } else if (character === "%" && source.startsWith("%export(", offset)) {
+      for (let index = 0; index < 8; index++) advance();
+      tokens.push({ kind: "exportOpen", location: start });
     } else if (character === "%" && source.startsWith("%extend(", offset)) {
       for (let index = 0; index < 8; index++) advance();
       tokens.push({ kind: "extendOpen", location: start });

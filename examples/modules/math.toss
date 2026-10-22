@@ -1,0 +1,5 @@
+#offset bind: 10.
+%export($Object clone |> %extend(
+  pi: 3.14159,
+  'addOffset:': { n -> $n add: $offset }
+)).
