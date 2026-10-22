@@ -120,7 +120,10 @@ export async function compileFile(
         definitions: parseMacroLibrary(librarySource, libraryCanonical),
       });
     }
-    const expressions = expandProgram(source, display, macroImports);
+    const expressions = expandProgram(source, {
+      file: display,
+      imports: macroImports,
+    });
     const analysis = analyzeModule(expressions, display, imported);
     modules.push({
       canonical,

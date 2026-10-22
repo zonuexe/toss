@@ -1,8 +1,9 @@
 {
   "tasks": {
     "compile": "deno run --allow-read --allow-write src/cli.ts",
+    "repl": "deno run --allow-read --allow-write src/repl_cli.ts",
     "test": "deno test --allow-read --allow-write --allow-run=deno tests/",
-    "check": "deno fmt --check && deno lint && deno check src/cli.ts tests/*.ts"
+    "check": "deno fmt --check && deno lint && deno check src/cli.ts src/repl_cli.ts tests/*.ts"
   },
   "imports": {
     "acorn": "npm:acorn@8.15.0",

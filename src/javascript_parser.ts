@@ -1,5 +1,15 @@
 import { parse, parseExpressionAt } from "acorn";
-import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
+import {
+  IncompleteJavaScriptError,
+  type SourceLocation,
+  TossSyntaxError,
+} from "./diagnostic.ts";
+import {
+  hasOpenTemplateAtEof,
+  hasUnclosedJavaScriptGroup,
+  unterminatedLexicalError,
+  unterminatedLexicalSuffix,
+} from "./javascript_incomplete.ts";
 
 export type JavaScriptMacroSource = {
   readonly prefix: string;
@@ -19,6 +29,11 @@ export function readJavaScriptMacro(
       preserveParens: true,
     });
     const close = skipTrivia(input, expression.end);
+    if (
+      input[close] === undefined || unterminatedLexicalSuffix(input, close)
+    ) {
+      throw new IncompleteJavaScriptError(location(start));
+    }
     if (input[close] === ")") {
       const source = input.slice(start + 4, expression.end);
       validateExpression(source, location(start + 4));
@@ -26,6 +41,18 @@ export function readJavaScriptMacro(
     }
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
+    if (unterminatedLexicalError(input, error)) {
+      throw new IncompleteJavaScriptError(location(start));
+    }
+    if (hasOpenTemplateAtEof(input, start + 4, error)) {
+      throw new IncompleteJavaScriptError(location(start));
+    }
+    if (parserReachedEnd(input, error)) {
+      throw new IncompleteJavaScriptError(location(start));
+    }
+    if (hasUnclosedJavaScriptGroup(input, start + 4)) {
+      throw new IncompleteJavaScriptError(location(start));
+    }
   }
   const bodyStart = start + 4;
   let separator = -1;
@@ -105,6 +132,10 @@ function parseJavaScriptTail(
     });
     const close = skipTrivia(input, expression.end);
     if (input[close] !== ")") {
+      if (
+        input[close] === undefined ||
+        unterminatedLexicalSuffix(input, close)
+      ) throw new IncompleteJavaScriptError(location(macroStart));
       throw new SyntaxError("Expected one JavaScript expression and ')' .");
     }
     const source = input.slice(expressionOffset, expression.end);
@@ -113,11 +144,31 @@ function parseJavaScriptTail(
   } catch (error) {
     if (error instanceof TossSyntaxError) throw error;
     if (!(error instanceof SyntaxError)) throw error;
+    if (unterminatedLexicalError(input, error)) {
+      throw new IncompleteJavaScriptError(location(macroStart));
+    }
+    if (hasOpenTemplateAtEof(input, macroStart + 4, error)) {
+      throw new IncompleteJavaScriptError(location(macroStart));
+    }
+    if (parserReachedEnd(input, error)) {
+      throw new IncompleteJavaScriptError(location(macroStart));
+    }
+    if (hasUnclosedJavaScriptGroup(input, macroStart + 4)) {
+      throw new IncompleteJavaScriptError(location(macroStart));
+    }
     throw new TossSyntaxError(
       location(macroStart),
       `Invalid %js expression: ${error.message}`,
     );
   }
+}
+
+function parserReachedEnd(source: string, error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const pos = Reflect.get(error, "pos");
+  const raisedAt = Reflect.get(error, "raisedAt");
+  return typeof pos === "number" && typeof raisedAt === "number" &&
+    raisedAt >= pos && source.slice(raisedAt).trim().length === 0;
 }
 
 function skipTrivia(source: string, start: number): number {

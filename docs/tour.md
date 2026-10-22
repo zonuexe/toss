@@ -2,6 +2,8 @@
 
 この文書は将来設計を含む言語ツアーです。実装済みの範囲は [README](../README.md) を参照してください。名前付きマクロは `%name`、シンボルは `#name`、呼び出しに関わる annotation は `@name` に分けます。[ADR-32](adr/0032-macro-and-annotation-sigils.md) に判断を記録しています。
 
+`mise exec -- deno task repl` で、束縛やローカルマクロを保持しながら式を試せます。入力は通常どおり `.` で終え、結果を `inspect` で表示します。初版の範囲と操作は [README の REPL 節](../README.md#try-the-repl) と [ADR-44](adr/0044-initial-repl.md) を参照してください。
+
 ## 1. 言語のコア哲学
 
 * **すべてはオブジェクトであり、すべては辞書である。**
