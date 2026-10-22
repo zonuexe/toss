@@ -1,0 +1,23 @@
+#adapter bind: %import('../../lib/hono/adapter.toss').
+#app bind: ($adapter create).
+
+$app get: '/different/:value' handle: { context ->
+  #value bind: ($context param: 'value').
+  $context set: 'seen' to: $value.
+  $context text: ($context get: 'seen')
+}.
+
+$app post: '/async' handle: %async({ context ->
+  #body bind: %await($context body).
+  $context json: $body status: 202
+}).
+
+$app get: '/failure' handle: { context ->
+  $context missingMessage
+}.
+
+$app onError: { error,context ->
+  $context json: ($Object clone |> %extend(error: 'custom failure')) status: 503
+}.
+
+%export($app).

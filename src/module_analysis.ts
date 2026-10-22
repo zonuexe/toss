@@ -1,5 +1,6 @@
 import type { Expression } from "./ast.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
+import { validateAsyncExpressions } from "./async_validation.ts";
 
 export type ModuleImport = Extract<Expression, { readonly kind: "import" }>;
 export type ModuleExport = Extract<Expression, { readonly kind: "export" }>;
@@ -12,12 +13,15 @@ export function analyzeModule(
   readonly imports: readonly ModuleImport[];
   readonly exported?: ModuleExport;
 } {
+  validateAsyncExpressions(expressions);
   const imports: ModuleImport[] = [];
   let exported: ModuleExport | undefined;
   const visit = (expression: Expression, topLevel: boolean): void => {
     switch (expression.kind) {
       case "import":
         imports.push(expression);
+        return;
+      case "javascriptImport":
         return;
       case "export":
         if (!topLevel) {
@@ -63,6 +67,14 @@ export function analyzeModule(
       case "javascript":
         expression.bindings.forEach((binding) => visit(binding.value, false));
         return;
+      case "await":
+        visit(expression.expression, false);
+        return;
+      case "quotation":
+        throw new TossSyntaxError(
+          expression.location,
+          "Quotation is only valid during macro expansion.",
+        );
       case "string":
       case "number":
       case "symbol":

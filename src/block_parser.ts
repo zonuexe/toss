@@ -13,6 +13,7 @@ export function parseBlock(
   location: Token["location"],
 ): Expression {
   const parameters: string[] = [];
+  const parameterLocations: Token["location"][] = [];
   const names = new Set<string>();
   let parameter = cursor.current();
   if (parameter.kind === "unary") {
@@ -25,6 +26,7 @@ export function parseBlock(
       }
       names.add(parameter.name);
       parameters.push(parameter.name);
+      parameterLocations.push(parameter.location);
       cursor.advance();
       if (cursor.current().kind !== "comma") break;
       cursor.advance();
@@ -60,5 +62,16 @@ export function parseBlock(
     );
   }
   cursor.advance();
-  return { kind: "block", parameters, body, location };
+  return {
+    kind: "block",
+    parameters,
+    ...(location.scope !== undefined || location.trace !== undefined ||
+        parameterLocations.some((origin) =>
+          origin.scope !== undefined || origin.trace !== undefined
+        )
+      ? { parameterLocations }
+      : {}),
+    body,
+    location,
+  };
 }

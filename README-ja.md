@@ -12,7 +12,7 @@ Smalltalkの動的なメッセージパシング、Lispのメタプログラミ�
 | --- | --- | --- |
 | `#name` | 実行時の値である名前付きシンボル | 実装済み |
 | `$name` | バインディングの参照 | 実装済み |
-| `%name(...)` | 名前付きコンパイラマクロの明示的な呼び出し | `%extend(...)`・`%super(...)`・`%import(...)`・`%export(...)`・`%js(...)` が実装済み |
+| `%name(...)` | 名前付きコンパイラマクロの明示的な呼び出し | 組み込みマクロと、ファイル内で定義する式マクロが実装済み |
 | `%name ... .` | ステートメントマクロ | 将来設計 |
 | `@name` | 呼び出しに関わる annotation | 将来設計。宣言・適用構文の詳細は未決定 |
 | `$()` | 専用の数式マクロ | 実装済み。数式内の `%` は剰余演算子 |
@@ -25,9 +25,21 @@ Attributes はデータの付与を表し、その表現・構文の決定は延
 
 ## ✨ Tossの特徴
 
+`%macroImport('./macros.toss').` で、マクロ定義だけを持つファイルを明示的に読み込めます。読み込み以降で全定義を使え、実行時のモジュール初期化は起こりません。実行時の依存はマクロ引数で渡す方針です。[ADR-43](docs/adr/0043-macro-library-imports.md) を参照してください。
+
+[Hono アダプターと共有マクロ](lib/hono/README.md) は `lib/hono/` に、利用側の [サンプルアプリ](examples/hono/README.md) は `examples/hono/` に分けています。ルート・入力検証・応答内容はアプリ側で記述し、Context 操作や JS コールバックへの変換はライブラリが受け持ちます。
+
+`%macro(#name, { syntax -> ... }).` で式マクロを定義し、定義後に `%name(...)` で使えます。`%quote(...)` は構文をそのまま返し、quasiquote はパーセント・バッククォート・括弧の順に書きます。その内部で `%,(...)` は構文一つ、`%,@(...)` は構文の Array を差し込みます。構文オブジェクトは位置とスコープを保持し、生成した束縛が呼び出し側の変数を暗黙に捕捉しないようにします。展開処理は実行時と別の Environment で動きます。[ADR-39](docs/adr/0039-user-defined-expression-macros.md) と [実行例](examples/macros.toss) を参照してください。
+
 `%js(Math.max(3, 7))` で JavaScript の式を評価できます。`%js(x = $n; Math.max(x, 7))` のように Toss の値を明示的に渡します。文字列・有限数・Boolean は通常の Toss 値、`null` と `undefined` は Nil、Object・Array・Function は `<js>` と表示する専用の参照値になります。参照値への操作は再び `%js(...)` を使います。渡した Toss Object・Array の変更は共有され、直接の Block 渡しはエラーです。Promise は自動で待ちません。[ADR-38](docs/adr/0038-javascript-expressions.md) と [実行例](examples/javascript.toss) を参照してください。
 
 ローカルモジュールは `#Math bind: %import('./math.toss').` で読み込みます。依存先はファイル直下の `%export(値).` で1つの値を公開し、ファイル全体の実行後に返します。初期化は最初の import 実行時に一度だけ行い、依存先をまとめた単一 JavaScript を生成します。標準ライブラリの参照方法は未決定です。[ADR-37](docs/adr/0037-local-modules.md) と [実行例](examples/modules/main.toss) を参照してください。
+
+JS モジュールは `#hono bind: %jsImport('npm:hono@4.12.12').` のように読み込みます。ESM 名前空間を JS 参照値として返すため、`%js(module = $hono; new module.Hono())` のように export を利用します。引数は空でない文字列リテラル1つで、バックスラッシュや ASCII 空白・制御文字は使えません。パッケージ名・ホストのスキーム・絶対 URL を扱い、相対 JS パスは未対応です。static import を生成するので、未実行の Block 内も含めて Toss 本体より先にホストが初期化します。コンパイル時には読み込みも実行もしません。[ADR-40](docs/adr/0040-static-javascript-imports.md)、[標準モジュールの例](examples/javascript-imports.toss)、[Hono の読込例](examples/hono/imports.toss) を参照してください。
+
+Toss Block は `{ n -> $n add: 1 } asJSCallback` で明示的に JS コールバックへ変換できます。JS 参照値として `%js` に渡すと、引数を Toss 値へ、戻り値を JS 値へ変換して呼び出します。Block が宣言した引数より多い分は変換前に無視し、不足はエラーにします。通常の Toss Block 呼び出しは引き続き厳密な引数個数を要求します。同じ Block の変換は同じコールバックを返し、JS の `this` は無視して捕捉した `$self` や親メソッドの文脈を維持します。Promise は自動で待ちません。[ADR-41](docs/adr/0041-javascript-callback-adapters.md) と [Toss で書く Hono ハンドラの例](examples/hono/callbacks.toss) を参照してください。
+
+非同期 Block は `%async({ context -> ... })` で作り、その内部で `%await(expression)` を使って待機します。Toss の非同期結果や通常値を待つ場合は元の Toss 値と同一性を保ち、JS の Promise・thenable を待つ場合は既存の JS→Toss 変換を適用します。普通の Toss Object の `then` スロットは呼び出しません。入れ子の Block もそれぞれ明示的な非同期境界で、通常の Block 内やファイル直下では await できません。`asJSCallback` と組み合わせると Hono の非同期ハンドラや `next()` の前後に処理を行うミドルウェアを書けます。[ADR-42](docs/adr/0042-explicit-async-blocks.md) と [JSON ボディ読取・ミドルウェアの例](examples/hono/README.md) を参照してください。
 
 Object の動的呼び出しは `perform:` と、引数を配列で渡す `perform:withArguments:` に対応しています。文字列とシンボルは別のキーとして扱い、継承したメソッドにも実際のレシーバを `$self` として渡します。実行例は [perform-arguments.toss](examples/perform-arguments.toss)、仕様は [ADR-33](docs/adr/0033-perform-with-arguments.md) を参照してください。
 

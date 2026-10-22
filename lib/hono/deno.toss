@@ -1,0 +1,11 @@
+#server bind: ($Object clone |> %extend(
+  'serve:': { app ->
+    #native bind: ($app native).
+    %js(native = $native; Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.args[0] ?? '8000') }, native.fetch))
+  },
+  'serve:port:': { app,port ->
+    #native bind: ($app native).
+    %js(native = $native, port = $port; Deno.serve({ hostname: '127.0.0.1', port }, native.fetch))
+  }
+)).
+%export($server).

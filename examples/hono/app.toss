@@ -1,0 +1,39 @@
+#adapter bind: %import('../../lib/hono/adapter.toss').
+#app bind: ($adapter create).
+
+$app use: '*' handle: %async({ context,next ->
+  $context set: 'trace' to: 'before'.
+  %await($next value).
+  #trace bind: ($adapter join: ($context get: 'trace') with: ',after').
+  $context set: 'trace' to: $trace.
+  $context header: 'X-Toss' to: 'after'.
+  $context header: 'X-Toss-Trace' to: $trace.
+  $Nil
+}).
+
+$app get: '/hello/:name' handle: { context ->
+  #name bind: ($context param: 'name').
+  $context set: 'trace' to: ($adapter join: ($context get: 'trace') with: ',handler').
+  $context text: ($adapter join: ($adapter join: 'Hello, ' with: $name) with: '!')
+}.
+
+$app post: '/echo' handle: %async({ context ->
+  #body bind: %await($context body).
+  $context set: 'trace' to: ($adapter join: ($context get: 'trace') with: ',handler').
+  ($adapter hasString: $body at: 'name') ifTrue: {
+    #payload bind: ($Object clone |> %extend(name: ($adapter field: 'name' of: $body), language: 'Toss')).
+    $context json: $payload status: 201
+  } ifFalse: {
+    $context json: ($Object clone |> %extend(error: 'name must be a String')) status: 400
+  }
+}).
+
+$app onError: { error,context ->
+  ($adapter isInvalidJSON: $error) ifTrue: {
+    $context json: ($Object clone |> %extend(error: 'invalid body')) status: 400
+  } ifFalse: {
+    $context json: ($Object clone |> %extend(error: 'internal server error')) status: 500
+  }
+}.
+
+%export($app).

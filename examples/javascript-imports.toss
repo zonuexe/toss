@@ -1,0 +1,2 @@
+#path bind: %jsImport('node:path').
+%js(module = $path; module.basename('/tmp/hello.txt')) print.

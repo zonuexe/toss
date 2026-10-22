@@ -29,7 +29,7 @@ export const symbolGenerateUnique = `function generateUnique() {
 export const symbolBind = {
   name: "bind:",
   javascript: `function bind(receiver, context, value) {
-  context.environment.bindings.set(receiver, value);
+  lexicalEnvironment(context.environment, context.location).bindings.set(receiver, value);
   return value;
 }`,
 } as const;

@@ -1,10 +1,18 @@
 import type { SourceLocation } from "./diagnostic.ts";
+import type { SyntaxGroup } from "./syntax.ts";
 
 export type Expression =
   | {
     readonly kind: "block";
     readonly parameters: readonly string[];
+    readonly parameterLocations?: readonly SourceLocation[];
+    readonly asynchronous?: true;
     readonly body: readonly Expression[];
+    readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "await";
+    readonly expression: Expression;
     readonly location: SourceLocation;
   }
   | {
@@ -68,6 +76,11 @@ export type Expression =
     readonly location: SourceLocation;
   }
   | {
+    readonly kind: "javascriptImport";
+    readonly specifier: string;
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "export";
     readonly value: Expression;
     readonly location: SourceLocation;
@@ -79,5 +92,11 @@ export type Expression =
       readonly value: Expression;
     }[];
     readonly source: string;
+    readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "quotation";
+    readonly syntax: SyntaxGroup;
+    readonly mode: "literal" | "quasi";
     readonly location: SourceLocation;
   };

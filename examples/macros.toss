@@ -1,0 +1,24 @@
+// Identity and a runtime display wrapper.
+%macro(#identity, { syntax -> $syntax }).
+%macro(#show, { syntax -> %`((%,($syntax)) print) }).
+%show(%identity(1 add: 2)).
+
+// Free references use the definition root; input keeps caller scope.
+#offset bind: 10.
+%macro(#bump, { syntax -> %`((%,($syntax)) add: $offset) }).
+({ offset -> %bump($offset) } value: 3) print.
+
+// Arrays hold syntax fragments, including explicit punctuation.
+%macro(#pair, { syntax ->
+    #items bind: [%quote(1), %quote(,), %quote(2)].
+    %`([%,@($items)])
+}).
+%pair() dump.
+
+// An introduced binding does not capture the caller's name.
+#temp bind: 40.
+%macro(#local, { syntax ->
+    %`({ #temp bind: 2. (%,($syntax)) add: $temp } value)
+}).
+%local($temp) print.
+$temp print.

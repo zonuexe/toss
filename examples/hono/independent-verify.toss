@@ -1,0 +1,21 @@
+%macroImport('../../lib/hono/macros.toss').
+#app bind: %import('./independent.toss').
+#testing bind: %import('../../lib/hono/testing.toss').
+
+#result bind: %runAsync({
+  #syncResponse bind: %request($app request: '/different/independent').
+  #syncBody bind: %await($testing bodyText: $syncResponse).
+  $testing actual: ($testing status: $syncResponse) equals: 200 because: 'independent sync status failed'.
+  $testing actual: $syncBody equals: 'independent' because: 'independent context data failed'.
+
+  #asyncResponse bind: %request($app request: '/async' options: ($testing jsonOptions: ($Object clone |> %extend(message: 'async')))).
+  #asyncBody bind: %await($testing bodyJSON: $asyncResponse).
+  $testing actual: ($testing status: $asyncResponse) equals: 202 because: 'independent async status failed'.
+  $testing actual: ($testing field: 'message' of: $asyncBody) equals: 'async' because: 'independent async body failed'.
+
+  #errorResponse bind: %request($app request: '/failure').
+  #errorBody bind: %await($testing bodyJSON: $errorResponse).
+  $testing actual: ($testing status: $errorResponse) equals: 503 because: 'independent error status failed'.
+  $testing actual: ($testing field: 'error' of: $errorBody) equals: 'custom failure' because: 'independent custom error failed'.
+  'Independent Hono verification passed' print.
+}).

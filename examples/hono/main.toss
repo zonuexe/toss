@@ -1,0 +1,3 @@
+#app bind: %import('./app.toss').
+#server bind: %import('../../lib/hono/deno.toss').
+$server serve: $app.

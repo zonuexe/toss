@@ -1,0 +1,7 @@
+%macro(#request, { syntax ->
+  %`(%await((%,($syntax))))
+}).
+
+%macro(#runAsync, { syntax ->
+  %`(%js(callback = (%async(%,($syntax)) asJSCallback); callback()))
+}).

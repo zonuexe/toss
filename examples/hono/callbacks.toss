@@ -1,0 +1,27 @@
+#hono bind: %jsImport('npm:hono@4.12.12').
+#cors bind: %jsImport('npm:hono@4.12.12/cors').
+#app bind: %js(module = $hono; new module.Hono()).
+%js(app = $app, module = $cors; app.use('*', module.cors())).
+
+// Hono supplies Context and Next; this Toss Block uses only Context.
+#handler bind: { context ->
+  #name bind: %js(c = $context; c.req.param('name')).
+  #payload bind: ($Object clone |> %extend(name: $name, language: 'Toss')).
+  %js(c = $context, payload = $payload; c.json(payload))
+} asJSCallback.
+%js(app = $app, handler = $handler; app.get('/hello/:name', handler)).
+
+// Promise waiting remains JavaScript; the route body above is Toss.
+%js(app = $app; (async () => {
+  for (const name of ['Alice', 'Bob']) {
+    const response = await app.request('/hello/' + name);
+    const body = await response.json();
+    if (response.status !== 200 || body.name !== name || body.language !== 'Toss') {
+      throw new Error('Unexpected response');
+    }
+    if (response.headers.get('Access-Control-Allow-Origin') !== '*') {
+      throw new Error('CORS middleware did not run');
+    }
+    console.log(response.status, JSON.stringify(body));
+  }
+})()).

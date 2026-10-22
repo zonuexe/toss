@@ -33,6 +33,41 @@ export function parseImport(
   return { kind: "import", path: path.value, location };
 }
 
+export function parseJavaScriptImport(
+  cursor: ImportParserCursor,
+  location: Token["location"],
+): Expression {
+  const token = cursor.current();
+  if (token.kind !== "string" || token.value.length === 0) {
+    throw new TossSyntaxError(
+      token.location,
+      "%jsImport requires one nonempty string literal specifier.",
+    );
+  }
+  cursor.advance();
+  if (cursor.current().kind !== "closeParen") {
+    throw new TossSyntaxError(
+      cursor.current().location,
+      "%jsImport accepts exactly one specifier.",
+    );
+  }
+  cursor.advance();
+  const specifier = token.value;
+  if (
+    /^[./\\]/.test(specifier) || /^[A-Za-z]:/.test(specifier) ||
+    specifier.includes("\\") || [...specifier].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x20 || code === 0x7f;
+    })
+  ) {
+    throw new TossSyntaxError(
+      token.location,
+      `Invalid JavaScript module specifier ${JSON.stringify(specifier)}.`,
+    );
+  }
+  return { kind: "javascriptImport", specifier, location };
+}
+
 export function parseExport(
   cursor: ExportParserCursor,
   location: Token["location"],

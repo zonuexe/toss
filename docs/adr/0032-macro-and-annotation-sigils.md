@@ -26,8 +26,9 @@ delimiters. These are design directions, not a general macro implementation.
 expressions are specified in [ADR-37](0037-local-modules.md). Parent calls
 through `%super` are specified in [ADR-36](0036-parent-calls.md).
 Unknown or unsupported macro invocations are compilation errors; they never
-fall back to runtime Symbols. Macro definition, import and expansion APIs
-remain future decisions.
+fall back to runtime Symbols. Local definition, quotation and expression
+expansion are specified in [ADR-39](0039-user-defined-expression-macros.md).
+Cross-file macro publication and statement expansion remain future work.
 
 ## Annotations and attributes
 

@@ -4,21 +4,34 @@ import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
 import { shiftExpressionLocations } from "./expression_locations.ts";
 import type { Token } from "./token.ts";
 import { readJavaScriptMacro } from "./javascript_parser.ts";
+import type { SyntaxNode } from "./syntax.ts";
 
 type BindingText = {
   readonly name: string;
   readonly source: string;
   readonly offset: number;
+  readonly nodes?: readonly SyntaxNode[];
+};
+
+export type JavaScriptTossParser = {
+  readonly parseText: (source: string) => readonly Expression[];
+  readonly parseSyntax?: (
+    nodes: readonly SyntaxNode[],
+  ) => readonly Expression[];
 };
 
 export function parseJavaScriptBindings(
   token: Extract<Token, { readonly kind: "javascript" }>,
   file: string,
-  parseToss: (text: string) => readonly Expression[],
+  parseToss: JavaScriptTossParser,
 ): Expression {
-  const bindings = token.prefix.length === 0
-    ? []
-    : splitBindings(token.prefix, token.location);
+  const syntaxBindings = token.syntaxPrefix === undefined
+    ? undefined
+    : splitSyntaxBindings(token.syntaxPrefix);
+  const bindings = syntaxBindings ??
+    (token.prefix.length === 0
+      ? []
+      : splitBindings(token.prefix, token.location));
   const names = new Set<string>();
   const parsed = bindings.map((binding) => {
     validateName(binding.name, token.location);
@@ -29,7 +42,7 @@ export function parseJavaScriptBindings(
       );
     }
     names.add(binding.name);
-    const start = position(
+    const start = binding.nodes?.[0]?.origin.location ?? position(
       token.location,
       token.prefix,
       binding.offset,
@@ -37,12 +50,18 @@ export function parseJavaScriptBindings(
     );
     let values: readonly Expression[];
     try {
-      values = parseToss(`${binding.source}\n.`);
+      values = binding.nodes === undefined
+        ? parseToss.parseText(`${binding.source}\n.`)
+        : parseToss.parseSyntax?.(binding.nodes) ??
+          parseToss.parseText(`${binding.source}\n.`);
     } catch (error) {
       if (!(error instanceof TossSyntaxError)) throw error;
       throw new TossSyntaxError(
-        rebaseLocation(start, error.location),
+        binding.nodes === undefined
+          ? rebaseLocation(start, error.location)
+          : error.location,
         error.reason,
+        error.trace,
       );
     }
     if (values.length !== 1) {
@@ -60,10 +79,9 @@ export function parseJavaScriptBindings(
     }
     return {
       name: binding.name,
-      value: shiftExpressionLocations(
-        value,
-        start,
-      ),
+      value: binding.nodes === undefined
+        ? shiftExpressionLocations(value, start)
+        : value,
     };
   });
   return {
@@ -118,6 +136,39 @@ function splitBindings(
       name,
       source: rhs,
       offset: segment.offset + segment.text.indexOf(rhs),
+    };
+  });
+}
+
+function splitSyntaxBindings(
+  nodes: readonly SyntaxNode[],
+): readonly BindingText[] {
+  if (nodes.length === 0) return [];
+  const segments: SyntaxNode[][] = [[]];
+  for (const node of nodes) {
+    if (node.kind === "token" && node.spelling === ",") segments.push([]);
+    else segments.at(-1)?.push(node);
+  }
+  return segments.map((segment) => {
+    const equals = segment.findIndex((node) =>
+      node.kind === "token" && node.spelling === "="
+    );
+    const name = equals === 1 && segment[0]?.kind === "token"
+      ? segment[0].spelling
+      : "";
+    const expression = segment.slice(equals + 1);
+    if (name.length === 0 || expression.length === 0) {
+      throw new TossSyntaxError(
+        segment[0]?.origin.location ??
+          { file: "<javascript>", line: 1, column: 1 },
+        "Each %js binding must be 'name = TossExpression'.",
+      );
+    }
+    return {
+      name,
+      source: "",
+      offset: 0,
+      nodes: expression,
     };
   });
 }
