@@ -25,6 +25,10 @@ Attributes はデータの付与を表し、その表現・構文の決定は延
 
 ## ✨ Tossの特徴
 
+`%macroImport('./macros.toss').` で、マクロ定義だけを持つファイルを明示的に読み込めます。読み込み以降で全定義を使え、実行時のモジュール初期化は起こりません。実行時の依存はマクロ引数で渡す方針です。[ADR-43](docs/adr/0043-macro-library-imports.md) を参照してください。
+
+[Hono アダプターと共有マクロ](lib/hono/README.md) は `lib/hono/` に、利用側の [サンプルアプリ](examples/hono/README.md) は `examples/hono/` に分けています。ルート・入力検証・応答内容はアプリ側で記述し、Context 操作や JS コールバックへの変換はライブラリが受け持ちます。
+
 `%macro(#name, { syntax -> ... }).` で式マクロを定義し、定義後に `%name(...)` で使えます。`%quote(...)` は構文をそのまま返し、quasiquote はパーセント・バッククォート・括弧の順に書きます。その内部で `%,(...)` は構文一つ、`%,@(...)` は構文の Array を差し込みます。構文オブジェクトは位置とスコープを保持し、生成した束縛が呼び出し側の変数を暗黙に捕捉しないようにします。展開処理は実行時と別の Environment で動きます。[ADR-39](docs/adr/0039-user-defined-expression-macros.md) と [実行例](examples/macros.toss) を参照してください。
 
 `%js(Math.max(3, 7))` で JavaScript の式を評価できます。`%js(x = $n; Math.max(x, 7))` のように Toss の値を明示的に渡します。文字列・有限数・Boolean は通常の Toss 値、`null` と `undefined` は Nil、Object・Array・Function は `<js>` と表示する専用の参照値になります。参照値への操作は再び `%js(...)` を使います。渡した Toss Object・Array の変更は共有され、直接の Block 渡しはエラーです。Promise は自動で待ちません。[ADR-38](docs/adr/0038-javascript-expressions.md) と [実行例](examples/javascript.toss) を参照してください。

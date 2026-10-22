@@ -6,13 +6,20 @@ export async function execute(source: string): Promise<Deno.CommandOutput> {
 
 export async function executeJavaScript(
   javascript: string,
+  options: { readonly cachedOnly?: boolean } = {},
 ): Promise<Deno.CommandOutput> {
   const directory = await Deno.makeTempDir({ prefix: "toss-test-" });
   try {
     const output = `${directory}/program.js`;
     await Deno.writeTextFile(output, javascript);
     return await new Deno.Command(Deno.execPath(), {
-      args: ["run", "--no-config", "--no-prompt", output],
+      args: [
+        "run",
+        "--no-config",
+        "--no-prompt",
+        ...(options.cachedOnly === true ? ["--cached-only"] : []),
+        output,
+      ],
       stdout: "piped",
       stderr: "piped",
     }).output();

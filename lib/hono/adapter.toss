@@ -1,0 +1,61 @@
+#hono bind: %jsImport('npm:hono@4.12.12').
+#nativeKey bind: $Symbol generateUnique.
+
+#contextFacade bind: { native ->
+  ($Object clone |> %extend(
+    'param:': { name -> %js(context = $native, name = $name; context.req.param(name)) },
+    body: { %js(context = $native; context.req.json()) },
+    'text:': { value -> %js(context = $native, value = $value; context.text(value)) },
+    'json:status:': { value,status -> %js(context = $native, value = $value, status = $status; context.json(value, status)) },
+    'header:to:': { name,value -> %js(context = $native, name = $name, value = $value; context.header(name, value)) },
+    'get:': { name -> %js(context = $native, name = $name; context.get(name)) },
+    'set:to:': { name,value -> %js(context = $native, name = $name, value = $value; context.set(name, value)) }
+  ))
+}.
+
+#adapter bind: ($Object clone |> %extend(
+  'hasString:at:': { value,key -> %js(value = $value, key = $key; value !== null && typeof value === 'object' && !Array.isArray(value) && typeof value[key] === 'string') },
+  'field:of:': { key,object -> %js(object = $object, key = $key; object[key]) },
+  'join:with:': { left,right -> %js(left = $left, right = $right; left + right) },
+  'isInvalidJSON:': { error -> %js(error = $error; error instanceof SyntaxError || error?.cause instanceof SyntaxError) },
+  create: {
+    #native bind: %js(module = $hono; new module.Hono()).
+    ($Object clone |>
+      %extend(
+        ($nativeKey): $native,
+        'get:handle:': { path,handler ->
+          #native bind: ($self at: $nativeKey).
+          #callback bind: { context -> $handler value: ($contextFacade value: $context) } asJSCallback.
+          %js(native = $native, path = $path, callback = $callback; native.get(path, callback)).
+          $self
+        },
+        'post:handle:': { path,handler ->
+          #native bind: ($self at: $nativeKey).
+          #callback bind: { context -> $handler value: ($contextFacade value: $context) } asJSCallback.
+          %js(native = $native, path = $path, callback = $callback; native.post(path, callback)).
+          $self
+        },
+        'use:handle:': { path,handler ->
+          #native bind: ($self at: $nativeKey).
+          #callback bind: %async({ context,next ->
+            #nextBlock bind: { %js(next = $next; next()) }.
+            %await($handler value: ($contextFacade value: $context) value: $nextBlock)
+          }) asJSCallback.
+          %js(native = $native, path = $path, callback = $callback; native.use(path, callback)).
+          $self
+        },
+        'onError:': { handler ->
+          #native bind: ($self at: $nativeKey).
+          #callback bind: { error,context -> $handler value: $error value: ($contextFacade value: $context) } asJSCallback.
+          %js(native = $native, callback = $callback; native.onError(callback)).
+          $self
+        },
+        'request:': { path -> #native bind: ($self at: $nativeKey). %js(native = $native, path = $path; native.request(path)) },
+        'request:options:': { path,options -> #native bind: ($self at: $nativeKey). %js(native = $native, path = $path, options = $options; native.request(path, options)) },
+        native: { $self at: $nativeKey }
+      )
+    )
+  }
+)).
+
+%export($adapter).

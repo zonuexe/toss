@@ -1,17 +1,22 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:acorn@8.15.0": "8.15.0"
+    "npm:acorn@8.15.0": "8.15.0",
+    "npm:hono@4.12.12": "4.12.12"
   },
   "npm": {
     "acorn@8.15.0": {
       "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
       "bin": true
+    },
+    "hono@4.12.12": {
+      "integrity": "sha512-p1JfQMKaceuCbpJKAPKVqyqviZdS0eUxH9v82oWo1kb9xjQ5wA6iP3FNVAPDFlz5/p7d45lO+BpSk1tuSZMF4Q=="
     }
   },
   "workspace": {
     "dependencies": [
-      "npm:acorn@8.15.0"
+      "npm:acorn@8.15.0",
+      "npm:hono@4.12.12"
     ]
   }
 }

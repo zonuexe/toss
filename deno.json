@@ -5,7 +5,8 @@
     "check": "deno fmt --check && deno lint && deno check src/cli.ts tests/*.ts"
   },
   "imports": {
-    "acorn": "npm:acorn@8.15.0"
+    "acorn": "npm:acorn@8.15.0",
+    "hono": "npm:hono@4.12.12"
   },
   "compilerOptions": {
     "strict": true,

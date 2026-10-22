@@ -1,102 +1,52 @@
+%macroImport('../../lib/hono/macros.toss').
 #app bind: %import('./app.toss').
+#adapter bind: %import('../../lib/hono/adapter.toss').
+#testing bind: %import('../../lib/hono/testing.toss').
 
-%macro(#request, { syntax ->
-  %`(%await(%js(app = $app, path = (%,($syntax)); app.request(path))))
-}).
-
-#check bind: ($Object clone |> %extend('actual:equals:because:': { actual,expected,message ->
-  #equal bind: %js(actual = $actual, expected = $expected; actual === expected).
-  $equal ifTrue: { $Nil } ifFalse: {
-    %js(message = $message; (() => { throw new Error(message); })())
-  }
-})).
-#status bind: { response ->
-  %js(response = $response; response.status)
-}.
-#header bind: { response,name ->
-  %js(response = $response, name = $name; response.headers.get(name))
-}.
-#property bind: { value,name ->
-  %js(value = $value, name = $name; value[name])
-}.
-#report bind: { label,response,body ->
-  (%js(label = $label, response = $response, body = $body;
-    label + ': ' + response.status +
-      (body === null ? '' : ' ' + (typeof body === 'string' ? body : JSON.stringify(body)))
-  )) print
-}.
-#postEcho bind: %async({ name ->
-  %await(%js(app = $app, name = $name;
-    app.request('/echo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-  ))
-}).
 #verifyEcho bind: %async({ response,name ->
-  #body bind: %await(%js(response = $response; response.json())).
-  $check actual: ($status value: $response) equals: 201 because: 'POST /echo status failed'.
-  $check actual: ($property value: $body value: 'name') equals: $name because: 'POST /echo body name failed'.
-  $check actual: ($property value: $body value: 'language') equals: 'Toss' because: 'POST /echo body language failed'.
-  $check actual: ($header value: $response value: 'X-Toss') equals: 'after' because: 'POST /echo after header missing'.
-  $check actual: ($header value: $response value: 'X-Toss-Trace') equals: 'before,handler,after' because: 'POST /echo trace failed'.
-  $report value: (%js(name = $name; 'POST /echo ' + name)) value: $response value: $body
+  #body bind: %await($testing bodyJSON: $response).
+  $testing actual: ($testing status: $response) equals: 201 because: 'POST /echo status failed'.
+  $testing actual: ($testing field: 'name' of: $body) equals: $name because: 'POST /echo body name failed'.
+  $testing actual: ($testing field: 'language' of: $body) equals: 'Toss' because: 'POST /echo body language failed'.
+  $testing actual: ($testing header: 'X-Toss' of: $response) equals: 'after' because: 'POST /echo after header missing'.
+  $testing actual: ($testing header: 'X-Toss-Trace' of: $response) equals: 'before,handler,after' because: 'POST /echo trace failed'.
+  $testing report: ($adapter join: 'POST /echo ' with: $name) response: $response body: $body
 }).
 
-#verify bind: %async({
-  #paths bind: ['/hello/Toss'].
-  #hello bind: %request($paths at: 0).
-  #helloBody bind: %await(%js(response = $hello; response.text())).
-  $check actual: ($status value: $hello) equals: 200 because: 'GET greeting status failed'.
-  $check actual: $helloBody equals: 'Hello, Toss!' because: 'GET greeting body failed'.
-  $check actual: ($header value: $hello value: 'X-Toss') equals: 'after' because: 'GET greeting after header missing'.
-  $check actual: ($header value: $hello value: 'X-Toss-Trace') equals: 'before,handler,after' because: 'GET greeting trace failed'.
-  $report value: 'GET /hello/Toss' value: $hello value: $helloBody.
+#execution bind: %runAsync({
+  #hello bind: %request($app request: '/hello/Toss').
+  #helloBody bind: %await($testing bodyText: $hello).
+  $testing actual: ($testing status: $hello) equals: 200 because: 'GET greeting status failed'.
+  $testing actual: $helloBody equals: 'Hello, Toss!' because: 'GET greeting body failed'.
+  $testing actual: ($testing header: 'X-Toss' of: $hello) equals: 'after' because: 'GET greeting after header missing'.
+  $testing actual: ($testing header: 'X-Toss-Trace' of: $hello) equals: 'before,handler,after' because: 'GET greeting trace failed'.
+  $testing report: 'GET /hello/Toss' response: $hello body: $helloBody.
 
-  #aliceCall bind: ($postEcho value: 'Alice').
-  #bobCall bind: ($postEcho value: 'Bob').
-  #echoes bind: %await(%js(alice = $aliceCall, bob = $bobCall;
-    Promise.all([alice, bob])
-  )).
+  #aliceCall bind: %async({ %await($app request: '/echo' options: ($testing jsonOptions: ($Object clone |> %extend(name: 'Alice')))) }).
+  #bobCall bind: %async({ %await($app request: '/echo' options: ($testing jsonOptions: ($Object clone |> %extend(name: 'Bob')))) }).
+  #echoes bind: %await($testing concurrent: ($aliceCall value) with: ($bobCall value)).
+  %await($verifyEcho value: ($testing at: 0 in: $echoes) value: 'Alice').
+  %await($verifyEcho value: ($testing at: 1 in: $echoes) value: 'Bob').
 
-  #alice bind: %js(echoes = $echoes; echoes[0]).
-  %await($verifyEcho value: $alice value: 'Alice').
-  #bob bind: %js(echoes = $echoes; echoes[1]).
-  %await($verifyEcho value: $bob value: 'Bob').
+  #invalidJson bind: %request($app request: '/echo' options: ($testing rawJSONOptions: '{')).
+  #invalidJsonBody bind: %await($testing bodyJSON: $invalidJson).
+  $testing actual: ($testing status: $invalidJson) equals: 400 because: 'invalid JSON response status failed'.
+  $testing actual: ($testing field: 'error' of: $invalidJsonBody) equals: 'invalid body' because: 'invalid JSON response body failed'.
+  $testing actual: ($testing header: 'X-Toss' of: $invalidJson) equals: 'after' because: 'middleware did not resume after invalid JSON'.
+  $testing actual: ($testing header: 'X-Toss-Trace' of: $invalidJson) equals: 'before,after' because: 'invalid JSON trace failed'.
+  $testing report: 'POST /echo invalid JSON' response: $invalidJson body: $invalidJsonBody.
 
-  #invalidJson bind: %await(%js(app = $app;
-    app.request('/echo', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
-    })
-  )).
-  #invalidJsonBody bind: %await(%js(response = $invalidJson; response.json())).
-  $check actual: ($status value: $invalidJson) equals: 400 because: 'invalid JSON response status failed'.
-  $check actual: ($property value: $invalidJsonBody value: 'error') equals: 'invalid body' because: 'invalid JSON response body failed'.
-  $check actual: ($header value: $invalidJson value: 'X-Toss') equals: 'after' because: 'middleware did not resume after invalid JSON'.
-  $check actual: ($header value: $invalidJson value: 'X-Toss-Trace') equals: 'before,after' because: 'invalid JSON trace failed'.
-  $report value: 'POST /echo invalid JSON' value: $invalidJson value: $invalidJsonBody.
+  #invalidName bind: %request($app request: '/echo' options: ($testing jsonOptions: ($Object clone |> %extend(name: 42)))).
+  #invalidNameBody bind: %await($testing bodyJSON: $invalidName).
+  $testing actual: ($testing status: $invalidName) equals: 400 because: 'invalid name response status failed'.
+  $testing actual: ($testing field: 'error' of: $invalidNameBody) equals: 'name must be a String' because: 'invalid name response body failed'.
+  $testing actual: ($testing header: 'X-Toss-Trace' of: $invalidName) equals: 'before,handler,after' because: 'invalid name trace failed'.
+  $testing report: 'POST /echo invalid name' response: $invalidName body: $invalidNameBody.
 
-  #invalidName bind: %await(%js(app = $app;
-    app.request('/echo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 42 }),
-    })
-  )).
-  #invalidNameBody bind: %await(%js(response = $invalidName; response.json())).
-  $check actual: ($status value: $invalidName) equals: 400 because: 'invalid name response status failed'.
-  $check actual: ($property value: $invalidNameBody value: 'error') equals: 'name must be a String' because: 'invalid name response body failed'.
-  $check actual: ($header value: $invalidName value: 'X-Toss-Trace') equals: 'before,handler,after' because: 'invalid name trace failed'.
-  $report value: 'POST /echo invalid name' value: $invalidName value: $invalidNameBody.
-
-  #missing bind: %request('/missing').
-  $check actual: ($status value: $missing) equals: 404 because: 'missing route status failed'.
-  $check actual: ($header value: $missing value: 'X-Toss') equals: 'after' because: 'missing route middleware header failed'.
-  $check actual: ($header value: $missing value: 'X-Toss-Trace') equals: 'before,after' because: 'missing route trace failed'.
-  $report value: 'GET /missing' value: $missing value: $Nil.
+  #missing bind: %request($app request: '/missing').
+  $testing actual: ($testing status: $missing) equals: 404 because: 'missing route status failed'.
+  $testing actual: ($testing header: 'X-Toss' of: $missing) equals: 'after' because: 'missing route middleware header failed'.
+  $testing actual: ($testing header: 'X-Toss-Trace' of: $missing) equals: 'before,after' because: 'missing route trace failed'.
+  $testing report: 'GET /missing' response: $missing body: $Nil.
   'Hono verification passed (6 checks)' print.
 }).
-
-#verifyCallback bind: $verify asJSCallback.
-%js(callback = $verifyCallback; callback()).

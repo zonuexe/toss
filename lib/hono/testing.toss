@@ -1,0 +1,23 @@
+#testing bind: ($Object clone |> %extend(
+  'actual:equals:because:': { actual,expected,message ->
+    #equal bind: %js(actual = $actual, expected = $expected; actual === expected).
+    $equal ifTrue: { $Nil } ifFalse: {
+      %js(message = $message; (() => { throw new Error(message); })())
+    }
+  },
+  'status:': { response -> %js(response = $response; response.status) },
+  'header:of:': { name,response -> %js(response = $response, name = $name; response.headers.get(name)) },
+  'field:of:': { name,object -> %js(object = $object, name = $name; object[name]) },
+  'bodyJSON:': { response -> %js(response = $response; response.json()) },
+  'bodyText:': { response -> %js(response = $response; response.text()) },
+  'report:response:body:': { label,response,body ->
+    %js(label = $label, response = $response, body = $body;
+      label + ': ' + response.status + (body === null ? '' : ' ' + (typeof body === 'string' ? body : JSON.stringify(body)))
+    ) print
+  },
+  'concurrent:with:': { first,second -> %js(first = $first, second = $second; Promise.all([first, second])) },
+  'at:in:': { index,array -> %js(array = $array, index = $index; array[index]) },
+  'jsonOptions:': { payload -> %js(payload = $payload; ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })) },
+  'rawJSONOptions:': { body -> %js(body = $body; ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body })) }
+)).
+%export($testing).

@@ -713,14 +713,17 @@ mise exec -- deno task compile examples/hono/main.toss -o out/hono/main.js
 mise exec -- deno run --no-config --allow-net=127.0.0.1 out/hono/main.js 8000
 ```
 
-The [Hono sample app](examples/hono/README.md) separates its shared app, server
-entry and in-memory verifier. It awaits JSON request bodies and middleware
+The [Hono sample app](examples/hono/README.md) uses the reusable adapter and
+macro sources in [`lib/hono/`](lib/hono/README.md). Runtime helpers use ordinary
+`%import`; shared syntax helpers use `%macroImport`. The user app, server entry
+and in-memory verifier keep route policy and expectations outside the library.
+It awaits JSON request bodies and middleware
 `next()`, handles concurrent requests and malformed JSON, and checks middleware
 order and response headers without retaining global request logs.
 Cancellation, async collection helpers and language-level exception handling
 remain future work. See [ADR-42](docs/adr/0042-explicit-async-blocks.md).
 
-## Local expression macros
+## Expression macros
 
 Define a file-private macro with `%macro(#name, { syntax -> ... }).` before
 using it. The Block receives unevaluated token-tree syntax and returns syntax
@@ -767,9 +770,30 @@ retain source positions and macro expansion paths; compiler execution limits
 reject excessive expansion or computation.
 
 Quotation is compile-time only. Nested definitions, built-in replacement and
-generated declarations are rejected. Cross-file macro publication and
-intentional caller capture APIs remain future work. See
+generated declarations are rejected. Intentional caller capture APIs remain
+future work. See
 [ADR-39](docs/adr/0039-user-defined-expression-macros.md).
+
+Load a macro-only library explicitly before using its definitions:
+
+```text
+// helpers.toss
+%macro(#show, { syntax -> %`((%,($syntax)) print) }).
+
+// main.toss
+%macroImport('./helpers.toss').
+%show(1 add: 2).
+```
+
+Macro imports require the file compiler, accept relative `.toss` paths, and
+take effect at the import position. Libraries contain only macro declarations;
+they have no runtime initialization. All definitions are imported. Repeated
+imports of the same canonical file are idempotent; conflicting names are
+errors. Library imports inside libraries, aliases and selective exports are
+deferred. A library is instantiated in each consumer's macro context; its
+generated runtime free references use that consumer's file root. Pass runtime
+dependencies explicitly to keep macros reusable. See
+[ADR-43](docs/adr/0043-macro-library-imports.md).
 
 ```sh
 mise exec -- deno task compile examples/macros.toss -o out/macros.js
