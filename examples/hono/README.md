@@ -36,7 +36,19 @@ mise exec -- deno run --no-config out/hono/verify.js
 
 The verifier exercises the greeting, concurrent echo requests, invalid input,
 middleware headers and trace order, and a missing route. It opens no listening
-socket.
+socket. `verify.toss` keeps request sequencing, async waits, and assertions in
+Toss. Its private `%request` macro embeds the entire invocation as one grouped
+path expression, so Toss evaluates that expression once and keeps its lexical
+scope. Small helper Blocks and a local check Object validate response status,
+headers, and body fields. A shared report Block formats the output, which Toss
+prints. `%js` is limited to host operations such as calling Hono methods,
+parsing and serializing JSON, formatting report strings, and throwing an
+assertion error.
+
+Local macros are private to their defining Toss file, so `%request` is defined
+in `verify.toss` and cannot be shared with `app.toss` or other modules. Deno can
+resolve the pinned Hono package on the first run; use `--cached-only` only when
+running the verifier against an existing local cache.
 
 ## Hono package
 

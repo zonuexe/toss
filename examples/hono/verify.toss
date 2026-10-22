@@ -1,54 +1,102 @@
 #app bind: %import('./app.toss').
 
-%js(app = $app; (async () => {
-  const check = (condition, message) => {
-    if (!condition) throw new Error(message);
-  };
-  const hello = await app.request('/hello/Toss');
-  const helloBody = await hello.text();
-  check(hello.status === 200 && helloBody === 'Hello, Toss!', 'GET greeting failed');
-  check(hello.headers.get('X-Toss') === 'after', 'GET greeting after header missing');
-  check(hello.headers.get('X-Toss-Trace') === 'before,handler,after', 'GET greeting trace failed');
-  console.log('GET /hello/Toss: ' + hello.status + ' ' + helloBody);
+%macro(#request, { syntax ->
+  %`(%await(%js(app = $app, path = (%,($syntax)); app.request(path))))
+}).
 
-  const echo = async name => {
-    const response = await app.request('/echo', {
+#check bind: ($Object clone |> %extend('actual:equals:because:': { actual,expected,message ->
+  #equal bind: %js(actual = $actual, expected = $expected; actual === expected).
+  $equal ifTrue: { $Nil } ifFalse: {
+    %js(message = $message; (() => { throw new Error(message); })())
+  }
+})).
+#status bind: { response ->
+  %js(response = $response; response.status)
+}.
+#header bind: { response,name ->
+  %js(response = $response, name = $name; response.headers.get(name))
+}.
+#property bind: { value,name ->
+  %js(value = $value, name = $name; value[name])
+}.
+#report bind: { label,response,body ->
+  (%js(label = $label, response = $response, body = $body;
+    label + ': ' + response.status +
+      (body === null ? '' : ' ' + (typeof body === 'string' ? body : JSON.stringify(body)))
+  )) print
+}.
+#postEcho bind: %async({ name ->
+  %await(%js(app = $app, name = $name;
+    app.request('/echo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
-    });
-    const body = await response.json();
-    check(response.status === 201, 'POST /echo status failed for ' + name);
-    check(body.name === name && body.language === 'Toss', 'POST /echo body failed for ' + name);
-    check(response.headers.get('X-Toss') === 'after', 'POST /echo after header missing for ' + name);
-    check(response.headers.get('X-Toss-Trace') === 'before,handler,after', 'POST /echo trace failed for ' + name);
-    return { response, body };
-  };
-  const [alice, bob] = await Promise.all([echo('Alice'), echo('Bob')]);
-  console.log('POST /echo Alice: ' + alice.response.status + ' ' + JSON.stringify(alice.body));
-  console.log('POST /echo Bob: ' + bob.response.status + ' ' + JSON.stringify(bob.body));
+    })
+  ))
+}).
+#verifyEcho bind: %async({ response,name ->
+  #body bind: %await(%js(response = $response; response.json())).
+  $check actual: ($status value: $response) equals: 201 because: 'POST /echo status failed'.
+  $check actual: ($property value: $body value: 'name') equals: $name because: 'POST /echo body name failed'.
+  $check actual: ($property value: $body value: 'language') equals: 'Toss' because: 'POST /echo body language failed'.
+  $check actual: ($header value: $response value: 'X-Toss') equals: 'after' because: 'POST /echo after header missing'.
+  $check actual: ($header value: $response value: 'X-Toss-Trace') equals: 'before,handler,after' because: 'POST /echo trace failed'.
+  $report value: (%js(name = $name; 'POST /echo ' + name)) value: $response value: $body
+}).
 
-  const invalidJson = await app.request('/echo', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
-  });
-  const invalidJsonBody = await invalidJson.json();
-  check(invalidJson.status === 400 && invalidJsonBody.error === 'invalid body', 'invalid JSON response failed');
-  check(invalidJson.headers.get('X-Toss') === 'after', 'middleware did not resume after invalid JSON');
-  check(invalidJson.headers.get('X-Toss-Trace') === 'before,after', 'invalid JSON trace failed');
-  console.log('POST /echo invalid JSON: ' + invalidJson.status + ' ' + JSON.stringify(invalidJsonBody));
+#verify bind: %async({
+  #paths bind: ['/hello/Toss'].
+  #hello bind: %request($paths at: 0).
+  #helloBody bind: %await(%js(response = $hello; response.text())).
+  $check actual: ($status value: $hello) equals: 200 because: 'GET greeting status failed'.
+  $check actual: $helloBody equals: 'Hello, Toss!' because: 'GET greeting body failed'.
+  $check actual: ($header value: $hello value: 'X-Toss') equals: 'after' because: 'GET greeting after header missing'.
+  $check actual: ($header value: $hello value: 'X-Toss-Trace') equals: 'before,handler,after' because: 'GET greeting trace failed'.
+  $report value: 'GET /hello/Toss' value: $hello value: $helloBody.
 
-  const invalidName = await app.request('/echo', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 42 }),
-  });
-  const invalidNameBody = await invalidName.json();
-  check(invalidName.status === 400 && invalidNameBody.error === 'name must be a String', 'invalid name response failed');
-  check(invalidName.headers.get('X-Toss-Trace') === 'before,handler,after', 'invalid name trace failed');
-  console.log('POST /echo invalid name: ' + invalidName.status + ' ' + JSON.stringify(invalidNameBody));
+  #aliceCall bind: ($postEcho value: 'Alice').
+  #bobCall bind: ($postEcho value: 'Bob').
+  #echoes bind: %await(%js(alice = $aliceCall, bob = $bobCall;
+    Promise.all([alice, bob])
+  )).
 
-  const missing = await app.request('/missing');
-  check(missing.status === 404, 'missing route status failed');
-  check(missing.headers.get('X-Toss') === 'after', 'missing route middleware header failed');
-  check(missing.headers.get('X-Toss-Trace') === 'before,after', 'missing route trace failed');
-  console.log('GET /missing: ' + missing.status + '');
-  console.log('Hono verification passed (6 checks)');
-})()).
+  #alice bind: %js(echoes = $echoes; echoes[0]).
+  %await($verifyEcho value: $alice value: 'Alice').
+  #bob bind: %js(echoes = $echoes; echoes[1]).
+  %await($verifyEcho value: $bob value: 'Bob').
+
+  #invalidJson bind: %await(%js(app = $app;
+    app.request('/echo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
+    })
+  )).
+  #invalidJsonBody bind: %await(%js(response = $invalidJson; response.json())).
+  $check actual: ($status value: $invalidJson) equals: 400 because: 'invalid JSON response status failed'.
+  $check actual: ($property value: $invalidJsonBody value: 'error') equals: 'invalid body' because: 'invalid JSON response body failed'.
+  $check actual: ($header value: $invalidJson value: 'X-Toss') equals: 'after' because: 'middleware did not resume after invalid JSON'.
+  $check actual: ($header value: $invalidJson value: 'X-Toss-Trace') equals: 'before,after' because: 'invalid JSON trace failed'.
+  $report value: 'POST /echo invalid JSON' value: $invalidJson value: $invalidJsonBody.
+
+  #invalidName bind: %await(%js(app = $app;
+    app.request('/echo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 42 }),
+    })
+  )).
+  #invalidNameBody bind: %await(%js(response = $invalidName; response.json())).
+  $check actual: ($status value: $invalidName) equals: 400 because: 'invalid name response status failed'.
+  $check actual: ($property value: $invalidNameBody value: 'error') equals: 'name must be a String' because: 'invalid name response body failed'.
+  $check actual: ($header value: $invalidName value: 'X-Toss-Trace') equals: 'before,handler,after' because: 'invalid name trace failed'.
+  $report value: 'POST /echo invalid name' value: $invalidName value: $invalidNameBody.
+
+  #missing bind: %request('/missing').
+  $check actual: ($status value: $missing) equals: 404 because: 'missing route status failed'.
+  $check actual: ($header value: $missing value: 'X-Toss') equals: 'after' because: 'missing route middleware header failed'.
+  $check actual: ($header value: $missing value: 'X-Toss-Trace') equals: 'before,after' because: 'missing route trace failed'.
+  $report value: 'GET /missing' value: $missing value: $Nil.
+  'Hono verification passed (6 checks)' print.
+}).
+
+#verifyCallback bind: $verify asJSCallback.
+%js(callback = $verifyCallback; callback()).
