@@ -21,6 +21,8 @@ import { numberMessages } from "./prelude/number.ts";
 import { booleanMessages } from "./prelude/boolean.ts";
 import { arrayMessages } from "./prelude/array.ts";
 import { runtimeJavaScript } from "./runtime.ts";
+import { emitBlock } from "./codegen_block.ts";
+import { TossSyntaxError } from "./diagnostic.ts";
 
 type PreludeMessage = { readonly name: string; readonly javascript: string };
 
@@ -41,22 +43,7 @@ function emit(expression: Expression, scope = "environment"): string {
   }, environment: ${scope}}`;
   switch (expression.kind) {
     case "block": {
-      const parameters = expression.parameters.map((_, index) => `arg${index}`);
-      const bindings = expression.parameters.map((name, index) =>
-        `scope.bindings.set(Symbol.for(${JSON.stringify(name)}), arg${index});`
-      );
-      const body = expression.body.map((item, index) =>
-        `${index === expression.body.length - 1 ? "return " : ""}${
-          emit(item, "scope")
-        };`
-      );
-      return `((captured) => function(${
-        parameters.join(", ")
-      }) {\nconst invocation = this;\nconst scope = {bindings: new Map(), parent: captured, superContext: invocation?.kind === "tossInvocation" ? invocation.context : captured.superContext};\nif (invocation?.kind === "tossInvocation") scope.bindings.set(Symbol.for("self"), invocation.context.receiver);\n${
-        [...bindings, ...(body.length === 0 ? ["return null;"] : body)].join(
-          "\n",
-        )
-      }\n})(${scope})`;
+      return emitBlock(expression, scope, emit);
     }
     case "string":
       return JSON.stringify(expression.value);
@@ -80,6 +67,11 @@ function emit(expression: Expression, scope = "environment"): string {
       }], ${context}, ${
         JSON.stringify(expression.bindings.map((binding) => binding.name))
       })`;
+    case "quotation":
+      throw new TossSyntaxError(
+        expression.location,
+        "Quotation reached runtime code generation.",
+      );
     case "array":
       return `[${
         expression.elements.map((item) => emit(item, scope)).join(", ")
@@ -175,7 +167,8 @@ function runtimePreludeLines(): string[] {
 
 function fileRootSetupLines(imports: readonly string[] = []): string[] {
   return [
-    "const environment = {bindings: new Map(), parent: null};",
+    "const environment = {bindings: new Map(), parent: null, root: null, scopes: new Map(), superContext: undefined};",
+    "environment.root = environment; environment.scopes.set(0, environment);",
     "let moduleExport = null;",
     `const moduleImports = new Map([${imports.join(", ")}]);`,
     "const objectRoot = Object.create(null);",

@@ -14,7 +14,7 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 | --- | --- | --- |
 | `#name` | Named symbol: a runtime value | Implemented |
 | `$name` | Fetch a binding | Implemented |
-| `%name(...)` | Explicit named compiler macro | `%extend(...)`, `%super(...)`, `%import(...)`, `%export(...)`, and `%js(...)` are implemented |
+| `%name(...)` | Explicit named compiler macro | Built-ins and local user-defined expression macros are implemented |
 | `%name ... .` | Statement macro | Planned |
 | `@name` | Call-related Annotation | Planned; declaration and application details are undecided |
 | `$()` | Dedicated arithmetic macro | Implemented; `%` inside arithmetic remains remainder |
@@ -570,6 +570,62 @@ The compiler uses a pinned Acorn parser; generated files do not depend on it.
 The generated file includes the interop runtime. Host APIs use their normal
 permissions and side effects. JS output is not captured by Toss. See
 [ADR-38](docs/adr/0038-javascript-expressions.md).
+
+## Local expression macros
+
+Define a file-private macro with `%macro(#name, { syntax -> ... }).` before
+using it. The Block receives unevaluated token-tree syntax and returns syntax
+for one expression:
+
+```text
+%macro(#show, { syntax ->
+    %`((%,($syntax)) print)
+}).
+
+%show(1 add: 2).
+```
+
+`%quote(...)` returns literal syntax. Quasiquote uses a percent sign followed
+by a backtick and parentheses, as above. Inside quasiquote, `%,(expression)`
+inserts one syntax object and `%,@(expression)` inserts an Array of syntax
+objects. An empty Array inserts nothing. Include punctuation explicitly:
+
+```text
+%macro(#pair, { syntax ->
+    #items bind: [%quote(1), %quote(,), %quote(2)].
+    %`([%,@($items)])
+}).
+%pair() dump.
+```
+
+Syntax is immutable. `kind` returns `#token` or `#group`; groups receive
+`children` and `delimiter`, while tokens receive `spelling`. `children` returns
+an Array copy, so normal collection messages can transform syntax sequences.
+The delimiter is `'()'`, `'[]'`, `'{}'`, or `''` for a fragment.
+
+Introduced bindings do not capture caller variables. Spliced syntax retains
+its scope; introduced free references use the macro's definition scope. Named
+Symbol values keep their ordinary identity. Returned macro calls expand
+recursively, with source-order lookup in their own syntax scopes. Self-calls
+in generated syntax are supported; forward references and direct self-expansion
+while preparing a definition are errors.
+
+Each expansion has a fresh compile-time Environment. Core messages and syntax
+operations are available; runtime file bindings, host output, JS execution and
+module loading are not. Quoted output may contain runtime `%js`, `%import`
+and `%super` expressions. Expansion adds no method invocation. Diagnostics
+retain source positions and macro expansion paths; compiler execution limits
+reject excessive expansion or computation.
+
+Quotation is compile-time only. Nested definitions, built-in replacement and
+generated declarations are rejected. Cross-file macro publication and
+intentional caller capture APIs remain future work. See
+[ADR-39](docs/adr/0039-user-defined-expression-macros.md).
+
+```sh
+mise exec -- deno task compile examples/macros.toss -o out/macros.js
+mise exec -- deno run out/macros.js
+```
 
 ## ✨ Why Toss?
 

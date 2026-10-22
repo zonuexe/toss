@@ -12,7 +12,7 @@ Smalltalkの動的なメッセージパシング、Lispのメタプログラミ�
 | --- | --- | --- |
 | `#name` | 実行時の値である名前付きシンボル | 実装済み |
 | `$name` | バインディングの参照 | 実装済み |
-| `%name(...)` | 名前付きコンパイラマクロの明示的な呼び出し | `%extend(...)`・`%super(...)`・`%import(...)`・`%export(...)`・`%js(...)` が実装済み |
+| `%name(...)` | 名前付きコンパイラマクロの明示的な呼び出し | 組み込みマクロと、ファイル内で定義する式マクロが実装済み |
 | `%name ... .` | ステートメントマクロ | 将来設計 |
 | `@name` | 呼び出しに関わる annotation | 将来設計。宣言・適用構文の詳細は未決定 |
 | `$()` | 専用の数式マクロ | 実装済み。数式内の `%` は剰余演算子 |
@@ -24,6 +24,8 @@ Attributes はデータの付与を表し、その表現・構文の決定は延
 既存の `#extend(...)` は `%extend(...)` に変更しました。`#extend` 自体は通常のシンボルです。実装済みの範囲と実行可能な例は [README](README.md) にあります。
 
 ## ✨ Tossの特徴
+
+`%macro(#name, { syntax -> ... }).` で式マクロを定義し、定義後に `%name(...)` で使えます。`%quote(...)` は構文をそのまま返し、quasiquote はパーセント・バッククォート・括弧の順に書きます。その内部で `%,(...)` は構文一つ、`%,@(...)` は構文の Array を差し込みます。構文オブジェクトは位置とスコープを保持し、生成した束縛が呼び出し側の変数を暗黙に捕捉しないようにします。展開処理は実行時と別の Environment で動きます。[ADR-39](docs/adr/0039-user-defined-expression-macros.md) と [実行例](examples/macros.toss) を参照してください。
 
 `%js(Math.max(3, 7))` で JavaScript の式を評価できます。`%js(x = $n; Math.max(x, 7))` のように Toss の値を明示的に渡します。文字列・有限数・Boolean は通常の Toss 値、`null` と `undefined` は Nil、Object・Array・Function は `<js>` と表示する専用の参照値になります。参照値への操作は再び `%js(...)` を使います。渡した Toss Object・Array の変更は共有され、直接の Block 渡しはエラーです。Promise は自動で待ちません。[ADR-38](docs/adr/0038-javascript-expressions.md) と [実行例](examples/javascript.toss) を参照してください。
 

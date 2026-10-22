@@ -63,6 +63,11 @@ export function analyzeModule(
       case "javascript":
         expression.bindings.forEach((binding) => visit(binding.value, false));
         return;
+      case "quotation":
+        throw new TossSyntaxError(
+          expression.location,
+          "Quotation is only valid during macro expansion.",
+        );
       case "string":
       case "number":
       case "symbol":

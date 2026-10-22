@@ -1,12 +1,13 @@
 import { basename, dirname, extname, resolve } from "node:path";
+import type { Expression } from "./ast.ts";
 import { type BundleModule, generateBundle } from "./codegen.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import { analyzeModule, type ModuleImport } from "./module_analysis.ts";
-import { parse } from "./parser.ts";
+import { expandProgram } from "./macro_compile.ts";
 
 type LoadedModule = {
   readonly canonical: string;
-  readonly expressions: ReturnType<typeof parse>;
+  readonly expressions: readonly Expression[];
   readonly imports: readonly ModuleImport[];
   readonly importIds: readonly number[];
 };
@@ -63,7 +64,7 @@ export async function compileFile(
         `Unable to read imported file ${JSON.stringify(display)}.`,
       );
     }
-    const expressions = parse(source, display);
+    const expressions = expandProgram(source, display);
     const analysis = analyzeModule(expressions, display, imported);
     modules.push({
       canonical,

@@ -1,11 +1,18 @@
 export const runtimeJavaScript = `class TossRuntimeError extends Error {
   constructor(reason, location, options) {
     super(location.file + ":" + location.line + ":" + location.column +
-      ": RuntimeError: " + reason);
+      ": RuntimeError: " + reason + formatMacroTrace(location.trace));
     this.name = "TossRuntimeError";
     this.stack = this.name + ": " + this.message;
     if (options !== undefined) this.cause = options.cause;
   }
+}
+
+function formatMacroTrace(trace) {
+  return (trace ?? []).map((entry) => "\\n  expanded " + entry.name +
+    " at " + entry.invocation.file + ":" + entry.invocation.line + ":" +
+    entry.invocation.column + " (defined at " + entry.definition.file + ":" +
+    entry.definition.line + ":" + entry.definition.column + ")").join("");
 }
 
 const hostValues = new WeakMap();
@@ -167,12 +174,44 @@ function keyDescription(key) {
 
 function fetchBinding(name, context) {
   const key = Symbol.for(name);
-  let scope = context.environment;
+  let scope = lexicalEnvironment(context.environment, context.location);
   while (scope !== null) {
     if (scope.bindings.has(key)) return scope.bindings.get(key);
     scope = scope.parent;
   }
   throw new TossRuntimeError("Unbound name " + JSON.stringify(name) + ".", context.location);
+}
+
+function lexicalEnvironment(carrier, location) {
+  const id = location.scope?.id ?? 0;
+  const existing = carrier.scopes.get(id);
+  if (existing !== undefined) return existing;
+  const root = carrier.root ?? carrier;
+  const selected = {bindings: new Map(), parent: root, root, scopes: carrier.scopes,
+    superContext: carrier.superContext};
+  carrier.scopes.set(id, selected);
+  return selected;
+}
+
+function blockEnvironment(captured, location, parameters) {
+  const scopes = new Map(captured.scopes);
+  const root = captured.root ?? captured;
+  const carrier = {bindings: new Map(), parent: captured, root, scopes,
+    superContext: captured.superContext};
+  const blockId = location.scope?.id ?? 0;
+  const parent = scopes.get(blockId) ?? lexicalEnvironment(captured, location);
+  const local = {bindings: new Map(), parent, root, scopes,
+    superContext: captured.superContext};
+  scopes.set(blockId, local);
+  for (const parameter of parameters) {
+    const id = parameter.scope?.id ?? 0;
+    if (id === blockId) continue;
+    const previous = scopes.get(id) ?? lexicalEnvironment(captured, parameter);
+    const parameterScope = {bindings: new Map(), parent: previous, root, scopes,
+      superContext: captured.superContext};
+    scopes.set(id, parameterScope);
+  }
+  return {carrier, local, scopes};
 }
 
 function invokeBlock(receiver, args, context) {

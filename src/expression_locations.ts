@@ -83,6 +83,8 @@ export function shiftExpressionLocations(
           value: shiftExpressionLocations(binding.value, start),
         })),
       };
+    case "quotation":
+      return { ...expression, location: move(expression.location) };
     case "import":
     case "fetch":
     case "symbol":

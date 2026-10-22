@@ -1,5 +1,6 @@
 import type { SourceLocation } from "./diagnostic.ts";
 import type { ArithmeticOperator } from "./comparison_operator.ts";
+import type { SyntaxGroup, SyntaxNode } from "./syntax.ts";
 
 export type Token =
   | {
@@ -24,7 +25,14 @@ export type Token =
   | {
     readonly kind: "javascript";
     readonly prefix: string;
+    readonly syntaxPrefix?: readonly SyntaxNode[];
     readonly source: string;
+    readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "quotation";
+    readonly syntax: SyntaxGroup;
+    readonly mode: "literal" | "quasi";
     readonly location: SourceLocation;
   }
   | {
