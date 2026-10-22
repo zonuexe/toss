@@ -114,6 +114,9 @@ export function parseTokens(
           case "arrow":
           case "superOpen":
           case "importOpen":
+          case "javascriptImportOpen":
+          case "asyncOpen":
+          case "awaitOpen":
           case "exportOpen":
           case "javascript":
           case "quotation":

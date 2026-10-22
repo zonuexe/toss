@@ -6,7 +6,13 @@ export type Expression =
     readonly kind: "block";
     readonly parameters: readonly string[];
     readonly parameterLocations?: readonly SourceLocation[];
+    readonly asynchronous?: true;
     readonly body: readonly Expression[];
+    readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "await";
+    readonly expression: Expression;
     readonly location: SourceLocation;
   }
   | {
@@ -67,6 +73,11 @@ export type Expression =
   | {
     readonly kind: "import";
     readonly path: string;
+    readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "javascriptImport";
+    readonly specifier: string;
     readonly location: SourceLocation;
   }
   | {

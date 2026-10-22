@@ -7,6 +7,7 @@ import { flattenSyntax } from "./syntax_flatten.ts";
 import { readSyntax, type SyntaxReadOptions } from "./syntax_reader.ts";
 import type { SyntaxGroup, SyntaxNode, SyntaxToken } from "./syntax.ts";
 import type { Token } from "./token.ts";
+import { specialMacro } from "./syntax_special_macro.ts";
 
 export type ParseSyntaxOptions = Omit<SyntaxReadOptions, "file"> & {
   readonly file?: string;
@@ -111,7 +112,13 @@ export function tokensFromSyntax(
         const kind = specialMacro(node.spelling);
         if (kind !== undefined) {
           tokens.push({ kind, location: sourceLocation(node) });
-          appendChildren(following.children, inArithmetic);
+          if (kind === "asyncOpen") {
+            following.children.forEach((child) =>
+              appendNode(child, inArithmetic)
+            );
+          } else {
+            appendChildren(following.children, inArithmetic);
+          }
           tokens.push({
             kind: "closeParen",
             location: sourceLocation(following),
@@ -203,23 +210,6 @@ function syntaxFragment(group: SyntaxGroup): SyntaxGroup {
     children: Object.freeze([...group.children]),
     origin: group.origin,
   });
-}
-
-function specialMacro(
-  spelling: string,
-): "importOpen" | "exportOpen" | "extendOpen" | "superOpen" | undefined {
-  switch (spelling) {
-    case "%import":
-      return "importOpen";
-    case "%export":
-      return "exportOpen";
-    case "%extend":
-      return "extendOpen";
-    case "%super":
-      return "superOpen";
-    default:
-      return undefined;
-  }
 }
 
 function isArithmetic(spelling: string): boolean {

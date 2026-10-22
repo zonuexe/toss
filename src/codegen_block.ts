@@ -13,12 +13,18 @@ export function emitBlock(
       JSON.stringify(parameterLocations[index])
     }).bindings.set(Symbol.for(${JSON.stringify(name)}), arg${index});`
   );
+  const asynchronous = expression.asynchronous === true;
   const body = expression.body.map((item, index) =>
     `${index === expression.body.length - 1 ? "return " : ""}${
-      emit(item, "scope")
+      asynchronous && index === expression.body.length - 1
+        ? `{value: ${emit(item, "scope")}}`
+        : emit(item, "scope")
     };`
   );
-  return `((captured) => function(${parameters.join(", ")}) {
+  const functionKind = asynchronous ? "async function" : "function";
+  return `((captured) => ${
+    asynchronous ? "markAsyncBlock(" : ""
+  }${functionKind}(${parameters.join(", ")}) {
 const invocation = this;
 const {carrier: scope} = blockEnvironment(captured, ${
     JSON.stringify(expression.location)
@@ -32,8 +38,10 @@ lexicalEnvironment(scope, ${
 ${
     [
       ...bindings,
-      ...(body.length === 0 ? ["return null;"] : body),
+      ...(body.length === 0
+        ? [asynchronous ? "return {value: null};" : "return null;"]
+        : body),
     ].join("\n")
   }
-})(${carrier})`;
+}${asynchronous ? "))" : ")"}(${carrier})`;
 }

@@ -74,6 +74,12 @@ export function shiftExpressionLocations(
         location: move(expression.location),
         value: shiftExpressionLocations(expression.value, start),
       };
+    case "await":
+      return {
+        ...expression,
+        location: move(expression.location),
+        expression: shiftExpressionLocations(expression.expression, start),
+      };
     case "javascript":
       return {
         ...expression,
@@ -86,6 +92,7 @@ export function shiftExpressionLocations(
     case "quotation":
       return { ...expression, location: move(expression.location) };
     case "import":
+    case "javascriptImport":
     case "fetch":
     case "symbol":
     case "number":

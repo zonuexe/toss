@@ -1,0 +1,12 @@
+// This slice uses a JS handler. Toss callback adapters are the next step.
+#hono bind: %jsImport('npm:hono@4.12.12').
+#app bind: %js(module = $hono; new module.Hono()).
+%js(app = $app; app.get('/hello/:name', c => c.text('Hello, ' + c.req.param('name') + '!'))).
+// Promise waiting is still explicit JavaScript in this example.
+%js(app = $app; Promise.resolve(app.request('/hello/Toss')).then(async response => {
+  if (response.status !== 200) throw new Error('Unexpected response status');
+  const body = await response.text();
+  if (body !== 'Hello, Toss!') throw new Error('Unexpected response body');
+  console.log(response.status);
+  console.log(body);
+})).

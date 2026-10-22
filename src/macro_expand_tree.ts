@@ -55,9 +55,17 @@ export function expandSyntax(
       following.delimiter === "()"
     ) {
       if (
-        ["%quote", "%js", "%import", "%export", "%extend", "%super"].includes(
-          node.spelling,
-        )
+        [
+          "%quote",
+          "%js",
+          "%jsImport",
+          "%import",
+          "%export",
+          "%extend",
+          "%super",
+          "%async",
+          "%await",
+        ].includes(node.spelling)
       ) {
         if (node.spelling === "%quote") {
           output.push(node, following);

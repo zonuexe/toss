@@ -99,6 +99,9 @@ export function lex(
     } else if (character === "%" && source.startsWith("%import(", offset)) {
       for (let index = 0; index < 8; index++) advance();
       tokens.push({ kind: "importOpen", location: start });
+    } else if (character === "%" && source.startsWith("%jsImport(", offset)) {
+      for (let index = 10; index > 0; index--) advance();
+      tokens.push({ kind: "javascriptImportOpen", location: start });
     } else if (character === "%" && source.startsWith("%export(", offset)) {
       for (let index = 0; index < 8; index++) advance();
       tokens.push({ kind: "exportOpen", location: start });
@@ -108,6 +111,12 @@ export function lex(
     } else if (character === "%" && source.startsWith("%super(", offset)) {
       for (let index = 0; index < 7; index++) advance();
       tokens.push({ kind: "superOpen", location: start });
+    } else if (character === "%" && source.startsWith("%async(", offset)) {
+      for (let index = 0; index < 7; index++) advance();
+      tokens.push({ kind: "asyncOpen", location: start });
+    } else if (character === "%" && source.startsWith("%await(", offset)) {
+      for (let index = 0; index < 7; index++) advance();
+      tokens.push({ kind: "awaitOpen", location: start });
     } else if (character === "%" && source.startsWith("%js(", offset)) {
       const macro = readJavaScriptMacro(source, offset, (position) => {
         let macroLine = line;

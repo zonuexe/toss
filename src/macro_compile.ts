@@ -11,10 +11,13 @@ import { type SyntaxGroup, syntaxGroup, type SyntaxNode } from "./syntax.ts";
 const BUILTINS = new Set([
   "quote",
   "js",
+  "jsImport",
   "import",
   "export",
   "extend",
   "super",
+  "async",
+  "await",
 ]);
 type MacroDeclaration = {
   readonly name: string;

@@ -2,7 +2,11 @@ import type { Expression } from "./ast.ts";
 import { parseArithmeticBody } from "./arithmetic_parser.ts";
 import { parseBlock } from "./block_parser.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
-import { parseExport, parseImport } from "./module_parser.ts";
+import {
+  parseExport,
+  parseImport,
+  parseJavaScriptImport,
+} from "./module_parser.ts";
 import type { Token } from "./token.ts";
 
 export type PrimaryParseContext = {
@@ -19,6 +23,45 @@ export function parsePrimary(context: PrimaryParseContext): Expression {
   switch (token.kind) {
     case "importOpen":
       return parseImport(context, token.location);
+    case "javascriptImportOpen":
+      return parseJavaScriptImport(context, token.location);
+    case "asyncOpen": {
+      if (context.current().kind !== "openBrace") {
+        throw new TossSyntaxError(
+          token.location,
+          "%async requires one literal Block.",
+        );
+      }
+      const parsed = parseBlock(context, context.advance().location);
+      if (context.current().kind !== "closeParen") {
+        throw new TossSyntaxError(
+          context.current().location,
+          "Expected ')' after %async Block.",
+        );
+      }
+      context.advance();
+      if (parsed.kind !== "block") {
+        throw new TypeError("Expected parsed Block.");
+      }
+      return { ...parsed, asynchronous: true };
+    }
+    case "awaitOpen": {
+      if (context.current().kind === "closeParen") {
+        throw new TossSyntaxError(
+          token.location,
+          "%await requires one expression.",
+        );
+      }
+      const expression = context.pipeline();
+      if (context.current().kind !== "closeParen") {
+        throw new TossSyntaxError(
+          context.current().location,
+          "Expected ')' after %await expression.",
+        );
+      }
+      context.advance();
+      return { kind: "await", expression, location: token.location };
+    }
     case "exportOpen":
       return parseExport(context, token.location);
     case "javascript":

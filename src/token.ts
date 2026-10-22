@@ -19,9 +19,12 @@ export type Token =
     readonly location: SourceLocation;
   }
   | { readonly kind: "importOpen"; readonly location: SourceLocation }
+  | { readonly kind: "javascriptImportOpen"; readonly location: SourceLocation }
   | { readonly kind: "exportOpen"; readonly location: SourceLocation }
   | { readonly kind: "extendOpen"; readonly location: SourceLocation }
   | { readonly kind: "superOpen"; readonly location: SourceLocation }
+  | { readonly kind: "asyncOpen"; readonly location: SourceLocation }
+  | { readonly kind: "awaitOpen"; readonly location: SourceLocation }
   | {
     readonly kind: "javascript";
     readonly prefix: string;

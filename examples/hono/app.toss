@@ -1,0 +1,51 @@
+#hono bind: %jsImport('npm:hono@4.12.12').
+#app bind: %js(module = $hono; new module.Hono()).
+#traceKey bind: '__toss_sample_trace'.
+
+#middleware bind: %async({ context,next ->
+  #trace bind: [].
+  %js(c = $context, trace = $trace, key = $traceKey; (c.set(key, trace), trace.push('before'))).
+  %await(%js(n = $next; n())).
+  %js(c = $context, trace = $trace;
+    (trace.push('after'), c.header('X-Toss', 'after'), c.header('X-Toss-Trace', trace.join(',')))
+  ).
+  $Nil
+}) asJSCallback.
+%js(app = $app, middleware = $middleware; app.use('*', middleware)).
+
+#hello bind: { context ->
+  #name bind: %js(c = $context; c.req.param('name')).
+  %js(c = $context, key = $traceKey; c.get(key).push('handler')).
+  %js(c = $context, name = $name; c.text('Hello, ' + name + '!'))
+} asJSCallback.
+%js(app = $app, handler = $hello; app.get('/hello/:name', handler)).
+
+#echo bind: %async({ context ->
+  #body bind: %await(%js(c = $context; c.req.json())).
+  #valid bind: %js(body = $body;
+    body !== null && typeof body === 'object' && !Array.isArray(body) &&
+      typeof body.name === 'string'
+  ).
+  %js(c = $context, key = $traceKey; c.get(key).push('handler')).
+  $valid ifTrue: {
+    #payload bind: ($Object clone |> %extend(name: %js(body = $body; body.name), language: 'Toss')).
+    %js(c = $context, payload = $payload; c.json(payload, 201))
+  } ifFalse: {
+    %js(c = $context; c.json({ error: 'name must be a String' }, 400))
+  }
+}) asJSCallback.
+%js(app = $app, handler = $echo; app.post('/echo', handler)).
+
+#onError bind: { error,context ->
+  #invalidJson bind: %js(error = $error;
+    error instanceof SyntaxError || error?.cause instanceof SyntaxError
+  ).
+  $invalidJson ifTrue: {
+    %js(c = $context; c.json({ error: 'invalid body' }, 400))
+  } ifFalse: {
+    %js(c = $context; c.json({ error: 'internal server error' }, 500))
+  }
+} asJSCallback.
+%js(app = $app, handler = $onError; app.onError(handler)).
+
+%export($app).

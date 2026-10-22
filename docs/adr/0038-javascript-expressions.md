@@ -54,7 +54,8 @@ conversion errors also identify the macro position.
 
 ## Deferred
 
-Toss Block callback adapters, awaiting Promises, a dedicated JS module/package
-loader, and host output capture remain separate work. Calling JS APIs keeps
-their ordinary host behavior and permissions; this macro does not capture
-`console.log` output or limit side effects.
+Later slices add static JS module imports in ADR-40 and explicit Block callback
+adapters in ADR-41. ADR-42 adds explicit Toss async Blocks and await, without
+changing the synchronous JavaScript expression context of `%js`. Host output
+capture remains separate work. Calling JS APIs keeps their ordinary host behavior and permissions;
+this macro does not capture `console.log` output or limit side effects.

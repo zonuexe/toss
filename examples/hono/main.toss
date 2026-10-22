@@ -1,0 +1,2 @@
+#app bind: %import('./app.toss').
+%js(app = $app; Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.args[0] ?? '8000') }, app.fetch)).

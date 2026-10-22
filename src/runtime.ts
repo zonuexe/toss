@@ -1,3 +1,5 @@
+import { runtimeAsyncJavaScript } from "./runtime_async.ts";
+
 export const runtimeJavaScript = `class TossRuntimeError extends Error {
   constructor(reason, location, options) {
     super(location.file + ":" + location.line + ":" + location.column +
@@ -17,14 +19,16 @@ function formatMacroTrace(trace) {
 
 const hostValues = new WeakMap();
 const hostReferences = new WeakMap();
+const javascriptCallbacks = new WeakMap();
 const javascriptReferenceMessages = new Map([
   ["toString", function() { return "<js>"; }],
   ["inspect", function() { return "<js>"; }],
   ["print", function(receiver, context) { return writeOutput(receiver, "toString", context); }],
   ["dump", function(receiver, context) { return writeOutput(receiver, "inspect", context); }],
 ]);
+${runtimeAsyncJavaScript}
 
-function isJavaScriptReference(value) { return hostValues.has(value); }
+function isJavaScriptReference(value) { return hostValues.has(value) || asyncResults.has(value); }
 
 function fromJavaScript(value, context) {
   if (value === null || value === undefined) return null;
@@ -42,11 +46,41 @@ function fromJavaScript(value, context) {
 }
 
 function toJavaScript(value, context) {
+  if (asyncResults.has(value)) {
+    const previous = asyncHostPromises.get(value);
+    if (previous !== undefined) return previous;
+    const promise = asyncResults.get(value).then((result) =>
+      toJavaScript(result.value, context)
+    );
+    asyncHostPromises.set(value, promise);
+    hostValues.set(value, promise);
+    hostReferences.set(promise, value);
+    return promise;
+  }
   if (isJavaScriptReference(value)) return hostValues.get(value);
   if (typeof value === "function") throw new TossRuntimeError("Toss Blocks cannot be passed directly to JavaScript.", context.location);
   if (typeof value === "bigint") throw new TossRuntimeError("Unsupported Toss value for JavaScript.", context.location);
   if (typeof value === "number" && !Number.isFinite(value)) throw new TossRuntimeError("Unsupported Toss value for JavaScript.", context.location);
   return value;
+}
+
+function createJavaScriptCallback(receiver, context) {
+  const previous = javascriptCallbacks.get(receiver);
+  if (previous !== undefined) return fromJavaScript(previous, context);
+  const callback = function(...hostArguments) {
+    const expected = receiver.length;
+    if (hostArguments.length < expected) {
+      throw new TossRuntimeError("JavaScript callback expects " + expected +
+        " argument(s), received " + hostArguments.length + ".", context.location);
+    }
+    const argumentsList = hostArguments.slice(0, expected).map((value) =>
+      fromJavaScript(value, context)
+    );
+    const lexicalContext = {location: context.location, environment: context.environment};
+    return toJavaScript(invokeBlock(receiver, argumentsList, lexicalContext), context);
+  };
+  javascriptCallbacks.set(receiver, callback);
+  return fromJavaScript(callback, context);
 }
 
 function evaluateJavaScript(source, values, context, names) {
@@ -125,6 +159,11 @@ function send(receiver, message, context) {
     throw new TossRuntimeError("Unknown message " + keyDescription(key) + " for " + type + ".", context.location);
   }
   return implementation(receiver, context, ...message.arguments);
+}
+
+function pipelineSend(input) {
+  return (receiver, message, context) =>
+    send(receiver, {name: message.name, arguments: [...message.arguments, input]}, context);
 }
 
 function parentSend(args, context, scope) {
@@ -218,7 +257,8 @@ function invokeBlock(receiver, args, context) {
   if (receiver.length !== args.length) {
     throw new TossRuntimeError("Block expects " + receiver.length + " argument(s), received " + args.length + ".", context.location);
   }
-  return Reflect.apply(receiver, context.methodReceiver, args);
+  const result = Reflect.apply(receiver, context.methodReceiver, args);
+  return asyncBlockFunctions.has(receiver) ? asyncResult(result) : result;
 }
 
 function writeOutput(receiver, conversion, context) {

@@ -31,6 +31,12 @@ Attributes はデータの付与を表し、その表現・構文の決定は延
 
 ローカルモジュールは `#Math bind: %import('./math.toss').` で読み込みます。依存先はファイル直下の `%export(値).` で1つの値を公開し、ファイル全体の実行後に返します。初期化は最初の import 実行時に一度だけ行い、依存先をまとめた単一 JavaScript を生成します。標準ライブラリの参照方法は未決定です。[ADR-37](docs/adr/0037-local-modules.md) と [実行例](examples/modules/main.toss) を参照してください。
 
+JS モジュールは `#hono bind: %jsImport('npm:hono@4.12.12').` のように読み込みます。ESM 名前空間を JS 参照値として返すため、`%js(module = $hono; new module.Hono())` のように export を利用します。引数は空でない文字列リテラル1つで、バックスラッシュや ASCII 空白・制御文字は使えません。パッケージ名・ホストのスキーム・絶対 URL を扱い、相対 JS パスは未対応です。static import を生成するので、未実行の Block 内も含めて Toss 本体より先にホストが初期化します。コンパイル時には読み込みも実行もしません。[ADR-40](docs/adr/0040-static-javascript-imports.md)、[標準モジュールの例](examples/javascript-imports.toss)、[Hono の読込例](examples/hono/imports.toss) を参照してください。
+
+Toss Block は `{ n -> $n add: 1 } asJSCallback` で明示的に JS コールバックへ変換できます。JS 参照値として `%js` に渡すと、引数を Toss 値へ、戻り値を JS 値へ変換して呼び出します。Block が宣言した引数より多い分は変換前に無視し、不足はエラーにします。通常の Toss Block 呼び出しは引き続き厳密な引数個数を要求します。同じ Block の変換は同じコールバックを返し、JS の `this` は無視して捕捉した `$self` や親メソッドの文脈を維持します。Promise は自動で待ちません。[ADR-41](docs/adr/0041-javascript-callback-adapters.md) と [Toss で書く Hono ハンドラの例](examples/hono/callbacks.toss) を参照してください。
+
+非同期 Block は `%async({ context -> ... })` で作り、その内部で `%await(expression)` を使って待機します。Toss の非同期結果や通常値を待つ場合は元の Toss 値と同一性を保ち、JS の Promise・thenable を待つ場合は既存の JS→Toss 変換を適用します。普通の Toss Object の `then` スロットは呼び出しません。入れ子の Block もそれぞれ明示的な非同期境界で、通常の Block 内やファイル直下では await できません。`asJSCallback` と組み合わせると Hono の非同期ハンドラや `next()` の前後に処理を行うミドルウェアを書けます。[ADR-42](docs/adr/0042-explicit-async-blocks.md) と [JSON ボディ読取・ミドルウェアの例](examples/hono/README.md) を参照してください。
+
 Object の動的呼び出しは `perform:` と、引数を配列で渡す `perform:withArguments:` に対応しています。文字列とシンボルは別のキーとして扱い、継承したメソッドにも実際のレシーバを `$self` として渡します。実行例は [perform-arguments.toss](examples/perform-arguments.toss)、仕様は [ADR-33](docs/adr/0033-perform-with-arguments.md) を参照してください。
 
 `$Symbol generateUnique` は呼び出すたびに新しいシンボルを作ります。名前から再生成できず、動的キーとメッセージ呼び出しに使えます。キーを持つ側はアクセスできます。詳しくは [ADR-34](docs/adr/0034-unique-symbols.md) を参照してください。

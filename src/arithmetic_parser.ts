@@ -81,6 +81,9 @@ function operand(cursor: ArithmeticCursor): Expression {
     case "extendOpen":
     case "superOpen":
     case "importOpen":
+    case "javascriptImportOpen":
+    case "asyncOpen":
+    case "awaitOpen":
     case "exportOpen":
     case "javascript":
     case "quotation":

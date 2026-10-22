@@ -32,6 +32,12 @@ export function evaluateMacroExpression(
         expression.location,
       );
     case "block":
+      if (expression.asynchronous === true) {
+        return unsupported(
+          here,
+          "Async Blocks are unavailable during macro evaluation.",
+        );
+      }
       return {
         kind: "macroBlock",
         parameters: expression.parameters,
@@ -118,8 +124,10 @@ export function evaluateMacroExpression(
       );
     }
     case "import":
+    case "javascriptImport":
     case "export":
     case "javascript":
+    case "await":
       return unsupported(
         here,
         `${expression.kind} is unavailable during macro evaluation.`,

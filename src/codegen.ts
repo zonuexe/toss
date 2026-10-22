@@ -1,41 +1,10 @@
 import type { Expression } from "./ast.ts";
-import { blockValue, blockValueWithArguments } from "./prelude/block.ts";
-import { outputDump, outputPrint } from "./prelude/output.ts";
-import { stringInspect, stringToString } from "./prelude/string.ts";
-import {
-  objectAt,
-  objectAtPut,
-  objectClone,
-  objectPerform,
-  objectPerformWithArguments,
-} from "./prelude/object.ts";
-import {
-  symbolBind,
-  symbolEquals,
-  symbolGenerateUnique,
-  symbolInspect,
-  symbolToString,
-} from "./prelude/symbol.ts";
-import { nilInspect, nilToString } from "./prelude/nil.ts";
-import { numberMessages } from "./prelude/number.ts";
-import { booleanMessages } from "./prelude/boolean.ts";
-import { arrayMessages } from "./prelude/array.ts";
-import { runtimeJavaScript } from "./runtime.ts";
 import { emitBlock } from "./codegen_block.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
-
-type PreludeMessage = { readonly name: string; readonly javascript: string };
-
-function messageTable(
-  name: string,
-  messages: readonly PreludeMessage[],
-): string {
-  return `const ${name} = new Map([\n${
-    messages.map((message) =>
-      `  [${JSON.stringify(message.name)}, ${message.javascript}]`
-    ).join(",\n")
-  }\n]);`;
-}
+import { collectJavaScriptImports } from "./javascript_import_analysis.ts";
+import { emitJavaScriptImports } from "./javascript_import_codegen.ts";
+import { containsDirectAwait } from "./codegen_analysis.ts";
+import { fileRootSetupLines, runtimePreludeLines } from "./codegen_prelude.ts";
 
 function emit(expression: Expression, scope = "environment"): string {
   const context = `{location: ${
@@ -57,8 +26,16 @@ function emit(expression: Expression, scope = "environment"): string {
       return `initializeModule(moduleImports.get(${
         JSON.stringify(expression.path)
       }), ${context}.location)`;
+    case "javascriptImport": {
+      const specifier = JSON.stringify(expression.specifier);
+      return `fromJavaScript(javascriptImportNames.get(${specifier}), ${context})`;
+    }
     case "export":
       return `(moduleExport = ${emit(expression.value, scope)})`;
+    case "await":
+      return `(await awaitToss(${
+        emit(expression.expression, scope)
+      }, ${context})).value`;
     case "javascript":
       return `evaluateJavaScript(${JSON.stringify(expression.source)}, [${
         expression.bindings.map((binding) => emit(binding.value, scope)).join(
@@ -87,14 +64,14 @@ function emit(expression: Expression, scope = "environment"): string {
         expression.arguments.map((argument) => emit(argument, scope)).join(", ")
       }], ${context}, ${scope})`;
     case "pipeline":
-      return `((piped) => send(${emit(expression.receiver, scope)}, {name: ${
-        JSON.stringify(expression.name)
-      }, arguments: [${
-        [
-          ...expression.arguments.map((argument) => emit(argument, scope)),
-          "piped",
-        ].join(", ")
-      }]}, ${context}))(${emit(expression.input, scope)})`;
+      return `pipelineSend(${emit(expression.input, scope)})(${
+        emit(
+          expression.receiver,
+          scope,
+        )
+      }, {name: ${JSON.stringify(expression.name)}, arguments: [${
+        expression.arguments.map((argument) => emit(argument, scope)).join(", ")
+      }]}, ${context})`;
     case "extend": {
       const entries = expression.entries.map((entry) =>
         `send(extendTarget, {name: "at:put:", arguments: [${
@@ -103,11 +80,19 @@ function emit(expression: Expression, scope = "environment"): string {
           JSON.stringify(entry.location)
         }, environment: ${scope}});`
       );
+      const asynchronous = expression.entries.some((entry) =>
+        containsDirectAwait(entry.key) || containsDirectAwait(entry.value)
+      );
       const body = [
         `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget) || isJavaScriptReference(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);`,
         ...entries,
-        "return extendTarget;",
+        asynchronous ? "return {value: extendTarget};" : "return extendTarget;",
       ].join("\n");
+      if (asynchronous) {
+        return `(await (async (extendTarget) => {\n${body}\n})(${
+          emit(expression.input, scope)
+        })).value`;
+      }
       return `((extendTarget) => {\n${body}\n})(${
         emit(expression.input, scope)
       })`;
@@ -121,69 +106,12 @@ function emit(expression: Expression, scope = "environment"): string {
   }
 }
 
-function runtimePreludeLines(): string[] {
-  return [
-    '"use strict";',
-    messageTable("blockMessages", [blockValue]),
-    `const blockKeywordSelector = new RegExp(${
-      JSON.stringify(blockValueWithArguments.selectorPattern)
-    });`,
-    `const blockKeywordMessage = ${blockValueWithArguments.javascript};`,
-    messageTable("stringMessages", [
-      stringToString,
-      stringInspect,
-      outputPrint,
-      outputDump,
-    ]),
-    messageTable("numberMessages", numberMessages),
-    messageTable("booleanMessages", booleanMessages),
-    messageTable("arrayMessages", arrayMessages),
-    messageTable("symbolMessages", [
-      symbolToString,
-      symbolInspect,
-      symbolEquals,
-      outputPrint,
-      outputDump,
-      symbolBind,
-    ]),
-    messageTable("nilMessages", [
-      nilToString,
-      nilInspect,
-      outputPrint,
-      outputDump,
-    ]),
-    messageTable("objectMessages", [
-      objectClone,
-      objectAt,
-      objectAtPut,
-      objectPerform,
-      objectPerformWithArguments,
-      outputPrint,
-      outputDump,
-    ]),
-    runtimeJavaScript,
-  ];
-}
-
-function fileRootSetupLines(imports: readonly string[] = []): string[] {
-  return [
-    "const environment = {bindings: new Map(), parent: null, root: null, scopes: new Map(), superContext: undefined};",
-    "environment.root = environment; environment.scopes.set(0, environment);",
-    "let moduleExport = null;",
-    `const moduleImports = new Map([${imports.join(", ")}]);`,
-    "const objectRoot = Object.create(null);",
-    'environment.bindings.set(Symbol.for("Object"), objectRoot);',
-    "const symbolRoot = Object.create(null);",
-    `Object.defineProperty(symbolRoot, "generateUnique", {value: ${symbolGenerateUnique}, writable: true, enumerable: true, configurable: true});`,
-    'environment.bindings.set(Symbol.for("Symbol"), symbolRoot);',
-    'environment.bindings.set(Symbol.for("Nil"), null);',
-    'environment.bindings.set(Symbol.for("True"), true);',
-    'environment.bindings.set(Symbol.for("False"), false);',
-  ];
-}
-
 export function generate(expressions: readonly Expression[]): string {
-  const lines = [...runtimePreludeLines(), ...fileRootSetupLines()];
+  const lines = [
+    ...emitJavaScriptImports(collectJavaScriptImports(expressions)),
+    ...runtimePreludeLines(),
+    ...fileRootSetupLines(),
+  ];
   for (const expression of expressions) lines.push(emit(expression) + ";");
   return lines.join("\n") + "\n";
 }
@@ -197,7 +125,11 @@ export function generateBundle(
   modules: readonly BundleModule[],
   entry: number,
 ): string {
+  const javascriptImports = collectJavaScriptImports(
+    modules.flatMap((module) => module.expressions),
+  );
   const lines = [
+    ...emitJavaScriptImports(javascriptImports),
     ...runtimePreludeLines(),
     "const moduleInitializers = [];",
     "const moduleStates = new Map();",

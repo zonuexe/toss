@@ -513,8 +513,8 @@ file. Import expressions can be delayed inside Blocks; initialization runs
 once at first use, and both values and failures are cached. All dependencies
 are validated at compile time, including unused imports, and cycles are errors.
 Runtime code is shared, while root Environments and root Objects are separate.
-Toss imports of standard-library paths, packages, URLs and JavaScript files are
-future work.
+Toss standard-library paths remain undecided. Use `%jsImport` below for host
+JavaScript packages and URLs; relative JavaScript files remain future work.
 See [ADR-37](docs/adr/0037-local-modules.md).
 
 ```sh
@@ -556,9 +556,11 @@ and `dump`. Non-finite Numbers, BigInt and Symbol results are runtime errors.
 
 Toss Object, Array and Symbol values pass directly to JS. Nil passes as `null`;
 direct Block arguments are rejected. Object and Array contents are not copied
-or recursively checked. Callback adapters remain future work. Promise results
-are references and are not awaited; outer `await` is not supported. JS syntax
-errors are compile-time errors. JS exceptions are runtime errors at the macro
+or recursively checked. Use `asJSCallback` below for explicit callback adapters.
+Promise results are references and are not automatically awaited. Use Toss
+`%await` in an explicit async Block, described below. Outer JavaScript `await`
+inside `%js` is still unsupported. JS syntax errors are compile-time errors.
+JS exceptions are runtime errors at the macro
 position and retain the original thrown value as their cause.
 
 ```sh
@@ -570,6 +572,153 @@ The compiler uses a pinned Acorn parser; generated files do not depend on it.
 The generated file includes the interop runtime. Host APIs use their normal
 permissions and side effects. JS output is not captured by Toss. See
 [ADR-38](docs/adr/0038-javascript-expressions.md).
+
+## JavaScript modules
+
+Use `%jsImport('specifier')` to load an ESM namespace as a JS reference. Access
+its named or default exports through `%js`:
+
+```text
+#path bind: %jsImport('node:path').
+%js(module = $path; module.basename('/tmp/hello.txt')) print.
+
+// Deno resolves this pinned npm package when the generated file runs.
+#hono bind: %jsImport('npm:hono@4.12.12').
+#app bind: %js(module = $hono; new module.Hono()).
+```
+
+The argument must be one nonempty literal String with no backslash or ASCII
+whitespace/control characters. Bare names, host schemes and absolute URLs are
+passed to the host unchanged. Relative paths, root paths and Windows drive
+paths are not supported. Bare names use the host's package or import-map setup.
+
+Imports become static namespace imports in the generated ESM file. Identical
+specifier strings share one import across bundled Toss files. JS dependencies
+initialize before any Toss code, including imports inside uncalled Blocks or
+unused Toss dependencies. Compilation does not fetch or execute them. Module
+resolution and initialization errors come from the host during ESM loading.
+Existing Toss module imports keep their lazy initialization rules.
+
+```sh
+mise exec -- deno task compile examples/javascript-imports.toss -o out/javascript-imports.js
+mise exec -- deno run --no-config out/javascript-imports.js
+mise exec -- deno task compile examples/hono/imports.toss -o out/hono/imports.js
+mise exec -- deno run --no-config out/hono/imports.js
+```
+
+The Hono import example uses a JS handler to exercise package loading and an
+in-memory request. The callback example below uses a Toss handler. Explicit
+async Blocks below add Promise waiting inside Toss handlers.
+Local macros can generate `%jsImport` at runtime, but cannot load JS modules
+during macro expansion. See [ADR-40](docs/adr/0040-static-javascript-imports.md).
+
+## JavaScript callbacks
+
+Convert a Block explicitly with the Prelude message `asJSCallback`:
+
+```text
+#callback bind: { n -> $n add: 1 } asJSCallback.
+%js(callback = $callback; [1, 2, 3].map(callback).join(',')) print.
+```
+
+The adapter is a JS reference. It converts the first N JS arguments for a
+Block with N parameters, ignores extra arguments before conversion, and
+rejects missing arguments. Explicit `undefined` counts as an argument and
+becomes Nil. Ordinary Toss Block calls still require an exact argument count.
+
+Incoming values use the existing JS-to-Toss rules. The result uses the
+Toss-to-JS rules: a Response reference returns the original JS Response, Nil
+returns `null`, and an ordinary Block result is rejected. Objects and Arrays
+are not converted recursively. Promise references can pass through, but the
+adapter does not await them or suspend Toss code.
+
+Repeated conversions of the same Block return the same callback and JS
+reference. Different Blocks get different callbacks. JS `this` is ignored;
+the Block keeps its lexical bindings, `$self`, parent-call context and macro
+scope. Each invocation has fresh locals. Body errors propagate to JS unchanged.
+An enclosing `%js` still wraps thrown errors as its original cause. Boundary
+errors use the first conversion site, including when a cached adapter is reused.
+
+For Hono, a one-parameter Toss Block can use Context and ignore Next:
+
+```text
+#handler bind: { context ->
+  %js(c = $context; c.text('Hello, Toss!'))
+} asJSCallback.
+%js(app = $app, handler = $handler; app.get('/', handler)).
+```
+
+```sh
+mise exec -- deno task compile examples/hono/callbacks.toss -o out/hono/callbacks.js
+mise exec -- deno run --no-config out/hono/callbacks.js
+```
+
+The complete example uses a Toss handler, path parameters, a JSON response and
+native CORS middleware. JS drives the test requests and Promise waiting.
+Compile-time macros cannot create host callbacks, but may generate a runtime
+conversion. See [ADR-41](docs/adr/0041-javascript-callback-adapters.md).
+
+## Async Blocks and await
+
+Create an async Block with `%async({ parameters -> body })`. It keeps normal
+Block messages, lexical bindings, exact arity, `$self` and parent calls. Calling
+it starts its body and returns an opaque async result displayed as `<js>`.
+Use `%await(expression)` inside that Block to suspend and obtain a value:
+
+```text
+#handler bind: %async({ context ->
+  #body bind: %await(%js(c = $context; c.req.json())).
+  %js(c = $context, body = $body; c.json(body))
+}) asJSCallback.
+%js(app = $app, handler = $handler; app.post('/echo', handler)).
+```
+
+Both forms require an adjacent `(` and one argument; `%async` requires a
+literal Block. An await belongs to its directly enclosing async Block. Ordinary
+nested Blocks cannot await, even inside an async Block. File-root await and
+async Toss module initialization are not supported. Local macros may generate
+runtime async forms, but cannot execute them during expansion.
+
+Awaiting a Toss async result preserves its original Toss value and identity,
+including Objects, Arrays and Blocks. Awaiting an ordinary value also preserves
+it and still suspends. A plain Toss Object's `then` slot is never interpreted
+as Promise behavior. A JS reference uses native await/thenable resolution and
+the existing JS-to-Toss conversion: a native fulfilled Array stays a JS
+reference. The final expression is the Block's Toss result; explicitly await
+a nested async result or native Promise when its fulfilled value is needed.
+
+No ordinary message implicitly awaits a result. For a mixed conditional,
+await the selected branch and mark only the asynchronous branch:
+
+```text
+%await($condition ifTrue: %async({
+  %await($promise)
+}) ifFalse: {
+  42
+})
+```
+
+Passing a Toss async result to JS exposes a stable Promise whose fulfilled
+value uses Toss-to-JS conversion. `asJSCallback` therefore returns a real
+Promise of Response to Hono. Internal Toss values are not forced through JS
+conversion until exported. Body errors reject with their Toss source position
+and macro trace. Native rejections identify the await site and keep their
+original value as cause.
+
+```sh
+mise exec -- deno task compile examples/hono/verify.toss -o out/hono/verify.js
+mise exec -- deno run --no-config out/hono/verify.js
+# Start the sample HTTP server on localhost:8000.
+mise exec -- deno task compile examples/hono/main.toss -o out/hono/main.js
+mise exec -- deno run --no-config --allow-net=127.0.0.1 out/hono/main.js 8000
+```
+
+The [Hono sample app](examples/hono/README.md) separates its shared app, server
+entry and in-memory verifier. It awaits JSON request bodies and middleware
+`next()`, handles concurrent requests and malformed JSON, and checks middleware
+order and response headers without retaining global request logs.
+Cancellation, async collection helpers and language-level exception handling
+remain future work. See [ADR-42](docs/adr/0042-explicit-async-blocks.md).
 
 ## Local expression macros
 
