@@ -1,0 +1,13 @@
+#Base bind: ($Object clone |> %extend(
+  base: 10,
+  'score:': { n -> $self base add: $n },
+  label: { 'parent' }
+)).
+#Middle bind: ($Base clone |> %extend(
+  'score:': { n -> %super($n add: 1) add: 2 },
+  label: { { %super() } }
+)).
+#Leaf bind: ($Middle clone |> %extend(base: 20)).
+($Leaf score: 3) print.
+#later bind: $Leaf label.
+$later value print.

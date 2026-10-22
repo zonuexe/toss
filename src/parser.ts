@@ -22,6 +22,30 @@ export function parse(source: string, file: string): readonly Expression[] {
     switch (token.kind) {
       case "arithmeticOpen":
         return parseArithmeticBody({ current, advance });
+      case "superOpen": {
+        const args: Expression[] = [];
+        if (current().kind !== "closeParen") {
+          args.push(pipeline());
+          while (current().kind === "comma") {
+            index++;
+            if (current().kind === "closeParen") {
+              throw new TossSyntaxError(
+                current().location,
+                "Expected an expression after ','.",
+              );
+            }
+            args.push(pipeline());
+          }
+        }
+        if (current().kind !== "closeParen") {
+          throw new TossSyntaxError(
+            current().location,
+            "Expected ')' after %super arguments.",
+          );
+        }
+        index++;
+        return { kind: "super", arguments: args, location: token.location };
+      }
       case "number":
         return { kind: "number", value: token.value, location: token.location };
       case "string":
@@ -152,6 +176,7 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "openBrace":
           case "openBracket":
           case "arrow":
+          case "superOpen":
             break;
           default: {
             const exhaustive: never = following;

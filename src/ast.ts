@@ -56,4 +56,9 @@ export type Expression =
     readonly name: string;
     readonly arguments: readonly Expression[];
     readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "super";
+    readonly arguments: readonly Expression[];
+    readonly location: SourceLocation;
   };

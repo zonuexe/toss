@@ -52,7 +52,7 @@ function emit(expression: Expression, scope = "environment"): string {
       );
       return `((captured) => function(${
         parameters.join(", ")
-      }) {\nconst scope = {bindings: new Map(), parent: captured};\nif (this !== undefined) scope.bindings.set(Symbol.for("self"), this);\n${
+      }) {\nconst invocation = this;\nconst scope = {bindings: new Map(), parent: captured, superContext: invocation?.kind === "tossInvocation" ? invocation.context : captured.superContext};\nif (invocation?.kind === "tossInvocation") scope.bindings.set(Symbol.for("self"), invocation.context.receiver);\n${
         [...bindings, ...(body.length === 0 ? ["return null;"] : body)].join(
           "\n",
         )
@@ -76,6 +76,10 @@ function emit(expression: Expression, scope = "environment"): string {
       }, arguments: [${
         expression.arguments.map((argument) => emit(argument, scope)).join(", ")
       }]}, ${context})`;
+    case "super":
+      return `parentSend([${
+        expression.arguments.map((argument) => emit(argument, scope)).join(", ")
+      }], ${context}, ${scope})`;
     case "pipeline":
       return `((piped) => send(${emit(expression.receiver, scope)}, {name: ${
         JSON.stringify(expression.name)

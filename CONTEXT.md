@@ -7,6 +7,9 @@ Toss is a programming language built around dictionaries and message passing.
 **Method**:
 A block used as an object's response to a message, with its receiver called `self`.
 
+**Parent call**:
+A call under the current method key that starts above the selected slot's owner and keeps the original receiver. Arguments are always explicit.
+
 **Prelude library**:
 The library that provides Toss's basic messages, including `print`.
 

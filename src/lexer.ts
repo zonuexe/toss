@@ -21,6 +21,7 @@ export type Token =
     readonly location: SourceLocation;
   }
   | { readonly kind: "extendOpen"; readonly location: SourceLocation }
+  | { readonly kind: "superOpen"; readonly location: SourceLocation }
   | {
     readonly kind: "fetch";
     readonly name: string;
@@ -150,6 +151,9 @@ export function lex(
     } else if (character === "%" && source.startsWith("%extend(", offset)) {
       for (let index = 0; index < 8; index++) advance();
       tokens.push({ kind: "extendOpen", location: start });
+    } else if (character === "%" && source.startsWith("%super(", offset)) {
+      for (let index = 0; index < 7; index++) advance();
+      tokens.push({ kind: "superOpen", location: start });
     } else if (character === "#" || character === "$") {
       advance();
       tokens.push({

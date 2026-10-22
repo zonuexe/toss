@@ -79,6 +79,7 @@ function operand(cursor: ArithmeticCursor): Expression {
     case "string":
     case "symbol":
     case "extendOpen":
+    case "superOpen":
     case "unary":
     case "keyword":
     case "period":

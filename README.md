@@ -14,7 +14,7 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 | --- | --- | --- |
 | `#name` | Named symbol: a runtime value | Implemented |
 | `$name` | Fetch a binding | Implemented |
-| `%name(...)` | Explicit named compiler macro | Only `%extend(...)` is implemented |
+| `%name(...)` | Explicit named compiler macro | `%extend(...)` and `%super(...)` are implemented |
 | `%name ... .` | Statement macro | Planned |
 | `@name` | Call-related Annotation | Planned; declaration and application details are undecided |
 | `$()` | Dedicated arithmetic macro | Implemented; `%` inside arithmetic remains remainder |
@@ -276,6 +276,17 @@ argument types are runtime errors. Arithmetic `==` and `!=` also work on
 fetched Symbols through ordinary message dispatch. See
 [ADR-35](docs/adr/0035-symbol-equality.md).
 
+Use `%super()` or `%super(expr, expr)` inside a method to call its parent
+implementation under the same exact key. Arguments are always explicit;
+`%super()` never forwards the current method's arguments. Lookup starts above
+the selected slot owner, preserving the original receiver as `$self`, including
+when the override was inherited by another child. Parent slots are resolved
+live after argument evaluation. Escaped Blocks retain their parent-call context
+for ordinary `value` calls; installing a Block as a method supplies fresh context.
+Missing context or parent implementations are runtime errors. String keys can
+reach Object prelude fallbacks, while Symbol keys cannot. See
+[ADR-36](docs/adr/0036-parent-calls.md) and the runnable example below.
+
 ```sh
 mise exec -- deno task compile examples/extend.toss -o out/extend.js
 mise exec -- deno run out/extend.js
@@ -291,6 +302,8 @@ mise exec -- deno task compile examples/unique-symbols.toss -o out/unique-symbol
 mise exec -- deno run out/unique-symbols.js
 mise exec -- deno task compile examples/symbol-equality.toss -o out/symbol-equality.js
 mise exec -- deno run out/symbol-equality.js
+mise exec -- deno task compile examples/super.toss -o out/super.js
+mise exec -- deno run out/super.js
 ```
 
 ```sh

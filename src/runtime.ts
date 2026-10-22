@@ -26,20 +26,31 @@ function inspectArray(receiver, context) {
   }
 }
 
+function slotOwner(receiver, key) {
+  let owner = receiver;
+  while (owner !== null && !Object.hasOwn(owner, key)) owner = Object.getPrototypeOf(owner);
+  return owner;
+}
+
+function invokeSlot(receiver, key, owner, args, context) {
+  const slot = Reflect.get(owner, key, receiver);
+  if (typeof slot === "function") {
+    return invokeBlock(slot, args, {
+      ...context,
+      methodReceiver: {kind: "tossInvocation", context: {receiver, key, owner}},
+    });
+  }
+  if (args.length === 0) return slot;
+  throw new TossRuntimeError("Object slot " + keyDescription(key) + " is not callable.", context.location);
+}
+
 function send(receiver, message, context) {
   const type = Array.isArray(receiver) ? "Array" : receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
   const messages = type === "Array" ? arrayMessages : type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
   const key = message.name;
-  if (type === "Object" && Reflect.has(receiver, key)) {
-    const slot = Reflect.get(receiver, key);
-    if (typeof slot === "function") {
-      return invokeBlock(slot, message.arguments, {
-        ...context,
-        methodReceiver: receiver,
-      });
-    }
-    if (message.arguments.length === 0) return slot;
-    throw new TossRuntimeError("Object slot " + keyDescription(key) + " is not callable.", context.location);
+  const owner = type === "Object" ? slotOwner(receiver, key) : null;
+  if (owner !== null) {
+    return invokeSlot(receiver, key, owner, message.arguments, context);
   }
   const implementation = typeof key === "string" ? messages.get(key) ??
     (type === "Block" && blockKeywordSelector.test(key) ? blockKeywordMessage : undefined) : undefined;
@@ -47,6 +58,21 @@ function send(receiver, message, context) {
     throw new TossRuntimeError("Unknown message " + keyDescription(key) + " for " + type + ".", context.location);
   }
   return implementation(receiver, context, ...message.arguments);
+}
+
+function parentSend(args, context, scope) {
+  const method = scope.superContext;
+  if (method === undefined) throw new TossRuntimeError("%super requires a method invocation context.", context.location);
+  const owner = Object.getPrototypeOf(method.owner);
+  const parentOwner = slotOwner(owner, method.key);
+  if (parentOwner !== null) {
+    return invokeSlot(method.receiver, method.key, parentOwner, args, context);
+  }
+  const implementation = typeof method.key === "string" ? objectMessages.get(method.key) : undefined;
+  if (implementation === undefined) throw new TossRuntimeError("Unknown parent message " + keyDescription(method.key) + ".", context.location);
+  const expected = (method.key.match(/:/g) ?? []).length;
+  if (args.length !== expected) throw new TossRuntimeError("Message " + keyDescription(method.key) + " expects " + expected + " argument(s), received " + args.length + ".", context.location);
+  return implementation(method.receiver, context, ...args);
 }
 
 function numberArgument(value, context) {
