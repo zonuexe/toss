@@ -1,10 +1,64 @@
 export const runtimeJavaScript = `class TossRuntimeError extends Error {
-  constructor(reason, location) {
+  constructor(reason, location, options) {
     super(location.file + ":" + location.line + ":" + location.column +
       ": RuntimeError: " + reason);
     this.name = "TossRuntimeError";
     this.stack = this.name + ": " + this.message;
+    if (options !== undefined) this.cause = options.cause;
   }
+}
+
+const hostValues = new WeakMap();
+const hostReferences = new WeakMap();
+const javascriptReferenceMessages = new Map([
+  ["toString", function() { return "<js>"; }],
+  ["inspect", function() { return "<js>"; }],
+  ["print", function(receiver, context) { return writeOutput(receiver, "toString", context); }],
+  ["dump", function(receiver, context) { return writeOutput(receiver, "inspect", context); }],
+]);
+
+function isJavaScriptReference(value) { return hostValues.has(value); }
+
+function fromJavaScript(value, context) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if ((typeof value === "object" && value !== null) || typeof value === "function") {
+    const previous = hostReferences.get(value);
+    if (previous !== undefined) return previous;
+    const reference = Object.freeze(Object.create(null));
+    hostValues.set(reference, value);
+    hostReferences.set(value, reference);
+    return reference;
+  }
+  throw new TossRuntimeError("Unsupported JavaScript result type " + typeof value + ".", context.location);
+}
+
+function toJavaScript(value, context) {
+  if (isJavaScriptReference(value)) return hostValues.get(value);
+  if (typeof value === "function") throw new TossRuntimeError("Toss Blocks cannot be passed directly to JavaScript.", context.location);
+  if (typeof value === "bigint") throw new TossRuntimeError("Unsupported Toss value for JavaScript.", context.location);
+  if (typeof value === "number" && !Number.isFinite(value)) throw new TossRuntimeError("Unsupported Toss value for JavaScript.", context.location);
+  return value;
+}
+
+function evaluateJavaScript(source, values, context, names) {
+  const nativeValues = values.map((value) => toJavaScript(value, context));
+  let result;
+  try {
+    let privateName = "__tossJsValues";
+    while (source.includes(privateName) || names.includes(privateName)) privateName += "_";
+    const declarations = names.map((name, index) => "const " + name + " = " + privateName + "[" + index + "];").join("\\n");
+    const evaluator = Function(
+      privateName,
+      "\\\"use strict\\\";\\n" + declarations +
+        "\\nreturn (function(){\\\"use strict\\\"; return (" + source +"); }).call(void 0);",
+    );
+    result = Reflect.apply(evaluator, undefined, [nativeValues]);
+  } catch (error) {
+    throw new TossRuntimeError("JavaScript expression threw.", context.location, {cause: error});
+  }
+  return fromJavaScript(result, context);
 }
 
 const activeArrayInspections = new Set();
@@ -45,6 +99,12 @@ function invokeSlot(receiver, key, owner, args, context) {
 }
 
 function send(receiver, message, context) {
+  if (isJavaScriptReference(receiver)) {
+    const implementation = javascriptReferenceMessages.get(message.name);
+    if (implementation === undefined) throw new TossRuntimeError("Unknown message " + keyDescription(message.name) + " for JS reference.", context.location);
+    if (message.arguments.length !== 0) throw new TossRuntimeError("JS reference message does not accept arguments.", context.location);
+    return implementation(receiver, context);
+  }
   const type = Array.isArray(receiver) ? "Array" : receiver === null ? "Nil" : typeof receiver === "boolean" ? "Boolean" : typeof receiver === "number" ? "Number" : typeof receiver === "symbol" ? "Symbol" : typeof receiver === "function" ? "Block" : typeof receiver === "object" ? "Object" : typeof receiver === "string" ? "String" : "Unsupported";
   const messages = type === "Array" ? arrayMessages : type === "Nil" ? nilMessages : type === "Boolean" ? booleanMessages : type === "Number" ? numberMessages : type === "Symbol" ? symbolMessages : type === "Block" ? blockMessages : type === "Object" ? objectMessages : type === "String" ? stringMessages : new Map();
   const key = message.name;

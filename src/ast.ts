@@ -71,4 +71,13 @@ export type Expression =
     readonly kind: "export";
     readonly value: Expression;
     readonly location: SourceLocation;
+  }
+  | {
+    readonly kind: "javascript";
+    readonly bindings: readonly {
+      readonly name: string;
+      readonly value: Expression;
+    }[];
+    readonly source: string;
+    readonly location: SourceLocation;
   };

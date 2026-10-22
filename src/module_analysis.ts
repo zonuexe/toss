@@ -60,6 +60,9 @@ export function analyzeModule(
       case "super":
         expression.arguments.forEach((item) => visit(item, false));
         return;
+      case "javascript":
+        expression.bindings.forEach((binding) => visit(binding.value, false));
+        return;
       case "string":
       case "number":
       case "symbol":

@@ -14,7 +14,7 @@ Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power 
 | --- | --- | --- |
 | `#name` | Named symbol: a runtime value | Implemented |
 | `$name` | Fetch a binding | Implemented |
-| `%name(...)` | Explicit named compiler macro | `%extend(...)`, `%super(...)`, `%import(...)`, and `%export(...)` are implemented |
+| `%name(...)` | Explicit named compiler macro | `%extend(...)`, `%super(...)`, `%import(...)`, `%export(...)`, and `%js(...)` are implemented |
 | `%name ... .` | Statement macro | Planned |
 | `@name` | Call-related Annotation | Planned; declaration and application details are undecided |
 | `$()` | Dedicated arithmetic macro | Implemented; `%` inside arithmetic remains remainder |
@@ -513,7 +513,8 @@ file. Import expressions can be delayed inside Blocks; initialization runs
 once at first use, and both values and failures are cached. All dependencies
 are validated at compile time, including unused imports, and cycles are errors.
 Runtime code is shared, while root Environments and root Objects are separate.
-Standard-library paths, packages, URLs and JavaScript imports are future work.
+Toss imports of standard-library paths, packages, URLs and JavaScript files are
+future work.
 See [ADR-37](docs/adr/0037-local-modules.md).
 
 ```sh
@@ -523,12 +524,59 @@ mise exec -- deno run out/modules.js
 
 The output contains the dependencies and needs no Toss source files at runtime.
 
+## JavaScript expressions
+
+Use `%js(...)` to evaluate one JavaScript expression. Explicit bindings pass
+Toss values into immutable JS locals:
+
+```text
+#n bind: 3.
+%js(x = $n; Math.max(x, 7)) print.
+
+// A function body may contain statements.
+%js((() => { const x = 3; return x * 2; })()) print.
+
+// Object and Array mutations are shared with Toss.
+#items bind: [1, 2, 3].
+%js(xs = $items; xs.push(4)).
+$items dump.
+```
+
+Bindings are evaluated once, left to right, in the Toss Environment. JS runs
+in strict mode with host globals and the explicit bindings; it does not inherit
+the compiler's local variables. Without the binding separator `;`, the whole
+body is a JS expression, including assignments. Keep a method call together,
+such as `%js(console.log('Hello'))`, to use JS's ordinary `this` rules.
+
+JS strings, finite Numbers and Booleans become ordinary Toss values; `null`
+and `undefined` become Nil. Objects, Arrays and Functions become opaque JS
+references displayed as `<js>`. Pass a reference back into `%js` to operate on
+its original value. References only support `toString`, `inspect`, `print`
+and `dump`. Non-finite Numbers, BigInt and Symbol results are runtime errors.
+
+Toss Object, Array and Symbol values pass directly to JS. Nil passes as `null`;
+direct Block arguments are rejected. Object and Array contents are not copied
+or recursively checked. Callback adapters remain future work. Promise results
+are references and are not awaited; outer `await` is not supported. JS syntax
+errors are compile-time errors. JS exceptions are runtime errors at the macro
+position and retain the original thrown value as their cause.
+
+```sh
+mise exec -- deno task compile examples/javascript.toss -o out/javascript.js
+mise exec -- deno run out/javascript.js
+```
+
+The compiler uses a pinned Acorn parser; generated files do not depend on it.
+The generated file includes the interop runtime. Host APIs use their normal
+permissions and side effects. JS output is not captured by Toss. See
+[ADR-38](docs/adr/0038-javascript-expressions.md).
+
 ## ✨ Why Toss?
 
 * **Zero Reserved Keywords:** No `class`, `if`, or `let`. Control flows and declarations are elegantly handled through messages and hygienic macros (`%`).
 * **Pure Message Passing:** Computation happens exclusively by tossing messages to objects (dictionaries). Unary, keyword, and block messages handle everything.
 * **Pipeline by Default:** The `|>` operator allows data to flow naturally from left to right, injecting results as the final argument of the next message.
-* **JavaScript Target:** Compiles to JavaScript with runtime support for message dispatch and `$self`. JavaScript interop and further optimizations are planned.
+* **JavaScript Target:** Compiles to JavaScript with runtime support for message dispatch and `$self`. Use `%js(...)` for explicit JavaScript interop; further optimizations are planned.
 * **Algebraic Effects Built-in:** Advanced error handling and state management without the `try/catch` boilerplate, powered entirely by blocks and dictionaries.
 
 ## 🚀 A Glimpse of the Syntax

@@ -82,6 +82,7 @@ function operand(cursor: ArithmeticCursor): Expression {
     case "superOpen":
     case "importOpen":
     case "exportOpen":
+    case "javascript":
     case "unary":
     case "keyword":
     case "period":

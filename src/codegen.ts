@@ -72,6 +72,14 @@ function emit(expression: Expression, scope = "environment"): string {
       }), ${context}.location)`;
     case "export":
       return `(moduleExport = ${emit(expression.value, scope)})`;
+    case "javascript":
+      return `evaluateJavaScript(${JSON.stringify(expression.source)}, [${
+        expression.bindings.map((binding) => emit(binding.value, scope)).join(
+          ", ",
+        )
+      }], ${context}, ${
+        JSON.stringify(expression.bindings.map((binding) => binding.name))
+      })`;
     case "array":
       return `[${
         expression.elements.map((item) => emit(item, scope)).join(", ")
@@ -104,7 +112,7 @@ function emit(expression: Expression, scope = "environment"): string {
         }, environment: ${scope}});`
       );
       const body = [
-        `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);`,
+        `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget) || isJavaScriptReference(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);`,
         ...entries,
         "return extendTarget;",
       ].join("\n");

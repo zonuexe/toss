@@ -5,6 +5,7 @@ import { TossSyntaxError } from "./diagnostic.ts";
 import { parseExtend } from "./extend_parser.ts";
 import { parseExport, parseImport } from "./module_parser.ts";
 import { lex, type Token } from "./lexer.ts";
+import { parseJavaScriptBindings } from "./javascript_bindings.ts";
 
 export function parse(source: string, file: string): readonly Expression[] {
   const { tokens, end } = lex(source, file);
@@ -27,6 +28,12 @@ export function parse(source: string, file: string): readonly Expression[] {
       case "exportOpen": {
         return parseExport({ current, advance, pipeline }, token.location);
       }
+      case "javascript":
+        return parseJavaScriptBindings(
+          token,
+          file,
+          (text) => parse(text, file),
+        );
       case "arithmeticOpen":
         return parseArithmeticBody({ current, advance });
       case "superOpen": {
@@ -186,6 +193,7 @@ export function parse(source: string, file: string): readonly Expression[] {
           case "superOpen":
           case "importOpen":
           case "exportOpen":
+          case "javascript":
             break;
           default: {
             const exhaustive: never = following;

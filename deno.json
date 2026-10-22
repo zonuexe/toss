@@ -4,6 +4,9 @@
     "test": "deno test --allow-read --allow-write --allow-run=deno tests/",
     "check": "deno fmt --check && deno lint && deno check src/cli.ts tests/*.ts"
   },
+  "imports": {
+    "acorn": "npm:acorn@8.15.0"
+  },
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true,

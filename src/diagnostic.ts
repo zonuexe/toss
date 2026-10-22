@@ -7,7 +7,7 @@ export type SourceLocation = {
 export class TossSyntaxError extends Error {
   override readonly name = "TossSyntaxError";
 
-  constructor(readonly location: SourceLocation, reason: string) {
+  constructor(readonly location: SourceLocation, readonly reason: string) {
     super(
       `${location.file}:${location.line}:${location.column}: SyntaxError: ${reason}`,
     );

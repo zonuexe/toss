@@ -1,5 +1,6 @@
 import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
 import { comparisonOperatorAt } from "./comparison_operator.ts";
+import { readJavaScriptMacro } from "./javascript_parser.ts";
 import { type Token } from "./token.ts";
 export type { Token } from "./token.ts";
 
@@ -107,6 +108,28 @@ export function lex(
     } else if (character === "%" && source.startsWith("%super(", offset)) {
       for (let index = 0; index < 7; index++) advance();
       tokens.push({ kind: "superOpen", location: start });
+    } else if (character === "%" && source.startsWith("%js(", offset)) {
+      const macro = readJavaScriptMacro(source, offset, (position) => {
+        let macroLine = line;
+        let macroColumn = column;
+        for (let index = offset; index < position;) {
+          const point = source.codePointAt(index);
+          const part = point === undefined ? "" : String.fromCodePoint(point);
+          if (part === "\n") {
+            macroLine++;
+            macroColumn = 1;
+          } else if (part !== "\r") macroColumn++;
+          index += part.length;
+        }
+        return { file, line: macroLine, column: macroColumn };
+      });
+      while (offset < macro.end) advance();
+      tokens.push({
+        kind: "javascript",
+        prefix: macro.prefix,
+        source: macro.source,
+        location: start,
+      });
     } else if (character === "#" || character === "$") {
       advance();
       tokens.push({

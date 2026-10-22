@@ -28,6 +28,9 @@ A dictionary of named bindings. Each file has a root environment, and each block
 **Module**:
 A Toss file with private bindings and one public value. Local imports share the same initialized value for each canonical file within an execution.
 
+**JS reference**:
+An opaque Toss value that holds a JavaScript object or function. JavaScript expressions can use the original value, while Toss messages only provide its display.
+
 **Named symbol**:
 A value that identifies a name, written as `#name`. Named symbols are interned within one execution, and receive `bind:` to store a value under that name in the current environment.
 

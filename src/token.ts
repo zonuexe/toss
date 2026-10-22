@@ -22,6 +22,12 @@ export type Token =
   | { readonly kind: "extendOpen"; readonly location: SourceLocation }
   | { readonly kind: "superOpen"; readonly location: SourceLocation }
   | {
+    readonly kind: "javascript";
+    readonly prefix: string;
+    readonly source: string;
+    readonly location: SourceLocation;
+  }
+  | {
     readonly kind: "fetch";
     readonly name: string;
     readonly location: SourceLocation;
