@@ -34,17 +34,21 @@ for (const [name, source, output] of cases) {
   });
 }
 
-for (const conversion of ["inspect", "toString", "print", "dump"] as const) {
-  Deno.test(`array ${conversion} rejects an object without inspect`, async () => {
+for (
+  const [conversion, output] of [
+    ["inspect", ""],
+    ["toString", ""],
+    ["print", "[<object>]\n"],
+    ["dump", "[<object>]\n"],
+  ] as const
+) {
+  Deno.test(`array ${conversion} inspects an ordinary Object`, async () => {
     const result = await execute(
       `'before' print.\n  [$Object clone] ${conversion}.`,
     );
-    assert.notEqual(result.code, 0);
-    assert.equal(text(result.stdout), "before\n");
-    assert.match(
-      text(result.stderr),
-      /fixture\.toss:2:19: RuntimeError: Unknown message "inspect" for Object\./,
-    );
+    assert.equal(result.code, 0, text(result.stderr));
+    assert.equal(text(result.stdout), `before\n${output}`);
+    assert.equal(text(result.stderr), "");
   });
 }
 
@@ -62,7 +66,7 @@ Deno.test("array display errors keep custom method body locations", async () => 
 
 Deno.test("array display releases every active ancestor after an error", async () => {
   const setup = compile(
-    "#nested bind: [$Object clone]. #outer bind: [$nested].",
+    "#bad bind: $Object clone. $bad at: 'inspect' put: { $missing }. #nested bind: [$bad]. #outer bind: [$nested].",
     "fixture.toss",
   );
   // Catch at the JavaScript boundary; Toss error handling is not implemented.

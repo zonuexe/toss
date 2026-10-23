@@ -12,6 +12,8 @@ Smalltalkの動的なメッセージパシング、Lispのメタプログラミ�
 
 端末入力にはDeno組み込みの `node:readline` を使い、カーソル移動による編集と上下キーでの行履歴の呼び出しに対応します。履歴はプロセス内だけで保持し、ディスクには保存しません。
 
+Objectの既定の `inspect` は `<object>`、Blockは本体を実行せず `<block>` を返します。Object自身や継承した `inspect` スロットを優先し、独自の検査処理で発生したエラーはそのまま報告します。
+
 `:help` で操作一覧、`:cancel` で入力中の内容を破棄、`:reset` で新しいセッション、`:quit` で終了します。初版ではファイル・JS・共有マクロのimportとexportは未対応です。[ADR-44](docs/adr/0044-initial-repl.md) に範囲を記録しています。
 
 ## シンボル・マクロ・annotation

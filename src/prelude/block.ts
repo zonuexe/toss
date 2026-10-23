@@ -5,6 +5,13 @@ export const blockValue = {
 }`,
 } as const;
 
+export const blockInspect = {
+  name: "inspect",
+  javascript: `function inspect() {
+  return "<block>";
+}`,
+} as const;
+
 export const blockAsJavaScriptCallback = {
   name: "asJSCallback",
   javascript: `function asJSCallback(receiver, context) {

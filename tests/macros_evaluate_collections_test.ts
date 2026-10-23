@@ -118,6 +118,10 @@ Deno.test("Array collection callbacks snapshot, preserve identities, and validat
 
 Deno.test("Array inspection dispatches, snapshots, and cleans active paths", () => {
   assert.equal(
+    evaluate("[$Object clone, { $missing }] inspect."),
+    "[<object>, <block>]",
+  );
+  assert.equal(
     evaluate(
       "#xs bind: [$Nil, 2]. #obj bind: ($Object clone |> %extend(inspect: { $xs at: 1 put: 9. 'item' })). $xs at: 0 put: $obj. $xs inspect.",
     ),
@@ -127,6 +131,9 @@ Deno.test("Array inspection dispatches, snapshots, and cleans active paths", () 
     evaluate("#xs bind: [$Nil]. $xs at: 0 put: $xs. $xs inspect."),
     "[[...]]",
   );
-  assert.throws(() => evaluate("[$Object clone] inspect."), TossSyntaxError);
+  assert.equal(
+    evaluate("[$Object clone, { $missing }] inspect."),
+    "[<object>, <block>]",
+  );
   assert.equal(evaluate("[[$Nil]] inspect. [1] inspect."), "[1]");
 });

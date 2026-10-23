@@ -19,6 +19,16 @@ const cases = [
     "[child]\n",
   ],
   [
+    "ordinary Object and Block inspection does not invoke block bodies",
+    "#called bind: $False. [($Object clone), { $called bind: $True }, %async({ $called bind: $True })] dump. $called dump.",
+    "[<object>, <block>, <block>]\nfalse\n",
+  ],
+  [
+    "JavaScript references remain opaque",
+    "[%js(Math), %js(Math.max)] dump.",
+    "[<js>, <js>]\n",
+  ],
+  [
     "string inspect slot is data",
     "#o bind: $Object clone. $o at: 'inspect' put: 'stored'. [$o] dump.",
     "[stored]\n",

@@ -5,6 +5,13 @@ export const objectClone = {
 }`,
 } as const;
 
+export const objectInspect = {
+  name: "inspect",
+  javascript: `function inspect() {
+  return "<object>";
+}`,
+} as const;
+
 export const objectAt = {
   name: "at:",
   javascript: `function at(receiver, context, key) {

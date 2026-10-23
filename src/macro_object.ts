@@ -65,6 +65,10 @@ export function performObjectPrelude(
     noArguments();
     return { kind: "macroObject", slots: new Map(), prototype: receiver };
   }
+  if (name === "inspect") {
+    noArguments();
+    return "<object>";
+  }
   if (name === "at:") {
     if (args.length !== 1) {
       return fail(context, "Message at: expects one argument.");

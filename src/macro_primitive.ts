@@ -159,6 +159,10 @@ export function performMacro(
     receiver !== null && typeof receiver === "object" && "kind" in receiver &&
     (receiver.kind === "macroBlock" || receiver.kind === "macroNative")
   ) {
+    if (name === "inspect") {
+      unary();
+      return "<block>";
+    }
     if (name === "value") return invokeMacroBlock(receiver, args, context);
     if (/^(value:)+$/.test(name)) {
       return invokeMacroBlock(receiver, args, context);

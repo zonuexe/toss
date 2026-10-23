@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execute, text } from "./helpers.ts";
 
-Deno.test("missing element inspect reports the array send location", async () => {
-  const result = await execute("[{}] dump.");
-  assert.notEqual(result.code, 0);
-  assert.match(text(result.stderr), /Unknown message "inspect" for Block/);
-  assert.match(text(result.stderr), /fixture\.toss:1:6: RuntimeError:/);
+Deno.test("ordinary Object and Block values have default inspection", async () => {
+  const result = await execute(
+    "[($Object clone), { 'unused' print }, %async({ 1 })] dump.",
+  );
+  assert.equal(result.code, 0, text(result.stderr));
+  assert.equal(text(result.stdout), "[<object>, <block>, <block>]\n");
+  assert.equal(text(result.stderr), "");
 });
 
 Deno.test("invalid custom inspect result reports array send location", async () => {

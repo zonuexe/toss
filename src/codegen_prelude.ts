@@ -1,5 +1,6 @@
 import {
   blockAsJavaScriptCallback,
+  blockInspect,
   blockValue,
   blockValueWithArguments,
 } from "./prelude/block.ts";
@@ -9,6 +10,7 @@ import {
   objectAt,
   objectAtPut,
   objectClone,
+  objectInspect,
   objectPerform,
   objectPerformWithArguments,
 } from "./prelude/object.ts";
@@ -41,7 +43,11 @@ function messageTable(
 export function runtimePreludeLines(): string[] {
   return [
     '"use strict";',
-    messageTable("blockMessages", [blockValue, blockAsJavaScriptCallback]),
+    messageTable("blockMessages", [
+      blockValue,
+      blockAsJavaScriptCallback,
+      blockInspect,
+    ]),
     `const blockKeywordSelector = new RegExp(${
       JSON.stringify(blockValueWithArguments.selectorPattern)
     });`,
@@ -71,6 +77,7 @@ export function runtimePreludeLines(): string[] {
     ]),
     messageTable("objectMessages", [
       objectClone,
+      objectInspect,
       objectAt,
       objectAtPut,
       objectPerform,

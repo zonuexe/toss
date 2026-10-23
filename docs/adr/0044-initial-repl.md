@@ -15,6 +15,10 @@ using `inspect`, prefixed with `=> `. Macro-only cells have no runtime result.
 `print` retains its output and receiver-return behavior, so automatic display
 can follow explicit output. Do not insert periods or implicitly await results.
 
+The prelude provides `<object>` and `<block>` as default inspection results,
+so binding these values does not cause a display error. Custom Object
+inspection retains priority and can still fail; see ADR-10.
+
 One session keeps its Environment, Prelude roots, object identities, closures
 and local macro definitions. Macro lookup retains source order and provenance
 across cells, with a fresh expansion budget per submission. Keep a stable

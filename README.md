@@ -37,9 +37,10 @@ value is shown with `inspect`; macro-only submissions show no value. Explicit
 `print` output is followed by the normal result display because `print`
 returns its receiver.
 
-Values without an `inspect` message, such as a plain Block or Object, report
-a display error after evaluation. A binding created by that evaluation still
-exists and can be used in later input.
+Plain Objects inspect as `<object>` and Blocks as `<block>` without inspecting
+slots or running Block bodies. Own or inherited Object `inspect` slots take
+priority. A failed custom inspection reports a display error after evaluation;
+any binding created by that evaluation remains available in later input.
 
 | Command | Action |
 | --- | --- |

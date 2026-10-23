@@ -47,6 +47,8 @@ Deno.test("multiline cells, commands, and recovery work in batch input", async (
     "    2].",
     "  $value",
     "}.",
+    "#object bind: $Object clone.",
+    "$object.",
     ":help",
     "$read value.",
     "$missing.",
@@ -56,7 +58,12 @@ Deno.test("multiline cells, commands, and recovery work in batch input", async (
   ].join("\n"));
   assert.equal(result.code, 1);
   assert.match(text(result.stdout), /Toss REPL commands:/);
-  assert.match(text(result.stderr), /Unknown message "inspect" for Block/);
+  assert.doesNotMatch(
+    text(result.stderr),
+    /Unknown message "inspect" for Block/,
+  );
+  assert.match(text(result.stdout), /=> <block>/);
+  assert.match(text(result.stdout), /=> <object>/);
   assert.match(text(result.stdout), /=> \[1, 2\]/);
   assert.match(text(result.stdout), /=> 9/);
   assert.doesNotMatch(text(result.stdout), /=> 10/);

@@ -12,6 +12,22 @@ For named symbols, `toString` returns the name and `inspect` returns `#` followe
 If a conversion message returns a value other than a string, raise a runtime error rather than silently coercing it.
 Debug representations are not guaranteed to be valid Toss source; double-quoted string literals remain deferred.
 
+## Default Object and Block inspection
+
+An Object without an own or inherited string-keyed `inspect` slot answers
+`inspect` with `<object>`. A Block, including an Async Block, answers with
+`<block>` without running its body. These are ordinary prelude messages,
+available in compiled programs, macro evaluation and the REPL. Arrays use
+their existing element inspection and can contain these representations.
+
+The markers do not expose slots, source, captured bindings or identity and
+are not serialization formats. Own and inherited Object inspection slots
+keep priority and the actual receiver. A failing custom inspection is still
+an error; a default must not hide it. Output, Array inspection and the REPL
+still require inspection results to be strings. Opaque JS references retain
+`<js>`. This change does not add normal display conversions or recursive
+object exploration.
+
 `dumpSlots`, `dumpStructure`, `dumpInternals`, and `describe` are possible names for future object exploration operations, not committed APIs.
 
 ## Deferred: output buffering and JavaScript interop

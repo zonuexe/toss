@@ -7,7 +7,10 @@ Deno.test("session keeps bindings, rebinding, and closure identity", () => {
     kind: "value",
     display: "1",
   });
-  assert.equal(session.submit("#read bind: { $x }.").kind, "error");
+  assert.deepEqual(session.submit("#read bind: { $x }."), {
+    kind: "value",
+    display: "<block>",
+  });
   assert.deepEqual(session.submit("#x bind: 2."), {
     kind: "value",
     display: "2",
@@ -26,7 +29,10 @@ Deno.test("session shares mutated arrays and object identity", () => {
     kind: "value",
     display: "[9]",
   });
-  assert.equal(session.submit("#object bind: $Object clone.").kind, "error");
+  assert.deepEqual(session.submit("#object bind: $Object clone."), {
+    kind: "value",
+    display: "<object>",
+  });
   assert.equal(
     session.submit("$object at: 'key' put: 'shared'.").kind,
     "value",
@@ -34,6 +40,18 @@ Deno.test("session shares mutated arrays and object identity", () => {
   assert.deepEqual(session.submit("$object at: 'key'."), {
     kind: "value",
     display: '"shared"',
+  });
+});
+
+Deno.test("session binds and retains Blocks without running their bodies", () => {
+  const session = createReplSession();
+  assert.deepEqual(session.submit("#block bind: { $missing }."), {
+    kind: "value",
+    display: "<block>",
+  });
+  assert.deepEqual(session.submit("$block inspect."), {
+    kind: "value",
+    display: '"<block>"',
   });
 });
 
@@ -107,11 +125,14 @@ Deno.test("runtime failures retain effects and compiled macros", () => {
 
 Deno.test("custom inspect failures recover on the next submission", () => {
   const session = createReplSession();
-  assert.equal(session.submit("#object bind: $Object clone.").kind, "error");
-  assert.equal(
-    session.submit("$object at: 'inspect' put: { 1 }.").kind,
-    "error",
-  );
+  assert.deepEqual(session.submit("#object bind: $Object clone."), {
+    kind: "value",
+    display: "<object>",
+  });
+  assert.deepEqual(session.submit("$object at: 'inspect' put: { 1 }."), {
+    kind: "value",
+    display: "<block>",
+  });
   const failure = session.submit("$object.");
   assert.equal(failure.kind, "error");
   assert.match(failure.message, /inspect must return a string/);

@@ -38,9 +38,14 @@ for (
   });
 }
 
-for (const source of ["[$Object clone] inspect.", "[{}] inspect."]) {
-  Deno.test(`compile-time Array display has no invented representations: ${source}`, () => {
-    assert.throws(() => evaluate(source), TossSyntaxError);
+for (
+  const [source, expected] of [
+    ["[$Object clone] inspect.", "[<object>]"],
+    ["[{}] inspect.", "[<block>]"],
+  ] as const
+) {
+  Deno.test(`compile-time Array display uses default inspection: ${source}`, () => {
+    assert.equal(evaluate(source), expected);
   });
 }
 
