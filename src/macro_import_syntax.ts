@@ -21,8 +21,13 @@ export type ResolvedMacroImport = {
 export function findMacroImports(
   source: string,
   file: string,
+  startLocation?: SourceLocation,
 ): readonly MacroImportRequest[] {
-  const program = readSyntax(source, { file, deferUnclosedGroups: true });
+  const program = readSyntax(source, {
+    file,
+    deferUnclosedGroups: true,
+    ...(startLocation === undefined ? {} : { startLocation }),
+  });
   const imports: MacroImportRequest[] = [];
   let statement: SyntaxNode[] = [];
   for (const node of program.children) {
@@ -49,6 +54,56 @@ export function findMacroImports(
     );
   }
   return imports;
+}
+
+export function rejectNestedMacroImports(nodes: readonly SyntaxNode[]): void {
+  let statement: SyntaxNode[] = [];
+  for (const node of nodes) {
+    if (isPeriod(node)) {
+      if (macroImport(statement) === undefined) {
+        rejectNestedMacroImportsInNodes(statement);
+      }
+      statement = [];
+    } else statement.push(node);
+  }
+  rejectNestedMacroImportsInNodes(statement);
+}
+
+function rejectNestedMacroImportsInNodes(nodes: readonly SyntaxNode[]): void {
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index];
+    if (node === undefined) continue;
+    const following = nodes[index + 1];
+    if (
+      node.kind === "token" && node.spelling === "%macroImport" &&
+      node.flavor === "macro"
+    ) {
+      throw new TossSyntaxError(
+        node.origin.location,
+        "%macroImport is only valid as a standalone REPL cell-root directive.",
+      );
+    }
+    if (
+      node.kind === "token" && following?.kind === "group" &&
+      ((node.flavor === "macro" && node.spelling === "%quote") ||
+        node.flavor === "quasiquote")
+    ) {
+      index++;
+      continue;
+    }
+    switch (node.kind) {
+      case "group":
+        rejectNestedMacroImportsInNodes(node.children);
+        break;
+      case "token":
+        if (node.rawJavaScript !== undefined) {
+          rejectNestedMacroImportsInNodes(node.rawJavaScript.prefix);
+        }
+        break;
+      default:
+        assertNever(node);
+    }
+  }
 }
 
 export function macroImport(
@@ -150,6 +205,10 @@ export function sameLocation(
 ): boolean {
   return left.file === right.file && left.line === right.line &&
     left.column === right.column;
+}
+
+function assertNever(value: never): never {
+  throw new TypeError(`Unexpected syntax node: ${JSON.stringify(value)}`);
 }
 
 export function registerImported(

@@ -1,0 +1,2 @@
+#offset bind: 1.
+%export($Object clone |> %extend('increment:': { value -> $value add: $offset })).

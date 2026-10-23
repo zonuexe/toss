@@ -57,9 +57,10 @@ does not discard pending input. Commands are REPL operations, not Toss syntax.
 
 ## Deferred
 
-Reject `%import`, `%jsImport`, `%macroImport` and `%export` before cell effects,
-including unused nested forms. Import resolution, module caching and shared
-macro library loading need a later session-aware design. Ordinary `%js` keeps
+ADR-45 adds explicit `%macroImport` with per-session loading and reset behavior.
+ADR-46 adds local `%import` with persistent, lazy module initialization.
+Reject `%jsImport` and cell `%export` before cell effects,
+including unused nested forms. Ordinary `%js` keeps
 its existing explicit host boundary and host permissions. Root `%await` stays
 invalid; async values use the existing JS reference display. Disk history,
 completion, implicit awaiting and background-task management are deferred.

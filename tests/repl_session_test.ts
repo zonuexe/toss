@@ -152,9 +152,7 @@ Deno.test("JavaScript runtime errors retain their host cause in diagnostics", ()
 Deno.test("unsupported import forms are rejected inside unused code", () => {
   for (
     const form of [
-      "%import('x')",
       "%jsImport('x')",
-      "%macroImport('x')",
       "%export(1)",
     ]
   ) {

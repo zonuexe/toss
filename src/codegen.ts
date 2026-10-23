@@ -116,19 +116,55 @@ export function generate(expressions: readonly Expression[]): string {
   return lines.join("\n") + "\n";
 }
 
-export function generateFragment(expressions: readonly Expression[]): string {
+export function generateFragment(
+  expressions: readonly Expression[],
+  imports?: readonly { readonly path: string; readonly id: number }[],
+): string {
   const previous = expressions.slice(0, -1).map((expression) =>
     emit(expression) + ";"
   );
   const final = expressions.at(-1);
   if (final === undefined) return "";
-  return `(function(){\n${previous.join("\n")}\nreturn ${emit(final)};\n})()`;
+  const body = `\n${previous.join("\n")}\nreturn ${emit(final)};\n`;
+  if (imports === undefined) return `(function(){${body}})()`;
+  const entries = imports.map(({ path, id }) =>
+    `[${JSON.stringify(path)}, ${id}]`
+  ).join(", ");
+  return `((moduleImports) => {${body}})(new Map([${entries}]))`;
 }
 
 export type BundleModule = {
   readonly expressions: readonly Expression[];
   readonly imports: readonly { readonly path: string; readonly id: number }[];
 };
+
+export function generateModuleInitializer(module: BundleModule): string {
+  const imports = module.imports.map(({ path, id }) =>
+    `[${JSON.stringify(path)}, ${id}]`
+  );
+  const statements = module.expressions.map((expression) =>
+    `${emit(expression)};`
+  );
+  return `() => {\n${fileRootSetupLines(imports).join("\n")}\n${
+    statements.join("\n")
+  }\nreturn moduleExport;\n}`;
+}
+
+export function moduleRuntimeLines(): string[] {
+  return [
+    "const moduleInitializers = [];",
+    "const moduleStates = new Map();",
+    "function initializeModule(id, location) {",
+    "const previous = moduleStates.get(id);",
+    "if (previous?.state === 'done') return previous.value;",
+    "if (previous?.state === 'failed') throw previous.error;",
+    "if (previous?.state === 'running') throw new TossRuntimeError('Module initialization re-entered.', location);",
+    "moduleStates.set(id, {state: 'running'});",
+    "try { const value = moduleInitializers[id](); moduleStates.set(id, {state: 'done', value}); return value; }",
+    "catch (error) { moduleStates.set(id, {state: 'failed', error}); throw error; }",
+    "}",
+  ];
+}
 
 export function generateBundle(
   modules: readonly BundleModule[],
@@ -140,35 +176,13 @@ export function generateBundle(
   const lines = [
     ...emitJavaScriptImports(javascriptImports),
     ...runtimePreludeLines(),
-    "const moduleInitializers = [];",
-    "const moduleStates = new Map();",
+    ...moduleRuntimeLines(),
   ];
   modules.forEach((module, id) => {
-    const imports = module.imports.map(({ path, id: dependency }) =>
-      `[${JSON.stringify(path)}, ${dependency}]`
+    lines.push(
+      `moduleInitializers[${id}] = ${generateModuleInitializer(module)};`,
     );
-    const statements = module.expressions.map((expression) =>
-      `${emit(expression)};`
-    );
-    lines.push(`moduleInitializers[${id}] = function() {`);
-    lines.push(...fileRootSetupLines(imports));
-    lines.push(...statements, "return moduleExport;", "};");
   });
-  lines.push("function initializeModule(id, location) {");
-  lines.push("const previous = moduleStates.get(id);");
-  lines.push("if (previous?.state === 'done') return previous.value;");
-  lines.push("if (previous?.state === 'failed') throw previous.error;");
-  lines.push(
-    "if (previous?.state === 'running') throw new TossRuntimeError('Module initialization re-entered.', location);",
-  );
-  lines.push("moduleStates.set(id, {state: 'running'});");
-  lines.push(
-    "try { const value = moduleInitializers[id](); moduleStates.set(id, {state: 'done', value}); return value; }",
-  );
-  lines.push(
-    "catch (error) { moduleStates.set(id, {state: 'failed', error}); throw error; }",
-  );
-  lines.push("}");
   lines.push(
     `initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});`,
   );

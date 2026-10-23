@@ -165,7 +165,6 @@ Deno.test("interactive EOF never executes an incomplete cell", async () => {
 
 for (
   const [name, expression] of [
-    ["file import", "{ %import('./missing.toss') }"],
     ["JS import", "{ %jsImport('npm:missing-repl-fixture') }"],
     ["macro import", "{ %macroImport('./missing.toss') }"],
     ["export", "{ %export(1) }"],
@@ -181,3 +180,15 @@ for (
     assert.match(text(result.stderr), /REPL|file-root|top-level/);
   });
 }
+
+Deno.test("interactive validates imports in unused Blocks before cell effects", async () => {
+  const result = await runInput(
+    "'never' print. { %import('./missing.toss') }.\n7.\n",
+  );
+  assert.equal(result.code, 1);
+  assert.equal(text(result.stdout), "=> 7\n");
+  assert.match(
+    text(result.stderr),
+    /Imported file not found|Unable to resolve imported file/,
+  );
+});

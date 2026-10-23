@@ -30,3 +30,6 @@ Selective imports, aliases, private helper exports and runtime bindings in
 macro libraries are deferred. Generated runtime `%import` expressions retain
 the existing consumer-relative resolution; macros should receive runtime
 dependencies through their input rather than hide an import path.
+
+[ADR-45](0045-repl-macro-imports.md) extends the directive to REPL sessions,
+with a captured startup directory and a resettable per-session import cache.

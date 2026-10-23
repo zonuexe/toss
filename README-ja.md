@@ -14,7 +14,11 @@ Smalltalkの動的なメッセージパシング、Lispのメタプログラミ�
 
 Objectの既定の `inspect` は `<object>`、Blockは本体を実行せず `<block>` を返します。Object自身や継承した `inspect` スロットを優先し、独自の検査処理で発生したエラーはそのまま報告します。
 
-`:help` で操作一覧、`:cancel` で入力中の内容を破棄、`:reset` で新しいセッション、`:quit` で終了します。初版ではファイル・JS・共有マクロのimportとexportは未対応です。[ADR-44](docs/adr/0044-initial-repl.md) に範囲を記録しています。
+`:help` で操作一覧、`:cancel` で入力中の内容を破棄、`:reset` で束縛・マクロ定義・モジュールの値・読込記録を消去、`:quit` で終了します。[ADR-44](docs/adr/0044-initial-repl.md) に基本動作を記録しています。
+
+`%macroImport('./examples/repl/macros.toss').` のように、起動ディレクトリを基準に共有マクロを読み込めます。以降の入力で `%increment(4).` を評価すると `5` を返します。同じファイルはセッション内で一度だけ読み込み、編集した内容を再読込するには `:reset` の後に再度importします。[ADR-45](docs/adr/0045-repl-macro-imports.md) を参照してください。
+
+通常のTossモジュールも `#Math bind: %import('./examples/repl/math.toss').` で読み込めます。`$Math increment: 4.` は `5` を返します。依存先の検証は入力の実行前に行い、初期化はimportを初めて実行した時に一度だけ行います。モジュール内の束縛は非公開で、依存先のパスはそのファイルを基準に解決します。読み込んだ値と初期化エラーはセッション内で保持し、編集内容の再読込には `:reset` を使います。JSモジュールのimportとREPL入力からのexportは未対応です。読み込むTossファイル内でも `%jsImport` はまだ使えません。[ADR-46](docs/adr/0046-repl-local-modules.md) を参照してください。
 
 ## シンボル・マクロ・annotation
 

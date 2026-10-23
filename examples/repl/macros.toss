@@ -1,0 +1,1 @@
+%macro(#increment, { syntax -> %`((%,($syntax)) add: 1) }).

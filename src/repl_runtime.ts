@@ -1,17 +1,21 @@
 import type { SourceLocation } from "./diagnostic.ts";
+import { moduleRuntimeLines } from "./codegen.ts";
 import { fileRootSetupLines, runtimePreludeLines } from "./codegen_prelude.ts";
 
 type RuntimeBridge = {
   readonly evaluate: (generated: string) => unknown;
   readonly inspect: (value: unknown, location: SourceLocation) => unknown;
+  readonly registerModule: (id: number, generated: string) => void;
 };
 
 export function createReplRuntime(): RuntimeBridge {
   const bridgeSource = [
     ...runtimePreludeLines(),
     ...fileRootSetupLines(),
+    ...moduleRuntimeLines(),
     "return Object.freeze({",
     "evaluate(generated) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { if (error instanceof TossRuntimeError) return {kind: 'runtimeError', message: runtimeDiagnostic(error)}; throw error; } },",
+    "registerModule(id, generated) { moduleInitializers[id] = eval(generated); },",
     "inspect(value, location) {",
     "const context = {location, environment};",
     "try { const result = send(value, {name: 'inspect', arguments: []}, context);",
@@ -36,5 +40,6 @@ export function createReplRuntime(): RuntimeBridge {
 function isRuntimeBridge(value: unknown): value is RuntimeBridge {
   if (typeof value !== "object" || value === null) return false;
   return typeof Reflect.get(value, "evaluate") === "function" &&
-    typeof Reflect.get(value, "inspect") === "function";
+    typeof Reflect.get(value, "inspect") === "function" &&
+    typeof Reflect.get(value, "registerModule") === "function";
 }

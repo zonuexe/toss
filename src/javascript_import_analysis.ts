@@ -3,15 +3,24 @@ import type { Expression } from "./ast.ts";
 export function collectJavaScriptImports(
   expressions: readonly Expression[],
 ): readonly string[] {
-  const specifiers: string[] = [];
-  const seen = new Set<string>();
+  return [
+    ...new Set(
+      collectJavaScriptImportExpressions(expressions).map((item) =>
+        item.specifier
+      ),
+    ),
+  ];
+}
+
+export function collectJavaScriptImportExpressions(
+  expressions: readonly Expression[],
+): readonly Extract<Expression, { readonly kind: "javascriptImport" }>[] {
+  const imports: Extract<Expression, { readonly kind: "javascriptImport" }>[] =
+    [];
   const visit = (expression: Expression): void => {
     switch (expression.kind) {
       case "javascriptImport":
-        if (!seen.has(expression.specifier)) {
-          seen.add(expression.specifier);
-          specifiers.push(expression.specifier);
-        }
+        imports.push(expression);
         return;
       case "block":
         expression.body.forEach(visit);
@@ -61,5 +70,5 @@ export function collectJavaScriptImports(
     }
   };
   expressions.forEach(visit);
-  return specifiers;
+  return imports;
 }

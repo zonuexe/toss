@@ -46,7 +46,7 @@ any binding created by that evaluation remains available in later input.
 | --- | --- |
 | `:help` | Show commands without discarding pending input |
 | `:cancel` | Discard pending input and keep the session |
-| `:reset` | Clear bindings and local macros by starting a new session |
+| `:reset` | Clear bindings, macros, module values and import caches |
 | `:quit` | Exit |
 
 Syntax errors do not execute the submission or register its macros. Runtime
@@ -54,8 +54,39 @@ errors keep effects that already happened, and later input can continue.
 Piped input has no prompts; diagnostics go to stderr and a failed submission
 makes the batch exit status nonzero. Incomplete input at EOF is an error.
 
-The first REPL does not support `%import`, `%jsImport`, `%macroImport` or
-`%export`. Ordinary `%js` remains available. Root `%await`, automatic waiting,
+Load a macro library explicitly. From the repository root:
+
+```text
+toss> %macroImport('./examples/repl/macros.toss').
+toss> %increment(4).
+=> 5
+```
+
+Paths are relative to the session's startup directory. Imported definitions
+remain available in later input, and each canonical library loads once per
+session. File edits take effect after `:reset` and another import. Failed
+compilation commits neither imported definitions nor new cache entries.
+See [ADR-45](docs/adr/0045-repl-macro-imports.md).
+
+Local Toss modules can also be loaded from the startup directory:
+
+```text
+toss> #Math bind: %import('./examples/repl/math.toss').
+=> <object>
+toss> $Math increment: 4.
+=> 5
+```
+
+Dependencies are checked before any cell effects, then initialized once on
+their first executed import. Later input shares the same module values.
+Module files keep private bindings and resolve their dependencies relative
+to their own directory. File edits take effect after `:reset`; initialization
+failures are also cached until reset. See
+[ADR-46](docs/adr/0046-repl-local-modules.md).
+
+The REPL does not support `%jsImport` or cell `%export`.
+Imported Toss modules also cannot use `%jsImport` yet.
+Ordinary `%js` remains available. Root `%await`, automatic waiting,
 disk history and completion are deferred. See
 [ADR-44](docs/adr/0044-initial-repl.md).
 

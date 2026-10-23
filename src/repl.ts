@@ -3,7 +3,9 @@ import { generateFragment } from "./codegen.ts";
 import { validateAsyncExpressions } from "./async_validation.ts";
 import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
 import { expandProgram, LocalMacroRegistry } from "./macro_compile.ts";
+import { createReplMacroImportState } from "./repl_macro_import.ts";
 import { createReplRuntime } from "./repl_runtime.ts";
+import { compileReplModules, type ReplModuleState } from "./repl_modules.ts";
 
 type Evaluation =
   | { readonly kind: "value"; readonly value: unknown }
@@ -25,14 +27,25 @@ export type ReplSession = {
   readonly reset: () => void;
 };
 
-export function createReplSession(): ReplSession {
+export type ReplSessionOptions = {
+  readonly baseDirectory?: string;
+};
+
+export function createReplSession(
+  options: ReplSessionOptions = {},
+): ReplSession {
+  const startupDirectory = options.baseDirectory ?? Deno.cwd();
+  let macroImports = createReplMacroImportState(startupDirectory);
   let registry = new LocalMacroRegistry();
   let runtime: Runtime = createReplRuntime();
+  let modules: ReplModuleState = { files: new Map(), nextId: 0 };
   let nextLine = 1;
 
   const reset = (): void => {
     registry = new LocalMacroRegistry();
     runtime = createReplRuntime();
+    macroImports = createReplMacroImportState(macroImports.baseDirectory);
+    modules = { files: new Map(), nextId: 0 };
   };
 
   const submit = (source: string): ReplResult => {
@@ -43,17 +56,26 @@ export function createReplSession(): ReplSession {
     };
     nextLine += countLines(source);
     const candidate = registry.copy();
+    const candidateImports = macroImports.copy();
     let expressions: readonly Expression[];
     let generated: string;
+    let moduleCandidate: ReturnType<typeof compileReplModules>;
     try {
+      const imports = candidateImports.resolve(source, "<repl>", startLocation);
       expressions = expandProgram(source, {
         file: "<repl>",
+        imports,
         registry: candidate,
         startLocation,
         repl: true,
       });
       validateAsyncExpressions(expressions);
-      generated = generateFragment(expressions);
+      moduleCandidate = compileReplModules(
+        expressions,
+        macroImports.baseDirectory,
+        modules,
+      );
+      generated = generateFragment(expressions, moduleCandidate.imports);
     } catch (error) {
       if (error instanceof TossSyntaxError) {
         return { kind: "error", message: error.message };
@@ -61,6 +83,11 @@ export function createReplSession(): ReplSession {
       throw error;
     }
     registry = candidate;
+    macroImports = candidateImports;
+    modules = moduleCandidate.state;
+    for (const module of moduleCandidate.modules) {
+      runtime.registerModule(module.id, module.generated);
+    }
     const last = expressions.at(-1);
     if (last === undefined) return { kind: "empty" };
     const evaluated = readEvaluation(runtime.evaluate(generated));

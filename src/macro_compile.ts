@@ -10,6 +10,7 @@ import { type SyntaxGroup, syntaxGroup, type SyntaxNode } from "./syntax.ts";
 import {
   macroImport,
   registerImported,
+  rejectNestedMacroImports,
   type ResolvedMacroImport,
   sameLocation,
 } from "./macro_import_syntax.ts";
@@ -47,7 +48,10 @@ export function expandProgram(
   });
   const registry = context.registry ?? new LocalMacroRegistry();
   registry.expansions = 0;
-  if (context.repl === true) rejectReplForms(program.children);
+  if (context.repl === true) {
+    rejectReplForms(program.children);
+    rejectNestedMacroImports(program.children);
+  }
   const expressions: Expression[] = [];
   let statement: SyntaxNode[] = [];
   for (const node of program.children) {
