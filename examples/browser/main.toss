@@ -1,0 +1,21 @@
+#host bind: %jsImport('browser-demo').
+#sameHost bind: %jsImport('browser-demo').
+%js(host = $host, observed = (40 add: 2); host.record('arithmetic', 42, observed)).
+#numbers bind: [2, 4, 6].
+#doubled bind: ($numbers map: { number -> $number multiplyBy: 2 }).
+%js(host = $host, observed = ($doubled at: 0); host.record('Array map', 4, observed)).
+#Private bind: %import('./private.toss').
+%js(host = $host, observed = ($Private value); host.record('private module closure', 42, observed)).
+#same bind: %js(first = $host, second = $sameHost; first === second).
+%js(host = $host, same = $same; host.record('JS namespace identity', true, same)).
+#callback bind: { value -> $value add: 2 } asJSCallback.
+%js(host = $host, callback = $callback; host.installCallback(callback)).
+
+#scenario bind: %async({
+  #promise bind: %js(host = $host; host.promiseValue(21)).
+  #resolved bind: %await($promise).
+  %js(host = $host, resolved = $resolved; host.record('Async Block and Promise', 42, resolved)).
+  %js(host = $host; host.complete()).
+}).
+#runScenario bind: $scenario asJSCallback.
+%js(host = $host, run = $runScenario; host.run(run)).

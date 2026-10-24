@@ -1,0 +1,3 @@
+#numbers bind: [20, 22].
+#result bind: (($numbers at: 0) add: ($numbers at: 1)).
+$result print.

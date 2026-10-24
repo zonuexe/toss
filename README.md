@@ -105,6 +105,13 @@ Ordinary `%js` remains available. Root `%await`, automatic waiting,
 disk history and completion are deferred. See
 [ADR-44](docs/adr/0044-initial-repl.md).
 
+Browser execution and browser-hosted compilation have different requirements.
+The [browser example](examples/browser/README.md) builds Toss with Deno and
+runs the generated ES modules in a browser. It checks messages, modules,
+callbacks, async Blocks and script policy. See the
+[browser runtime assessment](docs/browser-runtime.md) for verified scope and
+the remaining host dependencies of a browser compiler or REPL.
+
 ## Try the first compiler
 
 ### Symbols, macros, and annotations

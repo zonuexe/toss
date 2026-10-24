@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Toss browser verification</title>
+    <script type="importmap" nonce="toss-browser">
+    { "imports": { "browser-demo": "/host.js" } }
+    </script>
+    <script type="module" nonce="toss-browser">
+    import("/main.js").catch((error) =>
+      import("/host.js").then((host) => host.fail(error))
+    );
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>Toss browser verification</h1>
+      <p id="status" data-status="running" role="status"
+        aria-live="polite">RUNNING: loading compiled Toss</p>
+      <ul id="results" aria-label="Verification results"></ul>
+      <button id="callback-button" type="button"
+        disabled>Run Toss callback again</button>
+      <p><a href="/strict">Open strict CSP verification</a></p>
+    </main>
+  </body>
+</html>

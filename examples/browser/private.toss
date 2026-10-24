@@ -1,0 +1,4 @@
+#secret bind: 40.
+%export($Object clone |> %extend(
+  value: { $secret add: 2 }
+)).

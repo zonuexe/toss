@@ -22,6 +22,8 @@ Objectの既定の `inspect` は `<object>`、Blockは本体を実行せず `<bl
 
 JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます。`%js(module = $path; module.basename('/tmp/hello.txt')).` は `'hello.txt'` を返します。未実行のBlock内も含めてJS依存先を入力の実行前に読み込み、その間の入力やコマンドも順番に処理します。読込エラー後も入力を続けられます。`:reset` はToss側の状態を消去し、JSモジュールのキャッシュは保持します。JSも初期化し直すにはREPLプロセスを再起動します。REPL入力からのexportは未対応です。[ADR-47](docs/adr/0047-repl-javascript-imports.md) を参照してください。
 
+[ブラウザ用サンプル](examples/browser/README.md) は、DenoでコンパイルしたESモジュールをブラウザで実行し、メッセージ・モジュール・コールバック・非同期Block・CSPの動作を確認します。検証済みの範囲と、コンパイラやREPL自体をブラウザで動かすための課題は、[ブラウザランタイムの検討メモ](docs/browser-runtime.md) に整理しています。
+
 ## シンボル・マクロ・annotation
 
 | 記法 | 役割 | 実装状況 |

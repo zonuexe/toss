@@ -1,0 +1,94 @@
+# Browser runtime compatibility
+
+Start with JavaScript compiled by Deno and executed as a browser ES module.
+Running the compiler or REPL inside the browser is a larger, separate task.
+The [browser example](../examples/browser/README.md) implements this first
+step. The checks below passed in the Codex in-app browser. This verifies a
+small execution subset, not a supported-browser matrix or a browser compiler.
+
+## Verified example
+
+The main page uses a document import map for a local JavaScript host module.
+It checks arithmetic, Array mapping, a private Toss module closure, repeated
+JS namespace identity, a synchronous callback and an Async Block awaiting a
+JavaScript Promise. All six checks passed. Mouse and keyboard activation of
+the native button also invoked the Toss callback with increasing inputs and
+displayed matching results.
+
+The separate `/strict` page uses `script-src 'self'` without `unsafe-eval`.
+Compiled Toss without `%js` printed `42`. Executing the `%js` fixture failed
+with a `TossRuntimeError` caused by the browser's CSP `EvalError`, as expected.
+The main page permits string evaluation to exercise the existing `%js`
+implementation. Its policy is part of this local verification harness.
+
+The browser did not expose its engine version through the available tooling.
+Other browsers, Workers, external package CDNs and browser-hosted compilation
+were not tested. Build, host status handling and HTTP asset routing also have
+automated regression tests in `tests/browser_example_test.ts`.
+
+## Current boundaries
+
+| Area | Observed implementation | Browser work |
+| --- | --- | --- |
+| Generated program | `src/codegen.ts` embeds the runtime and emits static JS namespace imports. | Load the artifact as an ES module with browser-compatible dependencies. The compiler need not run in the browser. |
+| Runtime values and async Blocks | `src/runtime.ts` and `src/runtime_async.ts` use JavaScript objects, collections and Promises. | The example verifies a small subset in a real browser; broader coverage remains open. |
+| Output | `writeOutput` in `src/runtime.ts` uses `console.log`. | Initial output can use the browser console. A playground needs a separate output design. |
+| JS expressions | `evaluateJavaScript` in `src/runtime.ts` constructs a `Function`. | Executing `%js` depends on the page's script policy. |
+| Compiler entry | `src/compiler.ts` imports and reexports `compileFile`, which pulls in `node:path` and Deno filesystem services. | Separate a pure source compiler entry before browser-hosted compilation. |
+| Parser dependency | Acorn is mapped to an npm package in `deno.json`. | Bundle or provide a browser-resolvable Acorn artifact for browser-hosted compilation. Generated programs do not need this compiler dependency. |
+| REPL runtime | `src/repl_runtime.ts` uses `Function` and direct `eval`. | Every interactive session needs string compilation, including cells without `%js`. |
+| REPL host | `src/repl_session_state.ts`, `src/repl_modules.ts` and `src/repl_macro_import.ts` use working directories, paths and filesystem reads. | Define source loading and identity for browser-hosted Toss and macro imports. |
+| JS loader | `loadJavaScriptModule` is injectable in the session options. | Reuse the seam for host resolution, but it does not remove the other Deno dependencies. |
+
+## Module resolution
+
+Keep ADR-40's host-owned resolution. A browser document can map bare package
+names through an import map. Do not assume `node:`, `npm:` or `jsr:` have their
+Deno meanings in a browser. Use browser-compatible artifacts and explicit
+URLs or mappings. Relative `%jsImport` specifiers remain outside Toss's
+current grammar.
+
+Document import maps apply to static and dynamic module imports in documents,
+but not to modules inside Workers or worklets. A Worker needs resolvable URLs
+or bundling throughout its dependency graph; rewriting only a root specifier
+does not resolve bare imports inside its dependencies.
+[MDN import maps](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap)
+
+## Script policy and execution context
+
+A script policy can block `eval` and `Function`. An ahead-of-time program that
+never executes `%js` has a different boundary from the current REPL: defining
+the evaluator function does not invoke its string compiler. Test both cases
+under an explicit policy. Moving the REPL into a Worker does not by itself
+remove the need to address string compilation.
+[MDN script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src)
+
+A DOM-integrated page and a Worker playground are different targets. Worker
+messages cannot clone functions, Symbols or DOM nodes, and do not preserve
+arbitrary prototype chains. Keep live Toss values, Blocks, callback adapters
+and opaque JS references inside their executing context. A future playground
+can send display strings, diagnostics and explicitly serializable data to its
+UI; direct DOM operations need a separate host design.
+[MDN structured clone](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
+
+## Reset and full reload
+
+ADR-47 separates Toss reset from JS reload. The user accepts losing the whole
+session when JS is reloaded. Browser module maps belong to a Document or
+Worker, so replacing a Worker is a suitable proposed execution boundary.
+It does not guarantee fresh network bytes: HTTP caching is separate. Avoid
+individual cache-busting imports that can mix new instances with cached
+transitive dependencies.
+[HTML module maps](https://html.spec.whatwg.org/multipage/webappapis.html#module-map),
+[MDN dynamic import](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import)
+
+## Possible next steps
+
+The ahead-of-time example is complete. Before browser-hosted compilation,
+separate the source compiler entry from filesystem services and provide a
+browser-resolvable parser dependency. A browser REPL also needs explicit
+source loading, execution policy and a session boundary for full JS reload.
+
+Supported browsers, a production script policy, and the choice of DOM page
+versus Worker playground remain open. The example does not change language
+semantics or implement a browser-hosted compiler or REPL.
