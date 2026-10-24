@@ -105,12 +105,21 @@ Ordinary `%js` remains available. Root `%await`, automatic waiting,
 disk history and completion are deferred. See
 [ADR-44](docs/adr/0044-initial-repl.md).
 
-Browser execution and browser-hosted compilation have different requirements.
-The [browser example](examples/browser/README.md) builds Toss with Deno and
-runs the generated ES modules in a browser. It checks messages, modules,
-callbacks, async Blocks and script policy. See the
+### Browser examples
+
+Both examples compile Toss to JavaScript before serving static ES modules.
+Deno is a build tool here; the browser runs the emitted JS and its embedded
+Toss runtime.
+
+| Example | Purpose |
+| --- | --- |
+| [Vue counter](examples/vue/README.md) | An application: Vue owns rendering and reactive state, and calls Toss logic through ordinary JS functions. |
+| [Browser verification](examples/browser/README.md) | A test harness: checks messages, modules, callbacks, async Blocks and CSP with visible PASS/FAIL results. |
+
+Neither example runs the Toss compiler or REPL inside the browser. Generated
+JS currently includes the runtime and prelude; it is not tree-shaken. See the
 [browser runtime assessment](docs/browser-runtime.md) for verified scope and
-the remaining host dependencies of a browser compiler or REPL.
+the remaining work for browser-hosted compilation.
 
 ## Try the first compiler
 

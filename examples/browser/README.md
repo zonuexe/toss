@@ -1,5 +1,10 @@
 # Toss browser verification
 
+This directory is a verification harness with PASS/FAIL checks. For a small
+application that uses compiled Toss from Vue, see the
+[Vue counter](../vue/README.md). Both run ahead-of-time JavaScript; neither
+runs the Toss compiler or REPL in the browser.
+
 This small harness verifies JavaScript emitted ahead of time by Deno. The
 browser only receives static ES modules and local host assets; it does not run
 Deno, Node, the Toss compiler, or Acorn. The main page intentionally allows the

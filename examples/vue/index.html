@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Toss and Vue counter</title>
+    <script type="importmap" nonce="toss-vue">
+    {
+      "imports": {
+        "counter-bridge": "/bridge.js",
+        "vue": "https://unpkg.com/vue@3.5.13/dist/vue.runtime.esm-browser.prod.js"
+      }
+    }
+    </script>
+    <script type="module" nonce="toss-vue">
+    import("/app.js").catch((error) => {
+      const startup = document.querySelector("#startup");
+      if (startup) {
+        startup.textContent = `Could not start the Vue example: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+      }
+    });
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>Toss and Vue counter</h1>
+      <p id="startup" role="status" aria-live="polite">
+        Loading Vue and the compiled Toss callbacks…
+      </p>
+      <div id="app">
+        <p>Count: <output aria-label="Count">0</output></p>
+        <button type="button" disabled>Increment</button>
+        <button type="button" disabled>Reset</button>
+      </div>
+    </main>
+  </body>
+</html>
