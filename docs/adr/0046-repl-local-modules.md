@@ -24,6 +24,7 @@ initialization results and macro state, while keeping the startup directory.
 Ordinary input and reset require no source-file reads. Expected filesystem
 errors are recoverable diagnostics under the host's read permissions.
 
-Keep submission synchronous to preserve ADR-44's terminal behavior. Static
-`%jsImport` remains deferred, including within imported Toss files. A REPL cell
-cannot export a module value. Ordinary `%js` remains available.
+Keep the synchronous session API. ADR-47 adds asynchronous evaluation for
+`%jsImport`, including within imported Toss files, while preserving ordered
+terminal input. A REPL cell cannot export a module value. Ordinary `%js`
+remains available.

@@ -211,11 +211,11 @@ Deno.test("CLI module host errors retain a separate cause line", async () => {
   assert.match(text(result.stderr), /\n {2}caused by: host-fail\n/);
 });
 
-Deno.test("CLI reports the actual unsupported JS import position before effects", async () => {
+Deno.test("CLI reports the actual invalid JS import position before effects", async () => {
   const result = await runFixture({
     files: {
       "value.toss":
-        "1.\n#load bind: { %jsImport('node:path') }.\n%export($load).",
+        "1.\n#load bind: { %jsImport('./invalid.mjs') }.\n%export($load).",
     },
     input: ["'never' print. %import('./value.toss').", "7."],
   });
@@ -223,6 +223,6 @@ Deno.test("CLI reports the actual unsupported JS import position before effects"
   assert.equal(text(result.stdout), "=> 7\n");
   assert.match(
     text(result.stderr),
-    /value\.toss:2:\d+: SyntaxError: %jsImport/,
+    /value\.toss:2:\d+: SyntaxError: Invalid JavaScript module specifier/,
   );
 });

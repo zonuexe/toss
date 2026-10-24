@@ -129,7 +129,6 @@ export function rejectGeneratedDeclarations(
 
 export function rejectReplForms(nodes: readonly SyntaxNode[]): void {
   const unsupported = new Set([
-    "%jsImport",
     "%export",
   ]);
   const visit = (node: SyntaxNode): void => {

@@ -6,6 +6,9 @@ type RuntimeBridge = {
   readonly evaluate: (generated: string) => unknown;
   readonly inspect: (value: unknown, location: SourceLocation) => unknown;
   readonly registerModule: (id: number, generated: string) => void;
+  readonly setJavaScriptImports: (
+    imports: readonly (readonly [string, unknown])[],
+  ) => void;
 };
 
 export function createReplRuntime(): RuntimeBridge {
@@ -13,9 +16,11 @@ export function createReplRuntime(): RuntimeBridge {
     ...runtimePreludeLines(),
     ...fileRootSetupLines(),
     ...moduleRuntimeLines(),
+    "const javascriptImportNames = new Map();",
     "return Object.freeze({",
     "evaluate(generated) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { if (error instanceof TossRuntimeError) return {kind: 'runtimeError', message: runtimeDiagnostic(error)}; throw error; } },",
     "registerModule(id, generated) { moduleInitializers[id] = eval(generated); },",
+    "setJavaScriptImports(imports) { javascriptImportNames.clear(); for (const [specifier, namespace] of imports) javascriptImportNames.set(specifier, namespace); },",
     "inspect(value, location) {",
     "const context = {location, environment};",
     "try { const result = send(value, {name: 'inspect', arguments: []}, context);",
@@ -41,5 +46,6 @@ function isRuntimeBridge(value: unknown): value is RuntimeBridge {
   if (typeof value !== "object" || value === null) return false;
   return typeof Reflect.get(value, "evaluate") === "function" &&
     typeof Reflect.get(value, "inspect") === "function" &&
-    typeof Reflect.get(value, "registerModule") === "function";
+    typeof Reflect.get(value, "registerModule") === "function" &&
+    typeof Reflect.get(value, "setJavaScriptImports") === "function";
 }

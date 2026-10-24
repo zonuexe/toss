@@ -46,8 +46,9 @@ including CRLF split across chunks, with `crlfDelay: Infinity`. Close the
 interface and release its input resources on exit. Ctrl-C exits with status
 130 without a stack trace.
 
-Consume `line` events synchronously and use `node:process` streams for prompts,
-results and diagnostics. An async-iterator probe on the pinned Deno delayed
+Collect `line` events synchronously and use `node:process` streams for prompts,
+results and diagnostics. ADR-47 queues evaluation and commands in input order
+to support asynchronous JS loading. An async-iterator probe on the pinned Deno delayed
 TTY evaluation until the interface closed, while line events ran immediately.
 Verify actual terminal input as well as piped input when changing this adapter.
 
@@ -59,8 +60,8 @@ does not discard pending input. Commands are REPL operations, not Toss syntax.
 
 ADR-45 adds explicit `%macroImport` with per-session loading and reset behavior.
 ADR-46 adds local `%import` with persistent, lazy module initialization.
-Reject `%jsImport` and cell `%export` before cell effects,
-including unused nested forms. Ordinary `%js` keeps
+ADR-47 adds `%jsImport` to asynchronous REPL evaluation. Reject cell `%export`
+before cell effects, including unused nested forms. Ordinary `%js` keeps
 its existing explicit host boundary and host permissions. Root `%await` stays
 invalid; async values use the existing JS reference display. Disk history,
 completion, implicit awaiting and background-task management are deferred.

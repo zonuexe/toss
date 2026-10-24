@@ -84,8 +84,23 @@ to their own directory. File edits take effect after `:reset`; initialization
 failures are also cached until reset. See
 [ADR-46](docs/adr/0046-repl-local-modules.md).
 
-The REPL does not support `%jsImport` or cell `%export`.
-Imported Toss modules also cannot use `%jsImport` yet.
+JS modules work in the REPL and in imported Toss files:
+
+```text
+toss> #path bind: %jsImport('node:path').
+=> <js>
+toss> %js(module = $path; module.basename('/tmp/hello.txt')).
+=> "hello.txt"
+```
+
+The host loads collected JS dependencies before Toss cell effects, including
+imports inside unused Blocks. Input and commands run in order while loading.
+Load errors report a diagnostic and later input can continue. `:reset` clears
+Toss state but keeps the host's JS module cache. Restart the REPL process to
+initialize JS modules again; host download caches follow the host's own policy.
+See [ADR-47](docs/adr/0047-repl-javascript-imports.md).
+
+The REPL does not support cell `%export`.
 Ordinary `%js` remains available. Root `%await`, automatic waiting,
 disk history and completion are deferred. See
 [ADR-44](docs/adr/0044-initial-repl.md).

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { createReplSession } from "../src/repl.ts";
+import { createAsyncReplSession, createReplSession } from "../src/repl.ts";
 
 type Fixture = {
   readonly baseDirectory: string;
@@ -54,17 +54,24 @@ Deno.test("REPL import validates missing dependencies before cell effects", () =
   assert.equal(session.submit("$before.").kind, "error");
 });
 
-Deno.test("REPL validates JS imports in unexecuted module branches", () => {
+Deno.test("REPL eagerly loads JS imports in unexecuted module branches", async () => {
   using temp = fixture({
     "host.toss": "{ %jsImport('npm:example') }. %export(1).",
   });
   const { baseDirectory } = temp;
-  const session = createReplSession({ baseDirectory });
-  const result = session.submit("%import('./host.toss').");
-  assert.equal(result.kind, "error");
-  if (result.kind === "error") {
-    assert.match(result.message, /%jsImport is not supported/);
-  }
+  const loaded: string[] = [];
+  const session = createAsyncReplSession({
+    baseDirectory,
+    loadJavaScriptModule: (specifier) => {
+      loaded.push(specifier);
+      return Promise.resolve({});
+    },
+  });
+  assert.deepEqual(await session.submit("%import('./host.toss')."), {
+    kind: "value",
+    display: "1",
+  });
+  assert.deepEqual(loaded, ["npm:example"]);
 });
 
 Deno.test("nested module imports resolve from each file directory", () => {

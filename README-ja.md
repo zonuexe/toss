@@ -18,7 +18,9 @@ Objectの既定の `inspect` は `<object>`、Blockは本体を実行せず `<bl
 
 `%macroImport('./examples/repl/macros.toss').` のように、起動ディレクトリを基準に共有マクロを読み込めます。以降の入力で `%increment(4).` を評価すると `5` を返します。同じファイルはセッション内で一度だけ読み込み、編集した内容を再読込するには `:reset` の後に再度importします。[ADR-45](docs/adr/0045-repl-macro-imports.md) を参照してください。
 
-通常のTossモジュールも `#Math bind: %import('./examples/repl/math.toss').` で読み込めます。`$Math increment: 4.` は `5` を返します。依存先の検証は入力の実行前に行い、初期化はimportを初めて実行した時に一度だけ行います。モジュール内の束縛は非公開で、依存先のパスはそのファイルを基準に解決します。読み込んだ値と初期化エラーはセッション内で保持し、編集内容の再読込には `:reset` を使います。JSモジュールのimportとREPL入力からのexportは未対応です。読み込むTossファイル内でも `%jsImport` はまだ使えません。[ADR-46](docs/adr/0046-repl-local-modules.md) を参照してください。
+通常のTossモジュールも `#Math bind: %import('./examples/repl/math.toss').` で読み込めます。`$Math increment: 4.` は `5` を返します。依存先の検証は入力の実行前に行い、初期化はimportを初めて実行した時に一度だけ行います。モジュール内の束縛は非公開で、依存先のパスはそのファイルを基準に解決します。読み込んだ値と初期化エラーはセッション内で保持し、Tossファイルの編集内容の再読込には `:reset` を使います。[ADR-46](docs/adr/0046-repl-local-modules.md) を参照してください。
+
+JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます。`%js(module = $path; module.basename('/tmp/hello.txt')).` は `'hello.txt'` を返します。未実行のBlock内も含めてJS依存先を入力の実行前に読み込み、その間の入力やコマンドも順番に処理します。読込エラー後も入力を続けられます。`:reset` はToss側の状態を消去し、JSモジュールのキャッシュは保持します。JSも初期化し直すにはREPLプロセスを再起動します。REPL入力からのexportは未対応です。[ADR-47](docs/adr/0047-repl-javascript-imports.md) を参照してください。
 
 ## シンボル・マクロ・annotation
 

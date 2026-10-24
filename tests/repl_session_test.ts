@@ -149,27 +149,30 @@ Deno.test("JavaScript runtime errors retain their host cause in diagnostics", ()
   assert.match(failure.message, /caused by: host failure/);
 });
 
-Deno.test("unsupported import forms are rejected inside unused code", () => {
-  for (
-    const form of [
-      "%jsImport('x')",
-      "%export(1)",
-    ]
-  ) {
-    const session = createReplSession();
-    const result = session.submit(
-      `%js(globalThis.__tossSideEffect = true). { ${form} }.`,
-    );
-    assert.equal(result.kind, "error");
-    assert.match(
-      result.message,
-      new RegExp(`${form.slice(0, form.indexOf("("))} is not supported`),
-    );
-    assert.deepEqual(
-      session.submit("%js(globalThis.__tossSideEffect === undefined)."),
-      { kind: "value", display: "true" },
-    );
-  }
+Deno.test("sync session rejects JS imports before cell effects", () => {
+  const session = createReplSession();
+  const result = session.submit(
+    "%js(globalThis.__tossSideEffect = true). { %jsImport('x') }.",
+  );
+  assert.equal(result.kind, "error");
+  assert.match(result.message, /requires createAsyncReplSession/);
+  assert.deepEqual(
+    session.submit("%js(globalThis.__tossSideEffect === undefined)."),
+    { kind: "value", display: "true" },
+  );
+});
+
+Deno.test("cell exports remain rejected before effects", () => {
+  const session = createReplSession();
+  const result = session.submit(
+    "%js(globalThis.__tossSideEffect = true). { %export(1) }.",
+  );
+  assert.equal(result.kind, "error");
+  assert.match(result.message, /%export is not supported/);
+  assert.deepEqual(
+    session.submit("%js(globalThis.__tossSideEffect === undefined)."),
+    { kind: "value", display: "true" },
+  );
 });
 
 Deno.test("reset creates a fresh runtime and macro context", () => {

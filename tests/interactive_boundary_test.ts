@@ -165,7 +165,6 @@ Deno.test("interactive EOF never executes an incomplete cell", async () => {
 
 for (
   const [name, expression] of [
-    ["JS import", "{ %jsImport('npm:missing-repl-fixture') }"],
     ["macro import", "{ %macroImport('./missing.toss') }"],
     ["export", "{ %export(1) }"],
   ] as const
@@ -180,6 +179,15 @@ for (
     assert.match(text(result.stderr), /REPL|file-root|top-level/);
   });
 }
+
+Deno.test("interactive rejects invalid JS import paths before cell effects", async () => {
+  const result = await runInput(
+    "'never' print. { %jsImport('./invalid.mjs') }.\n7.\n",
+  );
+  assert.equal(result.code, 1);
+  assert.equal(text(result.stdout), "=> 7\n");
+  assert.match(text(result.stderr), /Invalid JavaScript module specifier/);
+});
 
 Deno.test("interactive validates imports in unused Blocks before cell effects", async () => {
   const result = await runInput(

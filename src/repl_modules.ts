@@ -20,6 +20,10 @@ type CompiledImports = {
   readonly state: ReplModuleState;
   readonly modules: readonly ReplModule[];
   readonly imports: readonly { readonly path: string; readonly id: number }[];
+  readonly javascriptImports: readonly {
+    readonly specifier: string;
+    readonly location: SourceLocation;
+  }[];
 };
 
 export function compileReplModules(
@@ -30,6 +34,7 @@ export function compileReplModules(
   const files = new Map(state.files);
   const visiting = new Set<string>();
   const modules: ReplModule[] = [];
+  const moduleExpressions = new Map<string, readonly Expression[]>();
   let nextId = state.nextId;
 
   const load = (request: ModuleImport, directory: string): ReplModule => {
@@ -77,13 +82,7 @@ export function compileReplModules(
       );
       const expanded = expandProgram(source, { file: canonical, imports });
       const analysis = analyzeModule(expanded, canonical, true);
-      const javascriptImports = collectJavaScriptImportExpressions(expanded);
-      if (javascriptImports.length > 0) {
-        throw new TossSyntaxError(
-          javascriptImports[0]?.location ?? start,
-          "%jsImport is not supported in REPL modules.",
-        );
-      }
+      moduleExpressions.set(canonical, expanded);
       const dependencies = analysis.imports.map((dependency) => ({
         path: dependency.path,
         id: load(dependency, dirname(canonical)).id,
@@ -111,7 +110,18 @@ export function compileReplModules(
     path: item.path,
     id: load(item, base).id,
   }));
-  return { state: { files, nextId }, modules, imports };
+  const seen = new Set<string>();
+  const javascriptImports = [
+    ...collectJavaScriptImportExpressions(expressions),
+    ...[...moduleExpressions.values()].flatMap(
+      collectJavaScriptImportExpressions,
+    ),
+  ].filter((item) => {
+    if (seen.has(item.specifier)) return false;
+    seen.add(item.specifier);
+    return true;
+  }).map((item) => ({ specifier: item.specifier, location: item.location }));
+  return { state: { files, nextId }, modules, imports, javascriptImports };
 }
 
 function validatePath(path: string, location: SourceLocation): void {
