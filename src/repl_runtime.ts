@@ -13,7 +13,7 @@ type RuntimeBridge = {
 
 export function createReplRuntime(): RuntimeBridge {
   const bridgeSource = [
-    ...runtimePreludeLines(),
+    ...runtimePreludeLines(true),
     ...fileRootSetupLines(),
     ...moduleRuntimeLines(),
     "const javascriptImportNames = new Map();",

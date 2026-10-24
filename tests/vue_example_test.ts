@@ -6,6 +6,9 @@ Deno.test("Vue build exports working callbacks from the compiled Toss default va
   const outputDirectory = await Deno.makeTempDir({ prefix: "toss-vue-" });
   try {
     await buildVueExample(outputDirectory);
+    const generated = await Deno.readTextFile(`${outputDirectory}/counter.js`);
+    assert.doesNotMatch(generated, /\bevaluateJavaScript\s*\(/);
+    assert.doesNotMatch(generated, /\bFunction\s*\(/);
     await Deno.writeTextFile(
       `${outputDirectory}/probe.ts`,
       [
@@ -43,7 +46,7 @@ Deno.test("Vue handler serves allowlisted assets and rejects the removed bridge 
     const counter = await handle(new Request("http://localhost/counter.js"));
     const bridge = await handle(new Request("http://localhost/bridge.js"));
     assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
-    assert.match(
+    assert.doesNotMatch(
       page.headers.get("content-security-policy") ?? "",
       /unsafe-eval/,
     );

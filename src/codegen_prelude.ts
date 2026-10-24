@@ -26,6 +26,7 @@ import { numberMessages } from "./prelude/number.ts";
 import { booleanMessages } from "./prelude/boolean.ts";
 import { arrayMessages } from "./prelude/array.ts";
 import { runtimeJavaScript } from "./runtime.ts";
+import { runtimeJavaScriptDynamic } from "./runtime_javascript_dynamic.ts";
 
 type PreludeMessage = { readonly name: string; readonly javascript: string };
 
@@ -40,7 +41,9 @@ function messageTable(
   }\n]);`;
 }
 
-export function runtimePreludeLines(): string[] {
+export function runtimePreludeLines(
+  includeDynamicJavaScript = false,
+): string[] {
   return [
     '"use strict";',
     messageTable("blockMessages", [
@@ -86,6 +89,7 @@ export function runtimePreludeLines(): string[] {
       outputDump,
     ]),
     runtimeJavaScript,
+    ...(includeDynamicJavaScript ? [runtimeJavaScriptDynamic] : []),
   ];
 }
 

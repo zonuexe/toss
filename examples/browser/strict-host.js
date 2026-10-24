@@ -11,46 +11,54 @@ function result(name, passed, detail) {
 
 const output = [];
 const originalLog = console.log;
-let tossExecutionSucceeded = false;
 console.log = (...values) => output.push(values.map(String).join(" "));
 try {
   await import("./strict.js");
-  tossExecutionSucceeded = true;
 } catch (error) {
-  result("strict Toss execution", false, formatError(error));
+  result("plain Toss program", false, formatError(error));
 } finally {
   console.log = originalLog;
 }
-const arithmeticPassed = tossExecutionSucceeded && output.join("\n") === "42";
 const tossPassed = result(
-  "strict Toss execution",
-  arithmeticPassed,
+  "plain Toss program",
+  output.join("\n") === "42",
   `expected 42, observed ${output.join(" ") || "no output"}`,
 );
+
+const aotOutput = [];
+console.log = (...values) => aotOutput.push(values.map(String).join(" "));
+try {
+  await import("./aot.js");
+  result(
+    "AOT %js expression",
+    aotOutput.join("\n") === "2",
+    `expected 2, observed ${aotOutput.join(" ") || "no output"}`,
+  );
+} catch (error) {
+  result("AOT %js expression", false, formatError(error));
+} finally {
+  console.log = originalLog;
+}
 
 let blockedPassed = false;
 try {
   await import("./blocked.js");
-  result(
-    "%js blocked by CSP",
-    false,
-    "expected EvalError, but the fixture ran",
-  );
+  result("user Function constructor", false, "expected CSP to block Function");
 } catch (error) {
   const blockedError = cspEvalError(error);
   blockedPassed = blockedError !== undefined;
   result(
-    "%js blocked by CSP",
+    "user Function constructor",
     blockedPassed,
     blockedError === undefined ? formatError(error) : blockedError,
   );
 }
 
-const passed = tossPassed && blockedPassed;
+const passed = tossPassed && aotOutput.join("\n") === "2" && blockedPassed;
 status.dataset.status = passed ? "pass" : "fail";
 status.textContent = passed
-  ? "PASS: strict CSP checks completed"
-  : "FAIL: strict CSP verification failed";
+  ? "PASS: strict host checks completed"
+  : "FAIL: strict host verification failed";
 
 function cspEvalError(error) {
   if (error instanceof EvalError) return `${error.name}: ${error.message}`;

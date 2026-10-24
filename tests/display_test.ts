@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { compile } from "../src/compiler.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, executeFlatRuntime, text } from "./helpers.ts";
 
 const cases = [
   {
@@ -73,29 +72,31 @@ for (
   ]] as const
 ) {
   Deno.test(`${outputMessage} dispatches ${conversion} and keeps the original receiver`, async () => {
-    const javascript = compile("'seed' print.", "fixture.toss") + `
+    const result = await executeFlatRuntime(
+      "'seed' print.",
+      `
 stringMessages.set(${JSON.stringify(conversion)}, () => "converted");
 const result = send("original", {name: ${
-      JSON.stringify(outputMessage)
-    }, arguments: []}, {location: {file: "fixture.toss", line: 2, column: 1}, environment});
+        JSON.stringify(outputMessage)
+      }, arguments: []}, {location: {file: "fixture.toss", line: 2, column: 1}, environment});
 console.log(result);
-`;
-
-    const result = await executeJavaScript(javascript);
+`,
+    );
 
     assert.equal(result.code, 0, text(result.stderr));
     assert.equal(text(result.stdout), "seed\nconverted\noriginal\n");
   });
 
   Deno.test(`${outputMessage} rejects a non-string ${conversion} result`, async () => {
-    const javascript = compile("'seed' print.", "fixture.toss") + `
+    const result = await executeFlatRuntime(
+      "'seed' print.",
+      `
 stringMessages.set(${JSON.stringify(conversion)}, () => 42);
 send("original", {name: ${
-      JSON.stringify(outputMessage)
-    }, arguments: []}, {location: {file: "fixture.toss", line: 2, column: 3}, environment});
-`;
-
-    const result = await executeJavaScript(javascript);
+        JSON.stringify(outputMessage)
+      }, arguments: []}, {location: {file: "fixture.toss", line: 2, column: 3}, environment});
+`,
+    );
 
     assert.notEqual(result.code, 0);
     assert.equal(text(result.stdout), "seed\n");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { compile } from "../src/compiler.ts";
 import { TossSyntaxError } from "../src/diagnostic.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, text } from "./helpers.ts";
 
 const cases = [
   [
@@ -67,9 +67,8 @@ for (
 }
 
 Deno.test("arithmetic macro keeps negative zero in its runtime result", async () => {
-  const result = await executeJavaScript(
-    compile("#zero bind: $(-0).", "fixture.toss") +
-      '\nconsole.log(Object.is(environment.bindings.get(Symbol.for("zero")), -0));',
+  const result = await execute(
+    "#zero bind: $(-0). %js(zero = $zero; Object.is(zero, -0)) print.",
   );
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), "true\n");

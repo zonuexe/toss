@@ -1,14 +1,27 @@
 export function emitJavaScriptImports(specifiers: readonly string[]): string[] {
-  if (specifiers.length === 0) return [];
-  const imports = specifiers.map((specifier, index) => {
+  return emitJavaScriptImportStatements(specifiers);
+}
+
+export function emitJavaScriptImportStatements(
+  specifiers: readonly string[],
+  aliases: readonly string[] = specifiers.map((_, index) =>
+    `__tossJavaScriptImport${index}`
+  ),
+): string[] {
+  return specifiers.map((specifier, index) => {
     const quotedSpecifier = JSON.stringify(specifier);
-    return `import * as __tossJavaScriptImport${index} from ${quotedSpecifier};`;
+    return `import * as ${aliases[index]} from ${quotedSpecifier};`;
   });
+}
+
+export function javascriptImportMapExpression(
+  specifiers: readonly string[],
+  aliases: readonly string[] = specifiers.map((_, index) =>
+    `__tossJavaScriptImport${index}`
+  ),
+): string {
   const mapEntries = specifiers.map((specifier, index) =>
-    `[${JSON.stringify(specifier)}, __tossJavaScriptImport${index}]`
+    `[${JSON.stringify(specifier)}, ${aliases[index]}]`
   );
-  return [
-    ...imports,
-    `const javascriptImportNames = new Map([${mapEntries.join(", ")}]);`,
-  ];
+  return `new Map([${mapEntries.join(", ")}])`;
 }

@@ -40,3 +40,6 @@ This format does not add named JS exports, recursively convert Toss slots,
 share runtime identity between separately compiled bundles, remove `%js`
 string evaluation, or implement a browser-hosted compiler. These are separate
 changes. Runtime and prelude code remain embedded in each generated module.
+
+ADR-49 later removes implicit string evaluation from ahead-of-time `%js`
+execution while preserving this export contract.

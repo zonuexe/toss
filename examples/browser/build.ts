@@ -4,7 +4,7 @@ import { compileFile } from "../../src/compiler.ts";
 
 const exampleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = resolve(exampleDirectory, "../..");
-const entryFiles = ["main", "strict", "blocked"] as const;
+const entryFiles = ["main", "strict", "aot", "blocked"] as const;
 const staticFiles = [
   "index.html",
   "strict.html",

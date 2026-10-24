@@ -35,6 +35,10 @@ JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます
 
 `--format esm` を付けると、エントリーの `%export(値).` をJSのdefault exportとして公開します。この形式ではファイル直下のexportが1つ必要です。たとえば `%export({ count -> $count add: 1 } asJSCallback).` をコンパイルすると、JS側から `import increment from './increment.js'` で関数を読み込めます。通常のBlockは自動変換せず、`asJSCallback` を明示します。既定の `program` 形式は従来どおりです。[ADR-48](docs/adr/0048-javascript-module-output.md) に仕様を記録しています。
 
+通常のコンパイル結果では `%js` の式もJS関数として事前に生成するため、`%js` 自体にCSPの `unsafe-eval` は不要です。JS側で明示的に `eval` や `Function` を使う場合はホストの制限を受けます。REPLは引き続き入力文字列を評価します。[ADR-49](docs/adr/0049-ahead-of-time-javascript-expressions.md) を参照してください。
+
+事前コンパイルではESモジュール文法に衝突する `await` などの変数名をコンパイル時エラーにし、名前変更を案内します。`obj.await` やasync関数内のawaitは利用できます。従来のHTML形式の行コメントは、文字列や正規表現を書き換えずに通常の行コメントへ正規化します。
+
 ## シンボル・マクロ・annotation
 
 | 記法 | 役割 | 実装状況 |

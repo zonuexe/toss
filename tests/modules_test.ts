@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
-import {
-  output,
-  runModuleBoundary,
-  runModuleProgram,
-} from "./module_helpers.ts";
+import { compileFile } from "../src/compiler.ts";
+import { output, runModuleProgram } from "./module_helpers.ts";
 import { text } from "./helpers.ts";
 
 Deno.test("returns exported values and runs module bodies once across canonical aliases", async () => {
@@ -135,24 +132,42 @@ Deno.test("keeps syntax errors attributed to the imported dependency", async () 
 });
 
 Deno.test("caches a module initialization failure for later imports", async () => {
-  const result = await runModuleBoundary(
-    {
-      "main.toss": "%export({ %import('./failure.toss') }).",
-      "failure.toss": "'once' print. %export(1). $unbound.",
-    },
-    "main.toss",
-    `
-const entry = moduleStates.get(0).value;
+  const directory = await Deno.makeTempDir({
+    prefix: "toss-module-failed-cache-",
+  });
+  try {
+    await Deno.writeTextFile(
+      `${directory}/main.toss`,
+      "#entry bind: { %import('./failure.toss') } asJSCallback. %export($entry).",
+    );
+    await Deno.writeTextFile(
+      `${directory}/failure.toss`,
+      "'once' print. %export(1). $unbound.",
+    );
+    const javascript = await compileFile(`${directory}/main.toss`, undefined, {
+      format: "esm",
+    });
+    await Deno.writeTextFile(`${directory}/bundle.js`, javascript);
+    await Deno.writeTextFile(
+      `${directory}/probe.js`,
+      `import entry from "./bundle.js";
 let first;
 let second;
 try { entry(); } catch (error) { first = error; }
 try { entry(); } catch (error) { second = error; }
-console.log(first instanceof TossRuntimeError, first === second);
+console.log(first.name === "TossRuntimeError", first === second);
 `,
-  );
-
-  assert.equal(result.code, 0, text(result.stderr));
-  assert.equal(output(result), "once\ntrue true\n");
+    );
+    const result = await new Deno.Command(Deno.execPath(), {
+      args: ["run", "--no-config", "--no-prompt", `${directory}/probe.js`],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert.equal(result.code, 0, text(result.stderr));
+    assert.equal(output(result), "once\ntrue true\n");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 Deno.test("loads a diamond dependency once", async () => {

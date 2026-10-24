@@ -31,7 +31,7 @@ export function createVueHandler(
     if (asset.file === "index.html") {
       headers.set(
         "content-security-policy",
-        "default-src 'self'; script-src 'self' 'unsafe-eval' https://unpkg.com 'nonce-toss-vue'; object-src 'none'; base-uri 'none'",
+        "default-src 'self'; script-src 'self' https://unpkg.com 'nonce-toss-vue'; object-src 'none'; base-uri 'none'",
       );
     }
     return new Response(body, { headers });

@@ -1,1 +1,1 @@
-%js(Math.max(1, 2)) print.
+%js(Function("return 42")()) print.

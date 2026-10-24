@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { compile } from "../src/compiler.ts";
 import { TossSyntaxError } from "../src/diagnostic.ts";
 import { lex } from "../src/lexer.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, executeFlatRuntime, text } from "./helpers.ts";
 
 for (
   const target of ["1", "'text'", "$True", "$Nil", "[]", "{ 'body' print }"]
@@ -94,12 +94,9 @@ Deno.test("a non-callable setter fails at its entry after evaluating the value",
 });
 
 Deno.test("extension failures keep earlier writes at the JavaScript boundary", async () => {
-  const setup = compile(
+  const result = await executeFlatRuntime(
     "#state bind: $Object clone.\n#work bind: {\n  $state |> %extend(\n    first: 1,\n    second: $missing,\n    later: 'later' print\n  )\n}.",
-    "fixture.toss",
-  );
-  const result = await executeJavaScript(
-    setup + `
+    `
 const context = {environment, location: {file: "boundary.js", line: 1, column: 1}};
 try {
   send(fetchBinding("work", context), {name: "value", arguments: []}, context);

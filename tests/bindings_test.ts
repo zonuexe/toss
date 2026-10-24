@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { compile } from "../src/compiler.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, text } from "./helpers.ts";
 
 const cases = [
   {
@@ -145,12 +145,7 @@ for (const fixture of failures) {
 }
 
 Deno.test("bind returns the stored value", async () => {
-  const javascript = compile("#seed.", "fixture.toss") + `
-const value = send(Symbol.for("key"), {name: "bind:", arguments: ["stored"]}, {location: {file: "fixture.toss", line: 1, column: 1}, environment});
-console.log(value);
-`;
-
-  const result = await executeJavaScript(javascript);
+  const result = await execute("#key bind: 'stored' print.");
 
   assert.equal(result.code, 0, text(result.stderr));
   assert.equal(text(result.stdout), "stored\n");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { compile } from "../src/compiler.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, executeModuleJavaScript, text } from "./helpers.ts";
 
 Deno.test("too few host arguments fail at the adapter conversion site", async () => {
   const result = await execute(
@@ -48,17 +48,18 @@ Deno.test("Toss body errors keep their original source location", async () => {
 
 Deno.test("a surrounding JavaScript expression keeps the Toss error as cause", async () => {
   const javascript = compile(
-    "#callback bind: { $missing } asJSCallback.",
+    "#callback bind: { $missing } asJSCallback. #outer bind: { %js(callback = $callback; callback()) } asJSCallback. %export($outer).",
     "cause.toss",
+    { format: "esm" },
   );
-  const result = await executeJavaScript(
-    javascript + `
-const callback = fetchBinding("callback", {location: {file: "host", line: 1, column: 1}, environment});
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
 try {
-  evaluateJavaScript("callback()", [callback], {location: {file: "host", line: 2, column: 1}, environment}, ["callback"]);
+  value();
   console.log("did not throw");
 } catch (error) {
-  console.log(error instanceof TossRuntimeError, error.cause instanceof TossRuntimeError, error.cause.message.includes('Unbound name "missing"'));
+  console.log(error.name === "TossRuntimeError", error.cause.name === "TossRuntimeError", error.cause.message.includes('Unbound name "missing"'));
 }
 `,
   );

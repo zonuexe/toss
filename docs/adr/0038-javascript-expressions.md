@@ -27,6 +27,10 @@ outer `await`, but allow async function expressions and dynamic `import()`
 expressions. Do not await Promise results. JavaScript syntax errors are
 compile-time errors with Toss source positions. Do not run user JS to compile.
 
+ADR-49 later compiles expression functions ahead of time for ordinary output,
+outside the generated runtime's scope. The REPL retains string evaluation.
+Both paths preserve the binding, context and conversion rules in this ADR.
+
 ## Value boundary
 
 JS strings, finite Numbers and Booleans become ordinary Toss values. Both

@@ -32,10 +32,11 @@ the native button also invoked the Toss callback with increasing inputs and
 displayed matching results.
 
 The separate `/strict` page uses `script-src 'self'` without `unsafe-eval`.
-Compiled Toss without `%js` printed `42`. Executing the `%js` fixture failed
-with a `TossRuntimeError` caused by the browser's CSP `EvalError`, as expected.
-The main page permits string evaluation to exercise the existing `%js`
-implementation. Its policy is part of this local verification harness.
+Plain Toss printed `42`, ahead-of-time `%js` printed `2`, and an explicit
+user-written `Function` constructor failed with a CSP `EvalError`. All three
+checks passed. ADR-49 compiles ordinary JS expressions as native functions.
+The main page also omits `unsafe-eval`; its six checks and button callback
+passed after rebuilding with the native evaluator path.
 
 The browser did not expose its engine version through the available tooling.
 Other browsers, Workers and browser-hosted compilation were not tested.
@@ -57,7 +58,8 @@ page displayed a startup error and retained the static count and disabled
 controls. Automated tests also execute the generated callbacks in a Deno
 subprocess, without downloading Vue, and check missing initialization and
 asset routing. Vue's render function uses no template compiler. The Toss
-public-object expression still requires string evaluation under `%js`.
+public-object expression is compiled ahead of time under ADR-49. Increment
+and reset also passed after removing `unsafe-eval` from the Vue script policy.
 
 ## Current boundaries
 
@@ -66,7 +68,7 @@ public-object expression still requires string evaluation under `%js`.
 | Generated program | `src/codegen.ts` embeds the runtime and emits static JS namespace imports. | Load the artifact as an ES module with browser-compatible dependencies. The compiler need not run in the browser. |
 | Runtime values and async Blocks | `src/runtime.ts` and `src/runtime_async.ts` use JavaScript objects, collections and Promises. | The example verifies a small subset in a real browser; broader coverage remains open. |
 | Output | `writeOutput` in `src/runtime.ts` uses `console.log`. | Initial output can use the browser console. A playground needs a separate output design. |
-| JS expressions | `evaluateJavaScript` in `src/runtime.ts` constructs a `Function`. | Executing `%js` depends on the page's script policy. |
+| JS expressions | Ahead-of-time output embeds native evaluator functions outside the runtime scope. The REPL retains its string evaluator. | Ordinary compiled `%js` needs no implicit string compilation. Explicit user eval/Function still follows host policy. |
 | Compiler entry | `src/compiler.ts` imports and reexports `compileFile`, which pulls in `node:path` and Deno filesystem services. | Separate a pure source compiler entry before browser-hosted compilation. |
 | Parser dependency | Acorn is mapped to an npm package in `deno.json`. | Bundle or provide a browser-resolvable Acorn artifact for browser-hosted compilation. Generated programs do not need this compiler dependency. |
 | REPL runtime | `src/repl_runtime.ts` uses `Function` and direct `eval`. | Every interactive session needs string compilation, including cells without `%js`. |
@@ -89,11 +91,11 @@ does not resolve bare imports inside its dependencies.
 
 ## Script policy and execution context
 
-A script policy can block `eval` and `Function`. An ahead-of-time program that
-never executes `%js` has a different boundary from the current REPL: defining
-the evaluator function does not invoke its string compiler. Test both cases
-under an explicit policy. Moving the REPL into a Worker does not by itself
-remove the need to address string compilation.
+A script policy can block `eval` and `Function`. Under ADR-49, ahead-of-time
+programs execute native functions for `%js` and do not implicitly invoke those
+string compilers. User JS can still request them explicitly and is subject
+to host policy. The current REPL evaluates submitted strings, so moving it
+into a Worker does not remove the need to address string compilation.
 [MDN script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src)
 
 A DOM-integrated page and a Worker playground are different targets. Worker

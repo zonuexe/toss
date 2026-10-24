@@ -2,14 +2,14 @@
 
 This directory is a verification harness with PASS/FAIL checks. For a small
 application that uses compiled Toss from Vue, see the
-[Vue counter](../vue/README.md). Both run ahead-of-time JavaScript; neither
-runs the Toss compiler or REPL in the browser.
+[Vue counter](../vue/README.md). Both run ahead-of-time JavaScript; neither runs
+the Toss compiler or REPL in the browser.
 
 This small harness verifies JavaScript emitted ahead of time by Deno. The
 browser only receives static ES modules and local host assets; it does not run
-Deno, Node, the Toss compiler, or Acorn. The main page intentionally allows the
-existing `%js` boundary through `unsafe-eval`. That policy is for this
-verification example and is not a production security recommendation.
+Deno, Node, the Toss compiler, or Acorn. Compiled `%js` expressions are
+ahead-of-time JavaScript, so the main and strict pages do not allow
+`unsafe-eval`.
 
 ## Build and serve
 
@@ -23,7 +23,7 @@ mise exec -- deno run --allow-read --allow-net=127.0.0.1:8000 examples/browser/s
 Open <http://127.0.0.1:8000/>. The optional server argument selects a port in
 the range 1–65535; update the narrow `--allow-net` permission to match it. The
 server binds only to loopback and serves only the generated files under
-`out/browser`. Routes are `/`, `/strict`, `/main.js`, `/strict.js`,
+`out/browser`. Routes are `/`, `/strict`, `/main.js`, `/strict.js`, `/aot.js`,
 `/blocked.js`, `/host.js`, and `/strict-host.js`.
 
 The main page checks arithmetic, Array mapping, a private Toss module closure,
@@ -33,10 +33,9 @@ awaiting a JavaScript Promise. Click **Run Toss callback again** to invoke that
 callback from the browser again; each click passes a larger input and displays
 the expected and observed result. Callback errors appear as visible failures.
 
-Open `/strict` for the separate strict CSP check. Its policy uses
-`script-src 'self'` without `unsafe-eval`. A compiled Toss program without `%js`
-must print `42`; a compiled `%js` fixture must be blocked and report the
-underlying `EvalError` as an expected result.
+Open `/strict` for checks under `script-src 'self'`. A plain Toss program must
+print `42`, an AOT `%js` expression must print `2`, and an explicit user call to
+the JavaScript `Function` constructor must be blocked by CSP.
 
 ## Checks
 

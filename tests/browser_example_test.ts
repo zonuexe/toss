@@ -75,11 +75,14 @@ Deno.test("browser example build emits Toss modules and local host assets", asyn
     await buildBrowserExample(outputDirectory);
     const main = await Deno.readTextFile(`${outputDirectory}/main.js`);
     const strict = await Deno.readTextFile(`${outputDirectory}/strict.js`);
+    const aot = await Deno.readTextFile(`${outputDirectory}/aot.js`);
     const blocked = await Deno.readTextFile(`${outputDirectory}/blocked.js`);
     assert.match(main, /from "browser-demo"/);
     assert.match(main, /initializeModule/);
-    assert.doesNotMatch(strict, /import \* as __tossJavaScriptImport/);
-    assert.match(blocked, /evaluateJavaScript/);
+    assert.doesNotMatch(strict, /\bFunction\s*\(/);
+    assert.match(aot, /evaluateCompiledJavaScript/);
+    assert.match(blocked, /Function\("return 42"\)/);
+    assert.doesNotMatch(blocked, /\bevaluateJavaScript\s*\(/);
     for (
       const asset of ["index.html", "strict.html", "host.js", "strict-host.js"]
     ) {
@@ -168,7 +171,7 @@ Deno.test("browser handler serves explicit routes with MIME and separate CSP", a
       new Request("http://localhost/%2e%2e/deno.json"),
     );
     assert.equal(main.headers.get("content-type"), "text/html; charset=utf-8");
-    assert.match(
+    assert.doesNotMatch(
       main.headers.get("content-security-policy") ?? "",
       /unsafe-eval/,
     );

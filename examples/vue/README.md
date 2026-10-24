@@ -3,9 +3,9 @@
 This is an ordinary ahead-of-time Toss browser application. Deno compiles
 `counter.toss` into a JavaScript ES module that embeds the Toss runtime; the
 browser receives that module and static host files. The browser does not run
-Deno, Node, the Toss compiler, Acorn, or a Toss source parser. The local fixed-
-nonce CSP includes `unsafe-eval` only for the small `%js` boundary expression in
-the compiled Toss module. Vue uses render functions through `h()` and needs no
+Deno, Node, the Toss compiler, Acorn, or a Toss source parser. Compiled `%js`
+expressions run as ahead-of-time JavaScript under the local fixed-nonce CSP,
+without `unsafe-eval`. Vue uses render functions through `h()` and needs no
 template compiler.
 
 ## Build and run

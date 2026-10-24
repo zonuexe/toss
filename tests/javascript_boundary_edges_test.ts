@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { compile } from "../src/compiler.ts";
 import { TossSyntaxError } from "../src/diagnostic.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, executeModuleJavaScript, text } from "./helpers.ts";
 import { runModuleProgram } from "./module_helpers.ts";
 
 for (
@@ -10,6 +10,21 @@ for (
     ["regex separator", "%js(/[;)]/.test(';')) print.", "true\n"],
     ["comment delimiters", "%js(/* ; ) */ 7 /* ) ; */) print.", "7\n"],
     ["trailing line comment", "%js(7 // ) ;\n) print.", "7\n"],
+    [
+      "HTML opening line comment",
+      "%js((() => { <!-- comment\nreturn 7; })()) print.",
+      "7\n",
+    ],
+    [
+      "HTML closing line comment",
+      "%js((() => {\n--> comment\nreturn 8;\n})()) print.",
+      "8\n",
+    ],
+    [
+      "HTML comment markers in a string",
+      "%js('<!-- text -->') print.",
+      "<!-- text -->\n",
+    ],
     [
       "template interpolation",
       "%js(`answer ${/[)]/.test(')') ? 7 : 0}`) print.",
@@ -26,6 +41,9 @@ for (
       "8\n",
     ],
     ["sequence expression", "%js((1, 2, 3)) print.", "3\n"],
+    ["function expression", "%js(function(){}) dump.", "<js>\n"],
+    ["object expression", "%js({value: 7, other: 2}) dump.", "<js>\n"],
+    ["await object key stays valid", "%js(({await: 3}).await) print.", "3\n"],
     ["nested JS binding", "%js(x = %js(Math.max(1, 2)); x * 3) print.", "6\n"],
     [
       "nested JS regex in binding",
@@ -68,6 +86,11 @@ for (
       "binding generator names",
       "%js(environment = 2, scope = 3, send = 4; environment + scope + send) print.",
       "9\n",
+    ],
+    [
+      "evaluator parameter stays hygienic",
+      "%js(globalThis.__tossJsValues = 11). %js(__tossJsValues) print.",
+      "11\n",
     ],
     [
       "local names stay JS only",
@@ -174,17 +197,18 @@ for (
 
 Deno.test("JS cause retains the original thrown object", async () => {
   const javascript = compile(
-    "#boom bind: { %js((() => { globalThis.jsCause = {value: 7}; throw globalThis.jsCause; })()) }.",
+    "#boom bind: { %js((() => { globalThis.jsCause = {value: 7}; throw globalThis.jsCause; })()) } asJSCallback. %export($boom).",
     "cause.toss",
+    { format: "esm" },
   );
-  const result = await executeJavaScript(
-    javascript + `
-const context = {location: {file: 'host', line: 1, column: 1}, environment};
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
 try {
-  invokeBlock(fetchBinding('boom', context), [], context);
+  value();
   console.log('did not throw');
 } catch (error) {
-  console.log(error instanceof TossRuntimeError, error.cause === globalThis.jsCause);
+  console.log(error.name === 'TossRuntimeError', error.cause === globalThis.jsCause);
 }
 `,
   );
@@ -194,17 +218,18 @@ try {
 
 Deno.test("JS cause accepts a Proxy whose prototype lookup throws", async () => {
   const javascript = compile(
-    "#boom bind: { %js((() => { globalThis.jsCause = new Proxy({}, {getPrototypeOf() {throw 99}}); throw globalThis.jsCause; })()) }.",
+    "#boom bind: { %js((() => { globalThis.jsCause = new Proxy({}, {getPrototypeOf() {throw 99}}); throw globalThis.jsCause; })()) } asJSCallback. %export($boom).",
     "cause.toss",
+    { format: "esm" },
   );
-  const result = await executeJavaScript(
-    javascript + `
-const context = {location: {file: 'host', line: 1, column: 1}, environment};
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
 try {
-  invokeBlock(fetchBinding('boom', context), [], context);
+  value();
   console.log('did not throw');
 } catch (error) {
-  console.log(error instanceof TossRuntimeError, error.cause === globalThis.jsCause);
+  console.log(error.name === 'TossRuntimeError', error.cause === globalThis.jsCause);
 }
 `,
   );

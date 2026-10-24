@@ -1,4 +1,6 @@
 import { runtimeAsyncJavaScript } from "./runtime_async.ts";
+import { runtimeJavaScriptAot } from "./runtime_javascript_aot.ts";
+import { runtimeJavaScriptCallback } from "./runtime_javascript_callback.ts";
 
 export const runtimeJavaScript = `class TossRuntimeError extends Error {
   constructor(reason, location, options) {
@@ -27,6 +29,8 @@ const javascriptReferenceMessages = new Map([
   ["dump", function(receiver, context) { return writeOutput(receiver, "inspect", context); }],
 ]);
 ${runtimeAsyncJavaScript}
+${runtimeJavaScriptCallback}
+${runtimeJavaScriptAot}
 
 function isJavaScriptReference(value) { return hostValues.has(value) || asyncResults.has(value); }
 
@@ -62,44 +66,6 @@ function toJavaScript(value, context) {
   if (typeof value === "bigint") throw new TossRuntimeError("Unsupported Toss value for JavaScript.", context.location);
   if (typeof value === "number" && !Number.isFinite(value)) throw new TossRuntimeError("Unsupported Toss value for JavaScript.", context.location);
   return value;
-}
-
-function createJavaScriptCallback(receiver, context) {
-  const previous = javascriptCallbacks.get(receiver);
-  if (previous !== undefined) return fromJavaScript(previous, context);
-  const callback = function(...hostArguments) {
-    const expected = receiver.length;
-    if (hostArguments.length < expected) {
-      throw new TossRuntimeError("JavaScript callback expects " + expected +
-        " argument(s), received " + hostArguments.length + ".", context.location);
-    }
-    const argumentsList = hostArguments.slice(0, expected).map((value) =>
-      fromJavaScript(value, context)
-    );
-    const lexicalContext = {location: context.location, environment: context.environment};
-    return toJavaScript(invokeBlock(receiver, argumentsList, lexicalContext), context);
-  };
-  javascriptCallbacks.set(receiver, callback);
-  return fromJavaScript(callback, context);
-}
-
-function evaluateJavaScript(source, values, context, names) {
-  const nativeValues = values.map((value) => toJavaScript(value, context));
-  let result;
-  try {
-    let privateName = "__tossJsValues";
-    while (source.includes(privateName) || names.includes(privateName)) privateName += "_";
-    const declarations = names.map((name, index) => "const " + name + " = " + privateName + "[" + index + "];").join("\\n");
-    const evaluator = Function(
-      privateName,
-      "\\\"use strict\\\";\\n" + declarations +
-        "\\nreturn (function(){\\\"use strict\\\"; return (" + source +"); }).call(void 0);",
-    );
-    result = Reflect.apply(evaluator, undefined, [nativeValues]);
-  } catch (error) {
-    throw new TossRuntimeError("JavaScript expression threw.", context.location, {cause: error});
-  }
-  return fromJavaScript(result, context);
 }
 
 const activeArrayInspections = new Set();

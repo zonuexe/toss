@@ -716,6 +716,18 @@ mise exec -- deno run out/javascript.js
 ```
 
 The compiler uses a pinned Acorn parser; generated files do not depend on it.
+
+Ordinary compiled output embeds `%js` expressions as native functions. It
+does not implicitly call `eval` or `Function`, so `%js` itself does not require
+`unsafe-eval` in a browser's script policy. Explicit calls to those APIs in
+your own JS still follow host policy. The REPL continues to evaluate submitted
+strings and requires string compilation. See
+[ADR-49](docs/adr/0049-ahead-of-time-javascript-expressions.md).
+
+Ahead-of-time JS must also fit ES module grammar. Using `await` as a variable
+name is a compile-time error with rename guidance; `obj.await` and await in
+async functions remain valid. Legacy HTML line-comment prefixes are normalized
+without rewriting strings, templates or regex literals.
 The generated file includes the interop runtime. Host APIs use their normal
 permissions and side effects. JS output is not captured by Toss. See
 [ADR-38](docs/adr/0038-javascript-expressions.md).

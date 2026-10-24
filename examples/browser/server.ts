@@ -9,6 +9,7 @@ const assets = new Map([
   ["/strict", { file: "strict.html", type: "text/html; charset=utf-8" }],
   ["/main.js", { file: "main.js", type: "text/javascript; charset=utf-8" }],
   ["/strict.js", { file: "strict.js", type: "text/javascript; charset=utf-8" }],
+  ["/aot.js", { file: "aot.js", type: "text/javascript; charset=utf-8" }],
   ["/blocked.js", {
     file: "blocked.js",
     type: "text/javascript; charset=utf-8",
@@ -39,7 +40,7 @@ export function createBrowserHandler(
     if (asset.file === "index.html") {
       headers.set(
         "content-security-policy",
-        "default-src 'self'; script-src 'self' 'unsafe-eval' 'nonce-toss-browser'; object-src 'none'; base-uri 'none'",
+        "default-src 'self'; script-src 'self' 'nonce-toss-browser'; object-src 'none'; base-uri 'none'",
       );
     } else if (asset.file === "strict.html") {
       headers.set(

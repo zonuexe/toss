@@ -25,6 +25,14 @@ Deno.test("static imports preserve namespace wrapper identity", async () => {
   assert.equal(text(result.stdout), "true\n");
 });
 
+Deno.test("static import aliases avoid decoded source identifiers", async () => {
+  const result = await execute(
+    "%js(globalThis.__tossJavaScriptImport0 = 9). %jsImport('node:path') dump. %js(__tossJavaScriptImport\\u0030) print.",
+  );
+  assert.equal(result.code, 0, text(result.stderr));
+  assert.equal(text(result.stdout), "<js>\n9\n");
+});
+
 Deno.test("macro generated and quoted imports execute at runtime", async () => {
   const generated = await execute(
     "%macro(#bring, { syntax -> %`(%jsImport('node:path')) }). #module bind: %bring(). %js(m = $module; m.basename('/tmp/generated')) print.",

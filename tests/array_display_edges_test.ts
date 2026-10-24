@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { compile } from "../src/compiler.ts";
-import { execute, executeJavaScript, text } from "./helpers.ts";
+import { execute, executeFlatRuntime, text } from "./helpers.ts";
 
 const cases = [
   [
@@ -65,13 +64,9 @@ Deno.test("array display errors keep custom method body locations", async () => 
 });
 
 Deno.test("array display releases every active ancestor after an error", async () => {
-  const setup = compile(
+  const result = await executeFlatRuntime(
     "#bad bind: $Object clone. $bad at: 'inspect' put: { $missing }. #nested bind: [$bad]. #outer bind: [$nested].",
-    "fixture.toss",
-  );
-  // Catch at the JavaScript boundary; Toss error handling is not implemented.
-  const result = await executeJavaScript(
-    setup + `
+    `
 const context = {environment, location: {file: "fixture.toss", line: 1, column: 1}};
 const outer = fetchBinding("outer", context);
 try {

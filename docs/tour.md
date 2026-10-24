@@ -290,6 +290,8 @@ Attributes は対象にデータを付ける仕組みで、それ自体は呼び
 
 JS の文字列・有限数・Boolean は通常の Toss 値、`null` と `undefined` は Nil になります。Object・Array・Function は `<js>` と表示する JS 参照値で、`toString`・`inspect`・`print`・`dump` のみを受け取ります。再び `%js` に渡すと元の JS 値を利用できます。同じ JS オブジェクトは同じ参照値を使います。非有限数・BigInt・Symbol の戻り値はランタイムエラーです。
 
+通常のコンパイル結果では `%js` の式をJS関数として事前に生成します。内部で文字列を `eval` や `Function` に渡さないため、`%js` 自体にブラウザの `unsafe-eval` は不要です。JS式から明示的に文字列評価を呼ぶ場合はホストのポリシーが適用されます。REPLの入力評価は別の経路で、引き続き文字列のコンパイルを必要とします。[ADR-49](adr/0049-ahead-of-time-javascript-expressions.md) に記録しています。
+
 Toss Object・Array・Symbol は元の値を JS に渡すため、変更を共有します。直接の Block 渡しはエラーにしますが、Object や Array の内部まで走査しません。JS の戻り値は出自によらず変換するため、渡した Toss Array を返しても JS 参照値になります。Block は後述の `asJSCallback` で明示的に変換できます。
 
 Promise は参照値として扱い、自動で待ちません。外側の `await` は未対応ですが、async 関数式は利用できます。JS 構文エラーはコンパイル時に報告し、JS 例外は元の原因を保持して `%js` の位置を示すランタイムエラーにします。ホスト API の権限や副作用は通常どおりで、`console.log` の出力は Toss が捕捉しません。[ADR-38](adr/0038-javascript-expressions.md) に記録しています。
