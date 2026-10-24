@@ -2,7 +2,12 @@ import { basename, dirname, extname, resolve } from "node:path";
 import type { Expression } from "./ast.ts";
 import { type BundleModule, generateBundle } from "./codegen.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
-import { analyzeModule, type ModuleImport } from "./module_analysis.ts";
+import {
+  analyzeModule,
+  type ModuleExport,
+  type ModuleImport,
+} from "./module_analysis.ts";
+import { compileFormat, type CompileOptions } from "./compile_options.ts";
 import {
   expandProgram,
   findMacroImports,
@@ -32,9 +37,12 @@ function validatePath(path: string, location: ModuleImport["location"]): void {
 export async function compileFile(
   input: string,
   output?: string,
+  options: CompileOptions = {},
 ): Promise<string> {
+  const format = compileFormat(options);
   const entryCanonical = await Deno.realPath(input);
   const modules: LoadedModule[] = [];
+  let entryExport: ModuleExport | undefined;
   const macroLibraries = new Set<string>();
   const ids = new Map<string, number>();
   const edges: {
@@ -125,6 +133,7 @@ export async function compileFile(
       imports: macroImports,
     });
     const analysis = analyzeModule(expressions, display, imported);
+    if (!imported) entryExport = analysis.exported;
     modules.push({
       canonical,
       expressions,
@@ -168,6 +177,16 @@ export async function compileFile(
   }
 
   const entry = await load(entryCanonical, input, false);
+  if (format === "esm" && entryExport === undefined) {
+    throw new TossSyntaxError(
+      modules[entry]?.expressions[0]?.location ?? {
+        file: input,
+        line: 1,
+        column: 1,
+      },
+      "ES module output requires exactly one top-level %export.",
+    );
+  }
   if (output !== undefined) {
     const canonicalOutput = await outputPath(output);
     if (
@@ -210,7 +229,7 @@ export async function compileFile(
       return { path: dependency.path, id: resolvedId };
     }),
   }));
-  return generateBundle(bundle, entry);
+  return generateBundle(bundle, entry, { format });
 }
 
 async function outputPath(output: string): Promise<string> {

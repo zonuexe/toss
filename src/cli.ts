@@ -1,8 +1,10 @@
 import { dirname, resolve } from "node:path";
 import { compileFile } from "./compiler.ts";
+import type { CompileFormat } from "./compile_options.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 
-const usage = "Usage: deno task compile <source.toss> -o <output.js>";
+const usage =
+  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm]";
 
 class UsageError extends Error {
   override readonly name = "UsageError";
@@ -11,18 +13,41 @@ class UsageError extends Error {
 function parseArguments(args: readonly string[]): {
   readonly input: string;
   readonly output: string;
+  readonly format: CompileFormat;
 } {
-  const [input, option, output, ...extra] = args;
-  if (
-    input === undefined || input.startsWith("-") || option !== "-o" ||
-    output === undefined || output.startsWith("-") || extra.length > 0
-  ) {
+  const input = args[0];
+  if (input === undefined || input.startsWith("-")) {
     throw new UsageError(usage);
   }
+  let output: string | undefined;
+  let format: CompileFormat = "program";
+  let formatSeen = false;
+  let index = 1;
+  while (index < args.length) {
+    const option = args[index];
+    const value = args[index + 1];
+    if (
+      option === "-o" && output === undefined && value !== undefined &&
+      !value.startsWith("-")
+    ) {
+      output = value;
+      index += 2;
+      continue;
+    }
+    if (option === "--format" && !formatSeen && value !== undefined) {
+      if (value !== "program" && value !== "esm") throw new UsageError(usage);
+      format = value;
+      formatSeen = true;
+      index += 2;
+      continue;
+    }
+    throw new UsageError(usage);
+  }
+  if (output === undefined) throw new UsageError(usage);
   if (resolve(input) === resolve(output)) {
     throw new UsageError("Input and output must be different files.");
   }
-  return { input, output };
+  return { input, output, format };
 }
 
 export async function main(args: readonly string[]): Promise<void> {
@@ -31,8 +56,8 @@ export async function main(args: readonly string[]): Promise<void> {
       console.log(usage);
       return;
     }
-    const { input, output } = parseArguments(args);
-    const javascript = await compileFile(input, output);
+    const { input, output, format } = parseArguments(args);
+    const javascript = await compileFile(input, output, { format });
     await Deno.mkdir(dirname(output), { recursive: true });
     await Deno.writeTextFile(output, javascript);
   } catch (error) {

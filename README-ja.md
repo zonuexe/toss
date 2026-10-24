@@ -33,6 +33,8 @@ JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます
 
 コンパイラやREPL自体をブラウザで動かす例ではありません。生成JSは現在ランタイムとpreludeを含み、Tree-shakingは未対応です。検証済みの範囲とブラウザ内コンパイルの課題は、[ブラウザランタイムの検討メモ](docs/browser-runtime.md) に整理しています。
 
+`--format esm` を付けると、エントリーの `%export(値).` をJSのdefault exportとして公開します。この形式ではファイル直下のexportが1つ必要です。たとえば `%export({ count -> $count add: 1 } asJSCallback).` をコンパイルすると、JS側から `import increment from './increment.js'` で関数を読み込めます。通常のBlockは自動変換せず、`asJSCallback` を明示します。既定の `program` 形式は従来どおりです。[ADR-48](docs/adr/0048-javascript-module-output.md) に仕様を記録しています。
+
 ## シンボル・マクロ・annotation
 
 | 記法 | 役割 | 実装状況 |

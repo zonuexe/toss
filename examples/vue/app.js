@@ -1,11 +1,10 @@
-import "/counter.js";
+import counter from "./counter.js";
 import { createApp, h, ref } from "vue";
-import { formatCount, increment, reset } from "./bridge.js";
 
 const app = createApp({
   setup() {
     const count = ref(0);
-    const display = () => formatCount(count.value);
+    const display = () => counter.formatCount(count.value);
     return () =>
       h("section", [
         h("p", { role: "status", "aria-live": "polite" }, [
@@ -14,12 +13,12 @@ const app = createApp({
         ]),
         h("button", {
           type: "button",
-          onClick: () => count.value = increment(count.value),
+          onClick: () => count.value = counter.increment(count.value),
         }, "Increment"),
         " ",
         h("button", {
           type: "button",
-          onClick: () => count.value = reset(),
+          onClick: () => count.value = counter.reset(),
         }, "Reset"),
       ]);
   },

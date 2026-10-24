@@ -5,8 +5,12 @@ import { collectJavaScriptImports } from "./javascript_import_analysis.ts";
 import { emitJavaScriptImports } from "./javascript_import_codegen.ts";
 import { containsDirectAwait } from "./codegen_analysis.ts";
 import { fileRootSetupLines, runtimePreludeLines } from "./codegen_prelude.ts";
+import { compileFormat, type CompileOptions } from "./compile_options.ts";
 
-function emit(expression: Expression, scope = "environment"): string {
+function emit(
+  expression: Expression,
+  scope = "environment",
+): string {
   const context = `{location: ${
     JSON.stringify(expression.location)
   }, environment: ${scope}}`;
@@ -106,13 +110,34 @@ function emit(expression: Expression, scope = "environment"): string {
   }
 }
 
-export function generate(expressions: readonly Expression[]): string {
+export function generate(
+  expressions: readonly Expression[],
+  options: CompileOptions = {},
+): string {
+  const format = compileFormat(options);
   const lines = [
     ...emitJavaScriptImports(collectJavaScriptImports(expressions)),
     ...runtimePreludeLines(),
     ...fileRootSetupLines(),
   ];
-  for (const expression of expressions) lines.push(emit(expression) + ";");
+  for (const expression of expressions) {
+    lines.push(emit(expression) + ";");
+  }
+  if (format === "esm") {
+    const exported = expressions.find((expression) =>
+      expression.kind === "export"
+    );
+    if (exported === undefined) {
+      throw new TypeError(
+        "ES module generation requires an export expression.",
+      );
+    }
+    lines.push(
+      `export default toJavaScript(moduleExport, {location: ${
+        JSON.stringify(exported.location)
+      }});`,
+    );
+  }
   return lines.join("\n") + "\n";
 }
 
@@ -138,7 +163,9 @@ export type BundleModule = {
   readonly imports: readonly { readonly path: string; readonly id: number }[];
 };
 
-export function generateModuleInitializer(module: BundleModule): string {
+export function generateModuleInitializer(
+  module: BundleModule,
+): string {
   const imports = module.imports.map(({ path, id }) =>
     `[${JSON.stringify(path)}, ${id}]`
   );
@@ -169,7 +196,12 @@ export function moduleRuntimeLines(): string[] {
 export function generateBundle(
   modules: readonly BundleModule[],
   entry: number,
+  options: CompileOptions = {},
 ): string {
+  const format = compileFormat(options);
+  const exported = modules[entry]?.expressions.find((expression) =>
+    expression.kind === "export"
+  );
   const javascriptImports = collectJavaScriptImports(
     modules.flatMap((module) => module.expressions),
   );
@@ -183,8 +215,15 @@ export function generateBundle(
       `moduleInitializers[${id}] = ${generateModuleInitializer(module)};`,
     );
   });
+  if (format === "esm" && exported === undefined) {
+    throw new TypeError("ES module generation requires an export expression.");
+  }
   lines.push(
-    `initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});`,
+    format === "esm"
+      ? `const __tossDefaultExport = initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});\nexport default toJavaScript(__tossDefaultExport, {location: ${
+        JSON.stringify(exported?.location)
+      }});`
+      : `initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});`,
   );
   return lines.join("\n") + "\n";
 }

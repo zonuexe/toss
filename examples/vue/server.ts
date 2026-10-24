@@ -6,7 +6,6 @@ const defaultOutputDirectory = resolve(exampleDirectory, "../../out/vue");
 const assets = new Map([
   ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
   ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
-  ["/bridge.js", { file: "bridge.js", type: "text/javascript; charset=utf-8" }],
   ["/counter.js", {
     file: "counter.js",
     type: "text/javascript; charset=utf-8",

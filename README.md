@@ -623,8 +623,9 @@ keeps its bindings private, including bindings used by exported Blocks:
 
 Paths are literal relative `.toss` paths resolved from the importing file.
 Each dependency requires one standalone top-level `%export(value).`; the entry
-may omit it. Export records a value and execution continues to the end of the
-file. Import expressions can be delayed inside Blocks; initialization runs
+may omit it in the default `program` output. Export records a value and
+execution continues to the end of the file. Import expressions can be delayed
+inside Blocks; initialization runs
 once at first use, and both values and failures are cached. All dependencies
 are validated at compile time, including unused imports, and cycles are errors.
 Runtime code is shared, while root Environments and root Objects are separate.
@@ -638,6 +639,37 @@ mise exec -- deno run out/modules.js
 ```
 
 The output contains the dependencies and needs no Toss source files at runtime.
+
+### Export to JavaScript
+
+Use `--format esm` to publish the entry's `%export` value as a JavaScript
+default export. The entry must contain exactly one top-level `%export` in
+this format. The default `program` format keeps its existing behavior.
+
+```text
+// increment.toss
+%export({ count -> $count add: 1 } asJSCallback).
+```
+
+```sh
+mise exec -- deno task compile increment.toss -o out/increment.js --format esm
+```
+
+```js
+import increment from './increment.js';
+console.log(increment(41)); // 42
+```
+
+The file finishes executing before its value becomes available. Exported
+Blocks need explicit `asJSCallback`; other values use the existing shallow
+Toss-to-JS conversion. JS references unwrap, Nil becomes null, and async
+results become native Promises. There is no implicit conversion of nested
+Blocks or named JS exports. See [ADR-48](docs/adr/0048-javascript-module-output.md)
+and the [Vue application](examples/vue/README.md).
+
+The APIs also accept `{ format: 'esm' }` as the third argument to
+`compile(source, file, options)` or `compileFile(input, output, options)`.
+Pass `undefined` for the output path when only the generated string is needed.
 
 ## JavaScript expressions
 

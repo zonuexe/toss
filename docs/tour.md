@@ -159,7 +159,9 @@ Object は `perform:` で引数なし、`perform:withArguments:` で配列に並
 
 ## 5. モジュールとカプセル化
 
-ファイルごとに独立した環境（辞書）と `$Object`・`$Symbol` のルート Object を作り、ランタイムコードは共有します。`%export(値).` で1つの任意の値を公開し、`%import('./math.toss')` で取得します。公開した Block は定義元の環境を保持します。依存先にはファイル直下の export が1つ必要で、エントリーファイルでは省略できます。export 後も処理を続け、ファイル全体が正常終了してから公開値を返します。
+ファイルごとに独立した環境（辞書）と `$Object`・`$Symbol` のルート Object を作り、ランタイムコードは共有します。`%export(値).` で1つの任意の値を公開し、`%import('./math.toss')` で取得します。公開した Block は定義元の環境を保持します。依存先にはファイル直下の export が1つ必要で、既定の `program` 出力ではエントリーファイルのexportを省略できます。export 後も処理を続け、ファイル全体が正常終了してから公開値を返します。
+
+`--format esm` でコンパイルすると、エントリーの公開値をJavaScriptのdefault exportとして利用できます。この形式ではエントリーにもexportが1つ必要です。BlockをJS関数として公開するときは `%export({ n -> $n add: 1 } asJSCallback).` のように明示変換し、JS側で `import increment from './increment.js'` と読み込みます。値変換は浅く、入れ子のBlockは自動変換しません。[ADR-48](adr/0048-javascript-module-output.md) を参照してください。
 
 相対パスは import 元から解決し、`.toss` を明記します。Block 内での import も可能で、初期化は最初に式を実行した時の一度だけです。依存先の収集・検証は未実行の分岐も含めてコンパイル時に行い、循環参照はエラーにします。公開値と初期化失敗はファイル単位でキャッシュし、同じファイルを再実行しません。標準ライブラリの参照方法は延期します。JS パッケージ・URL は第9節の `%jsImport` を使います。[ADR-37](adr/0037-local-modules.md) に記録しています。
 

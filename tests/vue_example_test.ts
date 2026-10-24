@@ -2,59 +2,37 @@ import assert from "node:assert/strict";
 import { buildVueExample } from "../examples/vue/build.ts";
 import { createVueHandler } from "../examples/vue/server.ts";
 
-Deno.test("compiled Vue bridge runs Toss callbacks and reports missing initialization", async () => {
+Deno.test("Vue build exports working callbacks from the compiled Toss default value", async () => {
   const outputDirectory = await Deno.makeTempDir({ prefix: "toss-vue-" });
   try {
     await buildVueExample(outputDirectory);
     await Deno.writeTextFile(
-      `${outputDirectory}/deno.json`,
-      JSON.stringify({ imports: { "counter-bridge": "./bridge.js" } }),
-    );
-    await Deno.writeTextFile(
       `${outputDirectory}/probe.ts`,
       [
-        'import "./counter.js";',
-        'import { formatCount, increment, reset } from "./bridge.js";',
-        'console.log([increment(0), increment(1), reset(), increment(0), formatCount(-4)].join("|"));',
+        'import counter from "./counter.js";',
+        'console.log([counter.increment(0), counter.increment(1), counter.reset(), counter.increment(0), counter.formatCount(-4)].join("|"));',
         "",
       ].join("\n"),
     );
-    await Deno.writeTextFile(
-      `${outputDirectory}/missing.ts`,
-      ['import { increment } from "./bridge.js";', "increment(0);", ""].join(
-        "\n",
-      ),
-    );
-    const run = (script: string) =>
-      new Deno.Command(Deno.execPath(), {
-        args: [
-          "run",
-          `--config=${outputDirectory}/deno.json`,
-          `--allow-read=${outputDirectory}`,
-          `${outputDirectory}/${script}`,
-        ],
-        stdout: "piped",
-        stderr: "piped",
-      }).output();
-    const callbacks = await run("probe.ts");
-    assert.equal(callbacks.code, 0);
-    assert.equal(
-      new TextDecoder().decode(callbacks.stdout).trim(),
-      "1|2|0|1|-4",
-    );
-
-    const missing = await run("missing.ts");
-    assert.notEqual(missing.code, 0);
-    assert.match(
-      new TextDecoder().decode(missing.stderr),
-      /import counter\.js before using it/,
-    );
+    const result = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--no-config",
+        "--no-prompt",
+        `--allow-read=${outputDirectory}`,
+        `${outputDirectory}/probe.ts`,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert.equal(result.code, 0, new TextDecoder().decode(result.stderr));
+    assert.equal(new TextDecoder().decode(result.stdout).trim(), "1|2|0|1|-4");
   } finally {
     await Deno.remove(outputDirectory, { recursive: true });
   }
 });
 
-Deno.test("Vue handler serves allowlisted assets with types and rejects unknown routes", async () => {
+Deno.test("Vue handler serves allowlisted assets and rejects the removed bridge route", async () => {
   const outputDirectory = await Deno.makeTempDir({
     prefix: "toss-vue-server-",
   });
@@ -62,18 +40,18 @@ Deno.test("Vue handler serves allowlisted assets with types and rejects unknown 
     await buildVueExample(outputDirectory);
     const handle = createVueHandler(outputDirectory);
     const page = await handle(new Request("http://localhost/"));
+    const counter = await handle(new Request("http://localhost/counter.js"));
     const bridge = await handle(new Request("http://localhost/bridge.js"));
-    const missing = await handle(new Request("http://localhost/private.toss"));
     assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
     assert.match(
       page.headers.get("content-security-policy") ?? "",
       /unsafe-eval/,
     );
     assert.equal(
-      bridge.headers.get("content-type"),
+      counter.headers.get("content-type"),
       "text/javascript; charset=utf-8",
     );
-    assert.equal(missing.status, 404);
+    assert.equal(bridge.status, 404);
   } finally {
     await Deno.remove(outputDirectory, { recursive: true });
   }

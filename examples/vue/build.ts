@@ -4,7 +4,7 @@ import { compileFile } from "../../src/compiler.ts";
 
 const exampleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = resolve(exampleDirectory, "../..");
-const assets = ["index.html", "app.js", "bridge.js"] as const;
+const assets = ["index.html", "app.js"] as const;
 
 export async function buildVueExample(
   outputDirectory = resolve(repositoryDirectory, "out/vue"),
@@ -12,6 +12,8 @@ export async function buildVueExample(
   await Deno.mkdir(outputDirectory, { recursive: true });
   const javascript = await compileFile(
     resolve(exampleDirectory, "counter.toss"),
+    undefined,
+    { format: "esm" },
   );
   await Deno.writeTextFile(resolve(outputDirectory, "counter.js"), javascript);
   await Promise.all(assets.map((name) =>

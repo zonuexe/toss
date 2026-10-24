@@ -17,9 +17,11 @@ JavaScript imports are outside this slice. Standard-library naming and
 resolution are explicitly deferred; local paths do not decide that interface.
 
 `%export(expression).` is a standalone top-level statement. An imported file
-must contain exactly one; the entry may omit it, but cannot contain more than
-one. Export inside a Block, argument, pipeline or other expression is a compile
-error. It records its evaluated value without ending file execution. Complete
+must contain exactly one; the entry may omit it in the default program output,
+but cannot contain more than one. ADR-48 requires an entry export for opt-in
+JavaScript module output. Export inside a Block, argument, pipeline or other
+expression is a compile error. It records its evaluated value without ending
+file execution. Complete
 all top-level statements successfully before an import returns. Export does
 not make a live alias to a binding and does not copy values: later rebinding
 does not replace the recorded value, while mutation of an exported Object is

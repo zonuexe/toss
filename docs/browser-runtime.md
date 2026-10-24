@@ -14,8 +14,9 @@ The examples have different purposes:
   harness with explicit checks and a separate strict-CSP route.
 - [`examples/vue`](../examples/vue/README.md) is a small application using
   ordinary browser ES modules. Vue owns reactive state and rendering, and
-  calls Toss Blocks through an explicit callback adapter and a small JS
-  bridge. Toss `%export` remains a Toss module value, not a JS named export.
+  calls Toss Blocks through an explicit callback adapter. With `--format esm`,
+  Toss's single `%export` value becomes a JS default export; no named JS
+  export syntax is added.
 
 Both use Deno to compile before deployment. The generated JS embeds the Toss
 runtime and prelude, with no tree-shaking yet. Neither requires Deno or Acorn
@@ -47,15 +48,16 @@ The Vue counter also ran in the Codex in-app browser. Vue 3.5.13 loaded from
 unpkg as a runtime-only production ES module. Incrementing twice changed
 `0` to `1` to `2`; reset returned `0`, and increment worked again afterward.
 Vue owns the reactive Number and rendering. The generated Toss callbacks
-implement increment, reset and formatting, with the module-scoped JS bridge
-exposing them to the application.
+implement increment, reset and formatting. The initial example used a
+module-scoped JS registration bridge; ADR-48 replaces it with a default import
+of the generated ES module's public value.
 
 When a temporary test server returned 404 for the application module, the
 page displayed a startup error and retained the static count and disabled
 controls. Automated tests also execute the generated callbacks in a Deno
 subprocess, without downloading Vue, and check missing initialization and
 asset routing. Vue's render function uses no template compiler. The Toss
-registration expression still requires string evaluation under `%js`.
+public-object expression still requires string evaluation under `%js`.
 
 ## Current boundaries
 

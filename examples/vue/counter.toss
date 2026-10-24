@@ -1,5 +1,4 @@
-#bridge bind: %jsImport('counter-bridge').
 #increment bind: { count -> $count add: 1 } asJSCallback.
 #reset bind: { 0 } asJSCallback.
 #formatCount bind: { count -> $count toString } asJSCallback.
-%js(bridge = $bridge, increment = $increment, reset = $reset, formatCount = $formatCount; bridge.register(increment, reset, formatCount)).
+%export(%js(increment = $increment, reset = $reset, formatCount = $formatCount; ({ increment, reset, formatCount }))).
