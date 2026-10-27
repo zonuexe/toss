@@ -74,7 +74,7 @@ export function expandProgram(
         if (resolved === undefined) {
           throw new TossSyntaxError(
             imported.location,
-            "%macroImport requires compileFile so its library can be resolved.",
+            "%macroImport requires compileFile or compileSources so its library can be resolved.",
           );
         }
         for (const definition of resolved.definitions) {

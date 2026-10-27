@@ -1,6 +1,5 @@
 import { dirname, extname, resolve } from "node:path";
-import type { Expression } from "./ast.ts";
-import { type BundleModule, generateBundle } from "./codegen.ts";
+import { generateBundle } from "./codegen.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import {
   analyzeModule,
@@ -15,18 +14,16 @@ import {
 } from "./compile_options.ts";
 import { validateModuleOutput } from "./module_output.ts";
 import {
+  finalizeModuleGraph,
+  type ModuleGraphEdge,
+  type ResolvedModuleGraphNode,
+} from "./module_graph.ts";
+import {
   expandProgram,
   findMacroImports,
   parseMacroLibrary,
   type ResolvedMacroImport,
 } from "./macro_compile.ts";
-
-type LoadedModule = {
-  readonly canonical: string;
-  readonly expressions: readonly Expression[];
-  readonly imports: readonly ModuleImport[];
-  readonly importIds: readonly number[];
-};
 
 function validatePath(path: string, location: ModuleImport["location"]): void {
   if (
@@ -39,6 +36,11 @@ function validatePath(path: string, location: ModuleImport["location"]): void {
     );
   }
 }
+
+type LoadedModule = ResolvedModuleGraphNode & {
+  readonly canonical: string;
+  readonly importIds: readonly number[];
+};
 
 export async function compileFile(
   input: string,
@@ -54,11 +56,7 @@ export async function compileFile(
   let entryExport: ModuleExport | undefined;
   const macroLibraries = new Set<string>();
   const ids = new Map<string, number>();
-  const edges: {
-    readonly from: number;
-    readonly to: number;
-    readonly location: ModuleImport["location"];
-  }[] = [];
+  const edges: ModuleGraphEdge[] = [];
 
   async function load(
     canonical: string,
@@ -203,35 +201,6 @@ export async function compileFile(
     macroLibraries,
     ...(runtimeImport === undefined ? {} : { runtimeImport }),
   });
-  const visiting = new Set<number>();
-  const visited = new Set<number>();
-  function checkCycles(id: number): void {
-    if (visiting.has(id)) return;
-    if (visited.has(id)) return;
-    visiting.add(id);
-    for (const edge of edges.filter((item) => item.from === id)) {
-      if (visiting.has(edge.to)) {
-        throw new TossSyntaxError(
-          edge.location,
-          "Static module dependency cycle detected.",
-        );
-      }
-      checkCycles(edge.to);
-    }
-    visiting.delete(id);
-    visited.add(id);
-  }
-  checkCycles(entry);
-
-  const bundle: BundleModule[] = modules.map((module) => ({
-    expressions: module.expressions,
-    imports: module.imports.map((dependency, index) => {
-      const resolvedId = module.importIds[index];
-      if (resolvedId === undefined) {
-        throw new TypeError("Resolved module id is missing.");
-      }
-      return { path: dependency.path, id: resolvedId };
-    }),
-  }));
+  const bundle = finalizeModuleGraph(modules, entry, edges);
   return generateBundle(bundle, entry, options);
 }
