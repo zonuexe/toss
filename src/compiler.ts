@@ -6,6 +6,7 @@ import { expandProgram } from "./macro_compile.ts";
 import { compileFormat, type CompileOptions } from "./compile_options.ts";
 
 export type { CompileFormat, CompileOptions } from "./compile_options.ts";
+export { generateRuntimeModule } from "./runtime_module.ts";
 
 export function compile(
   source: string,
@@ -28,7 +29,7 @@ export function compile(
       "ES module output requires exactly one top-level %export.",
     );
   }
-  return generate(expressions, { format });
+  return generate(expressions, options);
 }
 
 export { compileFile };

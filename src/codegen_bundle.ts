@@ -5,13 +5,19 @@ import {
   collectJavaScriptExpressions,
   emitJavaScriptEvaluators,
   javascriptImportAliases,
+  javascriptRuntimeAlias,
 } from "./codegen_javascript.ts";
 import {
   emitJavaScriptImportStatements,
   javascriptImportMapExpression,
 } from "./javascript_import_codegen.ts";
-import { compileFormat, type CompileOptions } from "./compile_options.ts";
+import {
+  compileFormat,
+  type CompileOptions,
+  compileRuntimeImport,
+} from "./compile_options.ts";
 import { fileRootSetupLines, runtimePreludeLines } from "./codegen_prelude.ts";
+import { runtimeBridgeSetupLines } from "./runtime_module.ts";
 
 export type BundleModule = {
   readonly expressions: readonly Expression[];
@@ -73,11 +79,15 @@ export function generateBundle(
   options: CompileOptions = {},
 ): string {
   const format = compileFormat(options);
+  const runtimeImport = compileRuntimeImport(options);
   const expressions = modules.flatMap((module) => module.expressions);
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
   const imports = collectJavaScriptImports(expressions);
   const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const runtimeAlias = runtimeImport === undefined
+    ? undefined
+    : javascriptRuntimeAlias(javascriptExpressions);
   const evaluatorIndices = new Map<Expression, number>(
     javascriptExpressions.map((expression, index) => [expression, index]),
   );
@@ -86,10 +96,19 @@ export function generateBundle(
   );
   const lines = [
     ...emitJavaScriptImportStatements(imports, importAliases),
+    ...(runtimeImport === undefined || runtimeAlias === undefined ? [] : [
+      `import { createRuntime as ${runtimeAlias} } from ${
+        JSON.stringify(runtimeImport)
+      };`,
+    ]),
     `${
       format === "esm" ? "export default " : ""
-    }((javascriptEvaluators, javascriptImportNames) => {`,
-    ...runtimePreludeLines(),
+    }((javascriptEvaluators, javascriptImportNames${
+      runtimeImport === undefined ? "" : ", tossRuntime"
+    }) => {`,
+    ...(runtimeImport === undefined
+      ? runtimePreludeLines()
+      : runtimeBridgeSetupLines()),
     ...moduleRuntimeLines(),
   ];
   modules.forEach((module, id) => {
@@ -112,7 +131,7 @@ export function generateBundle(
   lines.push(
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    });`,
+    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}()`});`,
   );
   return lines.join("\n") + "\n";
 }

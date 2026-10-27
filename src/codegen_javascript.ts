@@ -130,6 +130,22 @@ export function javascriptImportAliases(
   });
 }
 
+export function javascriptRuntimeAlias(
+  expressions: readonly JavaScriptExpression[],
+): string {
+  const identifiers = javascriptIdentifiers(expressions);
+  for (
+    const name of [
+      "javascriptEvaluators",
+      "javascriptImportNames",
+      "tossRuntime",
+    ]
+  ) identifiers.add(name);
+  let alias = "__tossCreateRuntime";
+  while (identifiers.has(alias)) alias += "_";
+  return alias;
+}
+
 function javascriptIdentifiers(
   expressions: readonly JavaScriptExpression[],
 ): Set<string> {

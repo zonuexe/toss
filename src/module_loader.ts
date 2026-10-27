@@ -1,4 +1,4 @@
-import { basename, dirname, extname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 import type { Expression } from "./ast.ts";
 import { type BundleModule, generateBundle } from "./codegen.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
@@ -7,7 +7,12 @@ import {
   type ModuleExport,
   type ModuleImport,
 } from "./module_analysis.ts";
-import { compileFormat, type CompileOptions } from "./compile_options.ts";
+import {
+  compileFormat,
+  type CompileOptions,
+  compileRuntimeImport,
+} from "./compile_options.ts";
+import { validateModuleOutput } from "./module_output.ts";
 import {
   expandProgram,
   findMacroImports,
@@ -40,6 +45,7 @@ export async function compileFile(
   options: CompileOptions = {},
 ): Promise<string> {
   const format = compileFormat(options);
+  const runtimeImport = compileRuntimeImport(options);
   const entryCanonical = await Deno.realPath(input);
   const modules: LoadedModule[] = [];
   let entryExport: ModuleExport | undefined;
@@ -187,18 +193,13 @@ export async function compileFile(
       "ES module output requires exactly one top-level %export.",
     );
   }
-  if (output !== undefined) {
-    const canonicalOutput = await outputPath(output);
-    if (
-      modules.some((module) => module.canonical === canonicalOutput) ||
-      macroLibraries.has(canonicalOutput)
-    ) {
-      throw new TossSyntaxError(
-        { file: input, line: 1, column: 1 },
-        "Output must not overwrite a module source file.",
-      );
-    }
-  }
+  await validateModuleOutput({
+    ...(output === undefined ? {} : { output }),
+    input,
+    moduleSources: modules.map((module) => module.canonical),
+    macroLibraries,
+    ...(runtimeImport === undefined ? {} : { runtimeImport }),
+  });
   const visiting = new Set<number>();
   const visited = new Set<number>();
   function checkCycles(id: number): void {
@@ -229,18 +230,5 @@ export async function compileFile(
       return { path: dependency.path, id: resolvedId };
     }),
   }));
-  return generateBundle(bundle, entry, { format });
-}
-
-async function outputPath(output: string): Promise<string> {
-  const absolute = resolve(output);
-  try {
-    return await Deno.realPath(absolute);
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
-    const parent = dirname(absolute);
-    if (parent === absolute) throw error;
-    const realParent = await outputPath(parent);
-    return resolve(realParent, basename(absolute));
-  }
+  return generateBundle(bundle, entry, options);
 }

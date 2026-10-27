@@ -10,6 +10,10 @@ const assets = new Map([
     file: "counter.js",
     type: "text/javascript; charset=utf-8",
   }],
+  ["/runtime.js", {
+    file: "runtime.js",
+    type: "text/javascript; charset=utf-8",
+  }],
 ]);
 
 export function createVueHandler(

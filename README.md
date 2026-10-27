@@ -108,8 +108,7 @@ disk history and completion are deferred. See
 ### Browser examples
 
 Both examples compile Toss to JavaScript before serving static ES modules.
-Deno is a build tool here; the browser runs the emitted JS and its embedded
-Toss runtime.
+Deno is a build tool here; the browser runs the emitted JS and the Toss runtime.
 
 | Example | Purpose |
 | --- | --- |
@@ -117,7 +116,8 @@ Toss runtime.
 | [Browser verification](examples/browser/README.md) | A test harness: checks messages, modules, callbacks, async Blocks and CSP with visible PASS/FAIL results. |
 
 Neither example runs the Toss compiler or REPL inside the browser. Generated
-JS currently includes the runtime and prelude; it is not tree-shaken. See the
+JS embeds the runtime and prelude by default. The Vue build uses a separate
+runtime ES module; neither form is tree-shaken. See the
 [browser runtime assessment](docs/browser-runtime.md) for verified scope and
 the remaining work for browser-hosted compilation.
 
@@ -670,6 +670,26 @@ and the [Vue application](examples/vue/README.md).
 The APIs also accept `{ format: 'esm' }` as the third argument to
 `compile(source, file, options)` or `compileFile(input, output, options)`.
 Pass `undefined` for the output path when only the generated string is needed.
+
+### Share a runtime asset
+
+Generate a runtime module once and select it for each compiled application:
+
+```sh
+mise exec -- deno task runtime -o out/runtime.js
+mise exec -- deno task compile increment.toss -o out/increment.js --format esm --runtime-import ./runtime.js
+```
+
+Load the output as an ES module. `./runtime.js` is relative to the generated
+JS file, not the Toss source. The APIs accept
+`{ format: 'esm', runtimeImport: './runtime.js' }`; `generateRuntimeModule()`
+from `src/compiler.ts` returns the runtime module source for custom builds.
+Generate both assets with the same compiler version.
+
+Several artifacts can import one runtime asset. Each creates its own runtime
+state and keeps its file bindings and module caches private. This shares code
+without creating a shared Toss session. The default output still embeds the
+runtime. See [ADR-50](docs/adr/0050-external-runtime-module.md).
 
 ## JavaScript expressions
 

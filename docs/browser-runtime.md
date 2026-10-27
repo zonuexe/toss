@@ -19,7 +19,8 @@ The examples have different purposes:
   export syntax is added.
 
 Both use Deno to compile before deployment. The generated JS embeds the Toss
-runtime and prelude, with no tree-shaking yet. Neither requires Deno or Acorn
+runtime and prelude by default. The Vue build selects a separate runtime
+module under ADR-50. Neither form is tree-shaken. Neither requires Deno or Acorn
 in the browser, and neither implements browser-hosted compilation.
 
 ### Runtime verification
@@ -61,11 +62,17 @@ asset routing. Vue's render function uses no template compiler. The Toss
 public-object expression is compiled ahead of time under ADR-49. Increment
 and reset also passed after removing `unsafe-eval` from the Vue script policy.
 
+The ADR-50 build emits `counter.js` and a separate `runtime.js`. The same
+browser verified `0` to `1`, reset to `0`, and another increment to `1`
+with this build. The generated counter was 5,897 bytes, compared with 28,737
+bytes when embedding the runtime; the reusable runtime asset was 23,446 bytes.
+These are uncompressed sizes for this example, not a tree-shaking result.
+
 ## Current boundaries
 
 | Area | Observed implementation | Browser work |
 | --- | --- | --- |
-| Generated program | `src/codegen.ts` embeds the runtime and emits static JS namespace imports. | Load the artifact as an ES module with browser-compatible dependencies. The compiler need not run in the browser. |
+| Generated program | `src/codegen.ts` embeds the runtime by default, with an optional external runtime import, and emits static JS namespace imports. | Load the artifact as an ES module with browser-compatible dependencies. The compiler need not run in the browser. |
 | Runtime values and async Blocks | `src/runtime.ts` and `src/runtime_async.ts` use JavaScript objects, collections and Promises. | The example verifies a small subset in a real browser; broader coverage remains open. |
 | Output | `writeOutput` in `src/runtime.ts` uses `console.log`. | Initial output can use the browser console. A playground needs a separate output design. |
 | JS expressions | Ahead-of-time output embeds native evaluator functions outside the runtime scope. The REPL retains its string evaluator. | Ordinary compiled `%js` needs no implicit string compilation. Explicit user eval/Function still follows host policy. |

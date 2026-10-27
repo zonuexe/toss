@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileFile } from "../../src/compiler.ts";
+import { compileFile, generateRuntimeModule } from "../../src/compiler.ts";
 
 const exampleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = resolve(exampleDirectory, "../..");
@@ -10,10 +10,14 @@ export async function buildVueExample(
   outputDirectory = resolve(repositoryDirectory, "out/vue"),
 ): Promise<void> {
   await Deno.mkdir(outputDirectory, { recursive: true });
+  await Deno.writeTextFile(
+    resolve(outputDirectory, "runtime.js"),
+    generateRuntimeModule(),
+  );
   const javascript = await compileFile(
     resolve(exampleDirectory, "counter.toss"),
     undefined,
-    { format: "esm" },
+    { format: "esm", runtimeImport: "./runtime.js" },
   );
   await Deno.writeTextFile(resolve(outputDirectory, "counter.js"), javascript);
   await Promise.all(assets.map((name) =>

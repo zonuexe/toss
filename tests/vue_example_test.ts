@@ -7,8 +7,12 @@ Deno.test("Vue build exports working callbacks from the compiled Toss default va
   try {
     await buildVueExample(outputDirectory);
     const generated = await Deno.readTextFile(`${outputDirectory}/counter.js`);
+    const runtime = await Deno.readTextFile(`${outputDirectory}/runtime.js`);
     assert.doesNotMatch(generated, /\bevaluateJavaScript\s*\(/);
     assert.doesNotMatch(generated, /\bFunction\s*\(/);
+    assert.match(generated, /from "\.\/runtime\.js"/);
+    assert.match(runtime, /export function createRuntime\(\)/);
+    assert.doesNotMatch(generated, /function evaluateCompiledJavaScript/);
     await Deno.writeTextFile(
       `${outputDirectory}/probe.ts`,
       [
@@ -44,6 +48,7 @@ Deno.test("Vue handler serves allowlisted assets and rejects the removed bridge 
     const handle = createVueHandler(outputDirectory);
     const page = await handle(new Request("http://localhost/"));
     const counter = await handle(new Request("http://localhost/counter.js"));
+    const runtime = await handle(new Request("http://localhost/runtime.js"));
     const bridge = await handle(new Request("http://localhost/bridge.js"));
     assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
     assert.doesNotMatch(
@@ -52,6 +57,11 @@ Deno.test("Vue handler serves allowlisted assets and rejects the removed bridge 
     );
     assert.equal(
       counter.headers.get("content-type"),
+      "text/javascript; charset=utf-8",
+    );
+    assert.equal(runtime.status, 200);
+    assert.equal(
+      runtime.headers.get("content-type"),
       "text/javascript; charset=utf-8",
     );
     assert.equal(bridge.status, 404);

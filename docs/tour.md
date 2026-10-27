@@ -163,6 +163,8 @@ Object は `perform:` で引数なし、`perform:withArguments:` で配列に並
 
 `--format esm` でコンパイルすると、エントリーの公開値をJavaScriptのdefault exportとして利用できます。この形式ではエントリーにもexportが1つ必要です。BlockをJS関数として公開するときは `%export({ n -> $n add: 1 } asJSCallback).` のように明示変換し、JS側で `import increment from './increment.js'` と読み込みます。値変換は浅く、入れ子のBlockは自動変換しません。[ADR-48](adr/0048-javascript-module-output.md) を参照してください。
 
+既定では生成JSにランタイムを含めます。`deno task runtime -o out/runtime.js` で別のESモジュールを作り、コンパイル時に `--runtime-import ./runtime.js` を指定すれば、複数の生成JSでそのコードを共有できます。参照先は生成JSから解決します。各生成JSの実行状態やファイル環境は独立しています。アプリとランタイムは同じコンパイラのバージョンで生成します。[ADR-50](adr/0050-external-runtime-module.md) に記録しています。
+
 相対パスは import 元から解決し、`.toss` を明記します。Block 内での import も可能で、初期化は最初に式を実行した時の一度だけです。依存先の収集・検証は未実行の分岐も含めてコンパイル時に行い、循環参照はエラーにします。公開値と初期化失敗はファイル単位でキャッシュし、同じファイルを再実行しません。標準ライブラリの参照方法は延期します。JS パッケージ・URL は第9節の `%jsImport` を使います。[ADR-37](adr/0037-local-modules.md) に記録しています。
 
 ```

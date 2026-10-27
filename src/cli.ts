@@ -1,10 +1,11 @@
 import { dirname, resolve } from "node:path";
 import { compileFile } from "./compiler.ts";
+import { compileRuntimeImport } from "./compile_options.ts";
 import type { CompileFormat } from "./compile_options.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 
 const usage =
-  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm]";
+  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm] [--runtime-import <specifier>]";
 
 class UsageError extends Error {
   override readonly name = "UsageError";
@@ -14,6 +15,7 @@ function parseArguments(args: readonly string[]): {
   readonly input: string;
   readonly output: string;
   readonly format: CompileFormat;
+  readonly runtimeImport?: string;
 } {
   const input = args[0];
   if (input === undefined || input.startsWith("-")) {
@@ -22,6 +24,7 @@ function parseArguments(args: readonly string[]): {
   let output: string | undefined;
   let format: CompileFormat = "program";
   let formatSeen = false;
+  let runtimeImport: string | undefined;
   let index = 1;
   while (index < args.length) {
     const option = args[index];
@@ -41,13 +44,23 @@ function parseArguments(args: readonly string[]): {
       index += 2;
       continue;
     }
+    if (
+      option === "--runtime-import" && runtimeImport === undefined &&
+      value !== undefined && !value.startsWith("-")
+    ) {
+      runtimeImport = value;
+      index += 2;
+      continue;
+    }
     throw new UsageError(usage);
   }
   if (output === undefined) throw new UsageError(usage);
   if (resolve(input) === resolve(output)) {
     throw new UsageError("Input and output must be different files.");
   }
-  return { input, output, format };
+  return runtimeImport === undefined
+    ? { input, output, format }
+    : { input, output, format, runtimeImport };
 }
 
 export async function main(args: readonly string[]): Promise<void> {
@@ -56,8 +69,17 @@ export async function main(args: readonly string[]): Promise<void> {
       console.log(usage);
       return;
     }
-    const { input, output, format } = parseArguments(args);
-    const javascript = await compileFile(input, output, { format });
+    const { input, output, format, runtimeImport } = parseArguments(args);
+    const options = runtimeImport === undefined
+      ? { format }
+      : { format, runtimeImport };
+    try {
+      compileRuntimeImport(options);
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      throw new UsageError(error.message);
+    }
+    const javascript = await compileFile(input, output, options);
     await Deno.mkdir(dirname(output), { recursive: true });
     await Deno.writeTextFile(output, javascript);
   } catch (error) {

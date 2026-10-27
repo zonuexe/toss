@@ -24,16 +24,18 @@ JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます
 
 ### ブラウザ向けの例
 
-どちらもTossを事前にJSへコンパイルし、静的なESモジュールとして配信します。Denoはビルドに使い、ブラウザでは生成したJSと同梱のTossランタイムが動きます。
+どちらもTossを事前にJSへコンパイルし、静的なESモジュールとして配信します。Denoはビルドに使い、ブラウザでは生成したJSとTossランタイムが動きます。
 
 | 例 | 目的 |
 | --- | --- |
 | [Vueカウンター](examples/vue/README.md) | アプリケーションの例。Vueが描画とリアクティブな状態を管理し、通常のJS関数を通じてTossの処理を呼び出します。 |
 | [ブラウザ検証](examples/browser/README.md) | テスト用ページ。メッセージ・モジュール・コールバック・非同期Block・CSPをPASS/FAILで確認します。 |
 
-コンパイラやREPL自体をブラウザで動かす例ではありません。生成JSは現在ランタイムとpreludeを含み、Tree-shakingは未対応です。検証済みの範囲とブラウザ内コンパイルの課題は、[ブラウザランタイムの検討メモ](docs/browser-runtime.md) に整理しています。
+コンパイラやREPL自体をブラウザで動かす例ではありません。生成JSは既定でランタイムとpreludeを含み、Vueの例では別のランタイムESモジュールを読み込みます。Tree-shakingは未対応です。検証済みの範囲とブラウザ内コンパイルの課題は、[ブラウザランタイムの検討メモ](docs/browser-runtime.md) に整理しています。
 
 `--format esm` を付けると、エントリーの `%export(値).` をJSのdefault exportとして公開します。この形式ではファイル直下のexportが1つ必要です。たとえば `%export({ count -> $count add: 1 } asJSCallback).` をコンパイルすると、JS側から `import increment from './increment.js'` で関数を読み込めます。通常のBlockは自動変換せず、`asJSCallback` を明示します。既定の `program` 形式は従来どおりです。[ADR-48](docs/adr/0048-javascript-module-output.md) に仕様を記録しています。
+
+`mise exec -- deno task runtime -o out/runtime.js` でランタイムを別ファイルに生成できます。コンパイル時に `--runtime-import ./runtime.js` を指定すると、生成JSからそのESモジュールを読み込みます。パスの基準は生成JSの場所です。APIでは `runtimeImport: './runtime.js'` と `generateRuntimeModule()` を使います。アプリとランタイムは同じコンパイラのバージョンで生成します。複数の生成JSでコードを共有できますが、束縛やキャッシュなどの実行状態はそれぞれ独立しています。[ADR-50](docs/adr/0050-external-runtime-module.md) を参照してください。
 
 通常のコンパイル結果では `%js` の式もJS関数として事前に生成するため、`%js` 自体にCSPの `unsafe-eval` は不要です。JS側で明示的に `eval` や `Function` を使う場合はホストの制限を受けます。REPLは引き続き入力文字列を評価します。[ADR-49](docs/adr/0049-ahead-of-time-javascript-expressions.md) を参照してください。
 
