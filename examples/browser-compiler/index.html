@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Toss browser compiler</title>
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Toss browser compiler</h1>
+      <p>Compile the two Toss source files below to JavaScript ESM. The output is shown as text and is never run.</p>
+      <p>This example supplies these two files only; it is not a general file picker.</p>
+      <label for="main-source">main.toss</label>
+      <textarea id="main-source" rows="8" cols="72"
+        spellcheck="false">%export(%import('./math.toss')).</textarea>
+      <label for="math-source">math.toss</label>
+      <textarea id="math-source" rows="8" cols="72"
+        spellcheck="false">%export(40 add: 2).</textarea>
+      <p><button id="compile" type="button">Compile</button></p>
+      <p id="status" role="status" aria-live="polite">Ready to compile.</p>
+      <h2><label for="output">Generated JavaScript</label></h2>
+      <textarea id="output" rows="20" cols="72" readonly></textarea>
+    </main>
+  </body>
+</html>

@@ -17,8 +17,12 @@ The examples have different purposes:
   calls Toss Blocks through an explicit callback adapter. With `--format esm`,
   Toss's single `%export` value becomes a JS default export; no named JS
   export syntax is added.
+- [`examples/browser-compiler`](../examples/browser-compiler/README.md)
+  bundles the source compiler and lets a browser compile two editable virtual
+  source files and display the generated JavaScript. It does not execute that
+  JavaScript.
 
-Both use Deno to compile before deployment. The generated JS embeds the Toss
+The first two use Deno to compile before deployment. The generated JS embeds the Toss
 runtime and prelude by default. The Vue build selects a separate runtime
 module under ADR-50. Neither form is tree-shaken. Neither requires Deno or Acorn
 in the browser, and neither implements browser-hosted compilation.
@@ -40,9 +44,26 @@ The main page also omits `unsafe-eval`; its six checks and button callback
 passed after rebuilding with the native evaluator path.
 
 The browser did not expose its engine version through the available tooling.
-Other browsers, Workers and browser-hosted compilation were not tested.
+Other browsers and Workers were not tested.
 Build, host status handling and HTTP asset routing also have
 automated regression tests in `tests/browser_example_test.ts`.
+
+### Source compiler smoke test
+
+A separate temporary smoke test bundled `src/source_compiler.ts` and Acorn
+with `deno bundle --platform browser --format esm`. In the Codex in-app
+browser, it compiled a source string containing a local macro and imported the
+resulting ES module from a Blob URL; its default export was `42`. The test
+used a policy allowing scripts from the local server and `blob:`, without
+`unsafe-eval`. The bundled compiler ran without Deno or Node APIs. This is
+one browser smoke test, not a browser REPL or a file-loading implementation.
+
+The separate browser-compiler example makes source compilation repeatable.
+Its script policy uses `script-src 'self'` without `unsafe-eval`; no Blob URL
+is needed because the example displays the output instead of running it.
+In the Codex in-app browser, the two-file example compiled a local module
+import, reported a missing source and cleared stale output, then successfully
+compiled a shared macro library after the inputs were corrected.
 
 ### Vue application
 
@@ -76,7 +97,7 @@ These are uncompressed sizes for this example, not a tree-shaking result.
 | Runtime values and async Blocks | `src/runtime.ts` and `src/runtime_async.ts` use JavaScript objects, collections and Promises. | The example verifies a small subset in a real browser; broader coverage remains open. |
 | Output | `writeOutput` in `src/runtime.ts` uses `console.log`. | Initial output can use the browser console. A playground needs a separate output design. |
 | JS expressions | Ahead-of-time output embeds native evaluator functions outside the runtime scope. The REPL retains its string evaluator. | Ordinary compiled `%js` needs no implicit string compilation. Explicit user eval/Function still follows host policy. |
-| Compiler entry | `src/compiler.ts` imports and reexports `compileFile`, which pulls in `node:path` and Deno filesystem services. | Separate a pure source compiler entry before browser-hosted compilation. |
+| Compiler entry | `src/source_compiler.ts` compiles a source string or a host-provided map of virtual sources without filesystem services. `src/compiler.ts` also exports `compileFile`, which uses `node:path` and Deno filesystem services. | Bundle or resolve the pure entry and its parser dependency for the browser. The host supplies source and macro library strings. |
 | Parser dependency | Acorn is mapped to an npm package in `deno.json`. | Bundle or provide a browser-resolvable Acorn artifact for browser-hosted compilation. Generated programs do not need this compiler dependency. |
 | REPL runtime | `src/repl_runtime.ts` uses `Function` and direct `eval`. | Every interactive session needs string compilation, including cells without `%js`. |
 | REPL host | `src/repl_session_state.ts`, `src/repl_modules.ts` and `src/repl_macro_import.ts` use working directories, paths and filesystem reads. | Define source loading and identity for browser-hosted Toss and macro imports. |
@@ -126,10 +147,10 @@ transitive dependencies.
 
 ## Possible next steps
 
-The ahead-of-time example is complete. Before browser-hosted compilation,
-separate the source compiler entry from filesystem services and provide a
-browser-resolvable parser dependency. A browser REPL also needs explicit
-source loading, execution policy and a session boundary for full JS reload.
+The ahead-of-time example is complete. The source compiler entry is separate
+from filesystem services. A browser-hosted compiler needs to bundle or resolve
+its parser dependency and supply a virtual source map. A browser
+REPL also needs execution policy and a session boundary for full JS reload.
 
 Supported browsers, a production script policy, and the choice of DOM page
 versus Worker playground remain open. The example does not change language

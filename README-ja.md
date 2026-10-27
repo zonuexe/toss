@@ -39,6 +39,12 @@ JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます
 
 新たにコンパイルしたアプリは実行前にランタイムのビルドを照合し、互換性がない場合は再生成を案内します。この機能を追加する前に生成したアプリには照合機能がありません。照合はダウンロードしたファイルの改ざん検証を目的とするものではありません。
 
+Denoのファイル操作を使わずにソース文字列をコンパイルする場合は、`src/source_compiler.ts` の `compile` を利用できます。Acorn依存は利用先で解決またはバンドルしてください。従来の `src/compiler.ts` からは引き続き `compile` と `compileFile` を利用できます。ファイルimportや共有マクロimportには対応するソースの指定が必要です。
+
+複数のソース文字列からコンパイルする場合は `src/source_compiler.ts` の `compileSources(entry, sources, options)` を使えます。`sources` は仮想ルートからのPOSIX形式のパスをキーとする `ReadonlyMap` です。Tossモジュールと共有マクロのimportをその中で解決します。ファイルやネットワークは読み込みません。[ADR-52](docs/adr/0052-virtual-source-compilation.md) に記録しています。
+
+[ブラウザ内コンパイラの例](examples/browser-compiler/README.md) では、2つのTossソースを入力してimportを試し、生成JavaScriptを確認できます。コンパイル専用の例で、生成したコードの実行やREPLは含みません。
+
 ランタイムを内蔵する場合は、コンパイル時に `--tree-shake-prelude` を指定すると、使われないpreludeメッセージを省いて生成JSを小さくできます。APIでは `treeShakePrelude: true` を指定します。動的な `perform:`、親呼び出し、JavaScript相互運用を含む場合は完全なpreludeに戻します。バンドル外のホストコードがランタイムで使うJavaScriptの組み込み機能を変更する場合も、完全なpreludeを使ってください。共有ランタイムを使う `--runtime-import` との併用はできません。[ADR-51](docs/adr/0051-prelude-tree-shaking.md) を参照してください。
 
 通常のコンパイル結果では `%js` の式もJS関数として事前に生成するため、`%js` 自体にCSPの `unsafe-eval` は不要です。JS側で明示的に `eval` や `Function` を使う場合はホストの制限を受けます。REPLは引き続き入力文字列を評価します。[ADR-49](docs/adr/0049-ahead-of-time-javascript-expressions.md) を参照してください。

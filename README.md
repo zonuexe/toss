@@ -107,16 +107,19 @@ disk history and completion are deferred. See
 
 ### Browser examples
 
-Both examples compile Toss to JavaScript before serving static ES modules.
-Deno is a build tool here; the browser runs the emitted JS and the Toss runtime.
+The browser examples cover precompiled applications and source compilation in
+the browser. Deno builds the assets before they are served as static ES modules.
 
 | Example | Purpose |
 | --- | --- |
 | [Vue counter](examples/vue/README.md) | An application: Vue owns rendering and reactive state, and calls Toss logic through ordinary JS functions. |
 | [Browser verification](examples/browser/README.md) | A test harness: checks messages, modules, callbacks, async Blocks and CSP with visible PASS/FAIL results. |
+| [Browser source compiler](examples/browser-compiler/README.md) | Compiles two editable source files in the browser and displays the generated JavaScript. |
 
-Neither example runs the Toss compiler or REPL inside the browser. Generated
-JS embeds the runtime and prelude by default. The Vue build uses a separate
+The Vue and browser verification examples run precompiled JavaScript. The
+source compiler example runs the compiler in the browser; it does not run the
+generated JavaScript or provide a REPL. Generated JS embeds the runtime and
+prelude by default. The Vue build uses a separate
 runtime ES module; neither form is tree-shaken. See the
 [browser runtime assessment](docs/browser-runtime.md) for verified scope and
 the remaining work for browser-hosted compilation.
@@ -670,6 +673,18 @@ and the [Vue application](examples/vue/README.md).
 The APIs also accept `{ format: 'esm' }` as the third argument to
 `compile(source, file, options)` or `compileFile(input, output, options)`.
 Pass `undefined` for the output path when only the generated string is needed.
+
+For hosts without Deno filesystem APIs, import `compile` from
+`src/source_compiler.ts`. It compiles a source string without loading files;
+resolve or bundle its Acorn dependency for the target host. The existing
+`src/compiler.ts` entry continues to provide both `compile` and `compileFile`.
+Resolving file and shared macro imports requires supplied source files.
+
+For a set of source strings, `compileSources(entry, sources, options)` from
+`src/source_compiler.ts` resolves Toss module and macro imports from a
+`ReadonlyMap` of root-relative POSIX file paths. It does not read files or
+fetch sources; the host supplies the map. See
+[ADR-52](docs/adr/0052-virtual-source-compilation.md).
 
 ### Share a runtime asset
 
