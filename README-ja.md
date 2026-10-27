@@ -37,6 +37,8 @@ JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます
 
 `mise exec -- deno task runtime -o out/runtime.js` でランタイムを別ファイルに生成できます。コンパイル時に `--runtime-import ./runtime.js` を指定すると、生成JSからそのESモジュールを読み込みます。パスの基準は生成JSの場所です。APIでは `runtimeImport: './runtime.js'` と `generateRuntimeModule()` を使います。アプリとランタイムは同じコンパイラのバージョンで生成します。複数の生成JSでコードを共有できますが、束縛やキャッシュなどの実行状態はそれぞれ独立しています。[ADR-50](docs/adr/0050-external-runtime-module.md) を参照してください。
 
+新たにコンパイルしたアプリは実行前にランタイムのビルドを照合し、互換性がない場合は再生成を案内します。この機能を追加する前に生成したアプリには照合機能がありません。照合はダウンロードしたファイルの改ざん検証を目的とするものではありません。
+
 通常のコンパイル結果では `%js` の式もJS関数として事前に生成するため、`%js` 自体にCSPの `unsafe-eval` は不要です。JS側で明示的に `eval` や `Function` を使う場合はホストの制限を受けます。REPLは引き続き入力文字列を評価します。[ADR-49](docs/adr/0049-ahead-of-time-javascript-expressions.md) を参照してください。
 
 事前コンパイルではESモジュール文法に衝突する `await` などの変数名をコンパイル時エラーにし、名前変更を案内します。`obj.await` やasync関数内のawaitは利用できます。従来のHTML形式の行コメントは、文字列や正規表現を書き換えずに通常の行コメントへ正規化します。

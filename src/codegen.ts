@@ -13,7 +13,7 @@ import {
   javascriptRuntimeAlias,
 } from "./codegen_javascript.ts";
 import { collectJavaScriptImports } from "./javascript_import_analysis.ts";
-import { runtimeBridgeSetupLines } from "./runtime_module.ts";
+import { runtimeCompatibilitySetupLines } from "./runtime_module.ts";
 import {
   emitJavaScriptImportStatements,
   javascriptImportMapExpression,
@@ -43,22 +43,21 @@ export function generate(
   const evaluatorIndices = new Map<Expression, number>(
     javascriptExpressions.map((expression, index) => [expression, index]),
   );
+  const runtimeSetup = runtimeAlias === undefined
+    ? runtimePreludeLines()
+    : runtimeCompatibilitySetupLines("runtimeNamespace");
   const emit = createEmitter(evaluatorIndices);
   const lines = [
     ...emitJavaScriptImportStatements(imports, importAliases),
     ...(runtimeImport === undefined || runtimeAlias === undefined ? [] : [
-      `import { createRuntime as ${runtimeAlias} } from ${
-        JSON.stringify(runtimeImport)
-      };`,
+      `import * as ${runtimeAlias} from ${JSON.stringify(runtimeImport)};`,
     ]),
     `${
       format === "esm" ? "export default " : ""
     }((javascriptEvaluators, javascriptImportNames${
-      runtimeImport === undefined ? "" : ", tossRuntime"
+      runtimeImport === undefined ? "" : ", runtimeNamespace"
     }) => {`,
-    ...(runtimeImport === undefined
-      ? runtimePreludeLines()
-      : runtimeBridgeSetupLines()),
+    ...runtimeSetup,
     ...fileRootSetupLines(),
   ];
   for (const expression of expressions) lines.push(emit(expression) + ";");
@@ -80,7 +79,7 @@ export function generate(
   lines.push(
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}()`});`,
+    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   );
   return lines.join("\n") + "\n";
 }

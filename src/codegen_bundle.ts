@@ -17,7 +17,7 @@ import {
   compileRuntimeImport,
 } from "./compile_options.ts";
 import { fileRootSetupLines, runtimePreludeLines } from "./codegen_prelude.ts";
-import { runtimeBridgeSetupLines } from "./runtime_module.ts";
+import { runtimeCompatibilitySetupLines } from "./runtime_module.ts";
 
 export type BundleModule = {
   readonly expressions: readonly Expression[];
@@ -91,24 +91,23 @@ export function generateBundle(
   const evaluatorIndices = new Map<Expression, number>(
     javascriptExpressions.map((expression, index) => [expression, index]),
   );
+  const runtimeSetup = runtimeAlias === undefined
+    ? runtimePreludeLines()
+    : runtimeCompatibilitySetupLines("runtimeNamespace");
   const exported = modules[entry]?.expressions.find((expression) =>
     expression.kind === "export"
   );
   const lines = [
     ...emitJavaScriptImportStatements(imports, importAliases),
     ...(runtimeImport === undefined || runtimeAlias === undefined ? [] : [
-      `import { createRuntime as ${runtimeAlias} } from ${
-        JSON.stringify(runtimeImport)
-      };`,
+      `import * as ${runtimeAlias} from ${JSON.stringify(runtimeImport)};`,
     ]),
     `${
       format === "esm" ? "export default " : ""
     }((javascriptEvaluators, javascriptImportNames${
-      runtimeImport === undefined ? "" : ", tossRuntime"
+      runtimeImport === undefined ? "" : ", runtimeNamespace"
     }) => {`,
-    ...(runtimeImport === undefined
-      ? runtimePreludeLines()
-      : runtimeBridgeSetupLines()),
+    ...runtimeSetup,
     ...moduleRuntimeLines(),
   ];
   modules.forEach((module, id) => {
@@ -131,7 +130,7 @@ export function generateBundle(
   lines.push(
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}()`});`,
+    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   );
   return lines.join("\n") + "\n";
 }

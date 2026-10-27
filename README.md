@@ -685,6 +685,10 @@ JS file, not the Toss source. The APIs accept
 `{ format: 'esm', runtimeImport: './runtime.js' }`; `generateRuntimeModule()`
 from `src/compiler.ts` returns the runtime module source for custom builds.
 Generate both assets with the same compiler version.
+Newly compiled applications check the runtime build before running Toss code
+and report how to regenerate it when its fingerprint is missing or incompatible. Older
+application artifacts do not have this check. This check does not verify the
+integrity of downloaded assets.
 
 Several artifacts can import one runtime asset. Each creates its own runtime
 state and keeps its file bindings and module caches private. This shares code

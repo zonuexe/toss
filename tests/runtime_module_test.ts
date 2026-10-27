@@ -210,7 +210,7 @@ Deno.test("embedded compiler output remains independent of runtime asset generat
     runtimeImport: "./runtime.js",
   });
   assert.match(embedded, /function evaluateCompiledJavaScript/);
-  assert.match(external, /import \{ createRuntime as /);
+  assert.match(external, /import \* as __tossCreateRuntime/);
   assert.doesNotMatch(external, /function evaluateCompiledJavaScript/);
 });
 
