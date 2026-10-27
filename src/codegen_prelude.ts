@@ -33,9 +33,13 @@ type PreludeMessage = { readonly name: string; readonly javascript: string };
 function messageTable(
   name: string,
   messages: readonly PreludeMessage[],
+  selectedSelectors?: ReadonlySet<string>,
 ): string {
+  const retained = selectedSelectors === undefined
+    ? messages
+    : messages.filter((message) => selectedSelectors.has(message.name));
   return `const ${name} = new Map([\n${
-    messages.map((message) =>
+    retained.map((message) =>
       `  [${JSON.stringify(message.name)}, ${message.javascript}]`
     ).join(",\n")
   }\n]);`;
@@ -43,6 +47,7 @@ function messageTable(
 
 export function runtimePreludeLines(
   includeDynamicJavaScript = false,
+  selectedSelectors?: ReadonlySet<string>,
 ): string[] {
   return [
     '"use strict";',
@@ -50,7 +55,7 @@ export function runtimePreludeLines(
       blockValue,
       blockAsJavaScriptCallback,
       blockInspect,
-    ]),
+    ], selectedSelectors),
     `const blockKeywordSelector = new RegExp(${
       JSON.stringify(blockValueWithArguments.selectorPattern)
     });`,
@@ -60,10 +65,10 @@ export function runtimePreludeLines(
       stringInspect,
       outputPrint,
       outputDump,
-    ]),
-    messageTable("numberMessages", numberMessages),
-    messageTable("booleanMessages", booleanMessages),
-    messageTable("arrayMessages", arrayMessages),
+    ], selectedSelectors),
+    messageTable("numberMessages", numberMessages, selectedSelectors),
+    messageTable("booleanMessages", booleanMessages, selectedSelectors),
+    messageTable("arrayMessages", arrayMessages, selectedSelectors),
     messageTable("symbolMessages", [
       symbolToString,
       symbolInspect,
@@ -71,13 +76,13 @@ export function runtimePreludeLines(
       outputPrint,
       outputDump,
       symbolBind,
-    ]),
+    ], selectedSelectors),
     messageTable("nilMessages", [
       nilToString,
       nilInspect,
       outputPrint,
       outputDump,
-    ]),
+    ], selectedSelectors),
     messageTable("objectMessages", [
       objectClone,
       objectInspect,
@@ -87,7 +92,7 @@ export function runtimePreludeLines(
       objectPerformWithArguments,
       outputPrint,
       outputDump,
-    ]),
+    ], selectedSelectors),
     runtimeJavaScript,
     ...(includeDynamicJavaScript ? [runtimeJavaScriptDynamic] : []),
   ];

@@ -15,8 +15,10 @@ import {
   compileFormat,
   type CompileOptions,
   compileRuntimeImport,
+  compileTreeShakePrelude,
 } from "./compile_options.ts";
 import { fileRootSetupLines, runtimePreludeLines } from "./codegen_prelude.ts";
+import { collectPreludeSelectors } from "./prelude_analysis.ts";
 import { runtimeCompatibilitySetupLines } from "./runtime_module.ts";
 
 export type BundleModule = {
@@ -80,6 +82,7 @@ export function generateBundle(
 ): string {
   const format = compileFormat(options);
   const runtimeImport = compileRuntimeImport(options);
+  const treeShakePrelude = compileTreeShakePrelude(options);
   const expressions = modules.flatMap((module) => module.expressions);
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
@@ -92,7 +95,10 @@ export function generateBundle(
     javascriptExpressions.map((expression, index) => [expression, index]),
   );
   const runtimeSetup = runtimeAlias === undefined
-    ? runtimePreludeLines()
+    ? runtimePreludeLines(
+      false,
+      treeShakePrelude ? collectPreludeSelectors(expressions) : undefined,
+    )
     : runtimeCompatibilitySetupLines("runtimeNamespace");
   const exported = modules[entry]?.expressions.find((expression) =>
     expression.kind === "export"

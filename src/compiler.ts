@@ -3,7 +3,12 @@ import { TossSyntaxError } from "./diagnostic.ts";
 import { analyzeModule } from "./module_analysis.ts";
 import { compileFile } from "./module_loader.ts";
 import { expandProgram } from "./macro_compile.ts";
-import { compileFormat, type CompileOptions } from "./compile_options.ts";
+import {
+  compileFormat,
+  type CompileOptions,
+  compileRuntimeImport,
+  compileTreeShakePrelude,
+} from "./compile_options.ts";
 
 export type { CompileFormat, CompileOptions } from "./compile_options.ts";
 export { generateRuntimeModule } from "./runtime_module.ts";
@@ -13,6 +18,8 @@ export function compile(
   file: string,
   options: CompileOptions = {},
 ): string {
+  compileRuntimeImport(options);
+  compileTreeShakePrelude(options);
   const expressions = expandProgram(source, { file });
   const format = compileFormat(options);
   const analysis = analyzeModule(expressions, file, false);

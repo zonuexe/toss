@@ -39,6 +39,8 @@ JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます
 
 新たにコンパイルしたアプリは実行前にランタイムのビルドを照合し、互換性がない場合は再生成を案内します。この機能を追加する前に生成したアプリには照合機能がありません。照合はダウンロードしたファイルの改ざん検証を目的とするものではありません。
 
+ランタイムを内蔵する場合は、コンパイル時に `--tree-shake-prelude` を指定すると、使われないpreludeメッセージを省いて生成JSを小さくできます。APIでは `treeShakePrelude: true` を指定します。動的な `perform:`、親呼び出し、JavaScript相互運用を含む場合は完全なpreludeに戻します。バンドル外のホストコードがランタイムで使うJavaScriptの組み込み機能を変更する場合も、完全なpreludeを使ってください。共有ランタイムを使う `--runtime-import` との併用はできません。[ADR-51](docs/adr/0051-prelude-tree-shaking.md) を参照してください。
+
 通常のコンパイル結果では `%js` の式もJS関数として事前に生成するため、`%js` 自体にCSPの `unsafe-eval` は不要です。JS側で明示的に `eval` や `Function` を使う場合はホストの制限を受けます。REPLは引き続き入力文字列を評価します。[ADR-49](docs/adr/0049-ahead-of-time-javascript-expressions.md) を参照してください。
 
 事前コンパイルではESモジュール文法に衝突する `await` などの変数名をコンパイル時エラーにし、名前変更を案内します。`obj.await` やasync関数内のawaitは利用できます。従来のHTML形式の行コメントは、文字列や正規表現を書き換えずに通常の行コメントへ正規化します。

@@ -3,10 +3,21 @@ export type CompileFormat = "program" | "esm";
 export type CompileOptions = {
   readonly format?: CompileFormat;
   readonly runtimeImport?: string;
+  readonly treeShakePrelude?: boolean;
 };
 
 export function compileFormat(options: CompileOptions): CompileFormat {
   return options.format ?? "program";
+}
+
+export function compileTreeShakePrelude(options: CompileOptions): boolean {
+  if (options.treeShakePrelude !== true) return false;
+  if (options.runtimeImport !== undefined) {
+    throw new TypeError(
+      "Prelude tree-shaking requires an embedded runtime; remove --runtime-import.",
+    );
+  }
+  return true;
 }
 
 export function compileRuntimeImport(

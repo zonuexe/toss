@@ -28,4 +28,5 @@ rules before the generated application runs.
 
 The asset contains no compiler or REPL and needs no Deno services or implicit
 string evaluation. Native `%js` evaluators retain ADR-49's lexical isolation.
-This first step shares code; tree-shaking the prelude remains future work.
+This asset shares the complete runtime code. ADR-51 adds optional prelude
+tree-shaking for embedded output.

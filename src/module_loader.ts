@@ -11,6 +11,7 @@ import {
   compileFormat,
   type CompileOptions,
   compileRuntimeImport,
+  compileTreeShakePrelude,
 } from "./compile_options.ts";
 import { validateModuleOutput } from "./module_output.ts";
 import {
@@ -44,6 +45,8 @@ export async function compileFile(
   output?: string,
   options: CompileOptions = {},
 ): Promise<string> {
+  compileRuntimeImport(options);
+  compileTreeShakePrelude(options);
   const format = compileFormat(options);
   const runtimeImport = compileRuntimeImport(options);
   const entryCanonical = await Deno.realPath(input);

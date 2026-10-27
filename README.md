@@ -695,6 +695,17 @@ state and keeps its file bindings and module caches private. This shares code
 without creating a shared Toss session. The default output still embeds the
 runtime. See [ADR-50](docs/adr/0050-external-runtime-module.md).
 
+### Reduce an embedded prelude
+
+Use `--tree-shake-prelude` when compiling an embedded-runtime artifact to omit
+prelude messages that the expanded program cannot use. The API option is
+`{ treeShakePrelude: true }`. Dynamic `perform:`, parent calls and JavaScript
+interop in the bundle cause a fallback to the full prelude. Use the full
+prelude when host code modifies JavaScript built-ins used by the runtime.
+This option cannot be combined with `--runtime-import`: the shared runtime
+contains the complete prelude.
+See [ADR-51](docs/adr/0051-prelude-tree-shaking.md).
+
 ## JavaScript expressions
 
 Use `%js(...)` to evaluate one JavaScript expression. Explicit bindings pass

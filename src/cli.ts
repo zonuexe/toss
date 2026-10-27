@@ -1,11 +1,14 @@
 import { dirname, resolve } from "node:path";
 import { compileFile } from "./compiler.ts";
-import { compileRuntimeImport } from "./compile_options.ts";
+import {
+  compileRuntimeImport,
+  compileTreeShakePrelude,
+} from "./compile_options.ts";
 import type { CompileFormat } from "./compile_options.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 
 const usage =
-  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm] [--runtime-import <specifier>]";
+  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm] [--runtime-import <specifier>] [--tree-shake-prelude]";
 
 class UsageError extends Error {
   override readonly name = "UsageError";
@@ -15,6 +18,7 @@ function parseArguments(args: readonly string[]): {
   readonly input: string;
   readonly output: string;
   readonly format: CompileFormat;
+  readonly treeShakePrelude: boolean;
   readonly runtimeImport?: string;
 } {
   const input = args[0];
@@ -25,6 +29,7 @@ function parseArguments(args: readonly string[]): {
   let format: CompileFormat = "program";
   let formatSeen = false;
   let runtimeImport: string | undefined;
+  let treeShakePrelude = false;
   let index = 1;
   while (index < args.length) {
     const option = args[index];
@@ -52,15 +57,24 @@ function parseArguments(args: readonly string[]): {
       index += 2;
       continue;
     }
+    if (option === "--tree-shake-prelude" && !treeShakePrelude) {
+      treeShakePrelude = true;
+      index++;
+      continue;
+    }
     throw new UsageError(usage);
   }
   if (output === undefined) throw new UsageError(usage);
   if (resolve(input) === resolve(output)) {
     throw new UsageError("Input and output must be different files.");
   }
-  return runtimeImport === undefined
-    ? { input, output, format }
-    : { input, output, format, runtimeImport };
+  return {
+    input,
+    output,
+    format,
+    treeShakePrelude,
+    ...(runtimeImport === undefined ? {} : { runtimeImport }),
+  };
 }
 
 export async function main(args: readonly string[]): Promise<void> {
@@ -69,12 +83,16 @@ export async function main(args: readonly string[]): Promise<void> {
       console.log(usage);
       return;
     }
-    const { input, output, format, runtimeImport } = parseArguments(args);
-    const options = runtimeImport === undefined
-      ? { format }
-      : { format, runtimeImport };
+    const { input, output, format, runtimeImport, treeShakePrelude } =
+      parseArguments(args);
+    const options = {
+      format,
+      ...(runtimeImport === undefined ? {} : { runtimeImport }),
+      ...(treeShakePrelude ? { treeShakePrelude } : {}),
+    };
     try {
       compileRuntimeImport(options);
+      compileTreeShakePrelude(options);
     } catch (error) {
       if (!(error instanceof TypeError)) throw error;
       throw new UsageError(error.message);
