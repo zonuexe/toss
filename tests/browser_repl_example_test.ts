@@ -10,6 +10,7 @@ type FakeEvent = {
 };
 
 type FakeListener = (event: FakeEvent) => void;
+type DomListener = (event?: { preventDefault(): void }) => void;
 
 class FakeWorker {
   readonly listeners = new Map<string, Set<FakeListener>>();
@@ -34,6 +35,135 @@ class FakeWorker {
 
   emit(name: string, event: FakeEvent = {}): void {
     for (const listener of this.listeners.get(name) ?? []) listener(event);
+  }
+}
+
+class FakeElement {
+  textContent = "";
+  value = "";
+  type = "";
+  id = "";
+  disabled = false;
+  rows = 0;
+  spellcheck = true;
+  autocomplete = "";
+  htmlFor = "";
+  readonly attributes = new Map<string, string>();
+  readonly children: FakeElement[] = [];
+  readonly listeners = new Map<string, DomListener>();
+  parent: FakeElement | undefined;
+  focused = false;
+
+  append(...elements: FakeElement[]): void {
+    for (const element of elements) {
+      element.parent = this;
+      this.children.push(element);
+    }
+  }
+
+  remove(): void {
+    const index = this.parent?.children.indexOf(this) ?? -1;
+    if (index !== -1) this.parent?.children.splice(index, 1);
+  }
+
+  addEventListener(name: string, listener: DomListener): void {
+    this.listeners.set(name, listener);
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  focus(): void {
+    this.focused = true;
+  }
+
+  querySelector(selector: string): FakeElement | null {
+    for (const child of this.children) {
+      if (matchesFakeElement(child, selector)) return child;
+      const nested = child.querySelector(selector);
+      if (nested !== null) return nested;
+    }
+    return null;
+  }
+
+  querySelectorAll(selector: string): FakeElement[] {
+    return this.children.flatMap((child) => [
+      ...(matchesFakeElement(child, selector) ? [child] : []),
+      ...child.querySelectorAll(selector),
+    ]);
+  }
+}
+
+class FakeInput extends FakeElement {}
+class FakeTextArea extends FakeElement {}
+class FakeForm extends FakeElement {}
+class FakeList extends FakeElement {}
+class FakeFieldset extends FakeElement {}
+
+class FakeButton extends FakeElement {
+  click(): void {
+    this.listeners.get("click")?.();
+  }
+}
+
+class FakeBrowserWorker {
+  readonly listeners = new Map<string, Set<FakeListener>>();
+  readonly messages: unknown[] = [];
+  terminated = false;
+
+  addEventListener(name: string, listener: FakeListener): void {
+    const listeners = this.listeners.get(name) ?? new Set<FakeListener>();
+    listeners.add(listener);
+    this.listeners.set(name, listeners);
+  }
+
+  postMessage(message: unknown): void {
+    this.messages.push(message);
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+
+  emit(name: string, event: FakeEvent = {}): void {
+    for (const listener of this.listeners.get(name) ?? []) listener(event);
+  }
+}
+
+class FakeDocument {
+  readonly elements = new Map<string, FakeElement>();
+
+  querySelector(selector: string): FakeElement | null {
+    return this.elements.get(selector) ?? null;
+  }
+
+  createElement(tag: string): FakeElement {
+    switch (tag) {
+      case "input":
+        return new FakeInput();
+      case "textarea":
+        return new FakeTextArea();
+      case "button":
+        return new FakeButton();
+      case "fieldset":
+        return new FakeFieldset();
+      default:
+        return new FakeElement();
+    }
+  }
+}
+
+function matchesFakeElement(element: FakeElement, selector: string): boolean {
+  switch (selector) {
+    case "fieldset":
+      return element instanceof FakeFieldset;
+    case "input":
+      return element instanceof FakeInput;
+    case "textarea":
+      return element instanceof FakeTextArea;
+    default:
+      return false;
   }
 }
 
@@ -168,9 +298,17 @@ Deno.test("browser REPL source editor rejects invalid and normalized duplicate p
       sourceList,
       "validateVirtualSourceEntries",
     );
+    const editorLegend: unknown = Reflect.get(
+      sourceList,
+      "virtualSourceEditorLegend",
+    );
     assert.equal(typeof validate, "function");
+    assert.equal(typeof editorLegend, "function");
     if (typeof validate !== "function") {
       throw new Error("Source path validation is missing.");
+    }
+    if (typeof editorLegend !== "function") {
+      throw new Error("Virtual source legends are missing.");
     }
     assert.deepEqual(
       validate([["math.toss", "1."], ["nested/../math.toss", "2."]]),
@@ -184,7 +322,142 @@ Deno.test("browser REPL source editor rejects invalid and normalized duplicate p
       message: "Virtual path escapes the source root.",
     });
     assert.deepEqual(validate([["nested/new.toss", "1."]]), { ok: true });
+    assert.equal(editorLegend(1, "math.toss"), "Toss source 1: math.toss");
+    assert.equal(
+      editorLegend(1, "numbers.toss"),
+      "Toss source 1: numbers.toss",
+    );
+    assert.equal(editorLegend(1, ""), "Toss source 1: (unnamed)");
+    assert.notEqual(
+      editorLegend(1, "math.toss"),
+      editorLegend(2, "math.toss"),
+    );
   } finally {
+    await Deno.remove(outputDirectory, { recursive: true });
+  }
+});
+
+Deno.test("browser REPL editor updates accessible legends with each virtual path", async () => {
+  const outputDirectory = await Deno.makeTempDir({
+    prefix: "toss-browser-repl-editor-",
+  });
+  const globals = [
+    "document",
+    "HTMLInputElement",
+    "HTMLTextAreaElement",
+    "HTMLButtonElement",
+    "HTMLFormElement",
+    "HTMLElement",
+    "HTMLOListElement",
+    "Worker",
+    "window",
+  ];
+  const originalGlobals = new Map(
+    globals.map((name) => [name, Reflect.get(globalThis, name)]),
+  );
+  const workers: FakeBrowserWorker[] = [];
+  try {
+    await buildBrowserReplExample(outputDirectory);
+    const document = new FakeDocument();
+    const form = new FakeForm();
+    const cell = new FakeTextArea();
+    const submit = new FakeButton();
+    const reset = new FakeButton();
+    const reload = new FakeButton();
+    const status = new FakeElement();
+    const transcript = new FakeList();
+    const importExample = new FakeElement();
+    const virtualSources = new FakeElement();
+    const addSource = new FakeButton();
+    for (
+      const [selector, element] of [
+        ["#cell-form", form],
+        ["#cell-source", cell],
+        ["#submit", submit],
+        ["#reset", reset],
+        ["#reload", reload],
+        ["#status", status],
+        ["#transcript", transcript],
+        ["#demo-import-example", importExample],
+        ["#virtual-sources", virtualSources],
+        ["#add-source", addSource],
+      ] as const
+    ) {
+      document.elements.set(selector, element);
+    }
+    const page = {
+      location: { origin: "http://localhost" },
+      addEventListener(
+        _name: string,
+        _listener: (event: { persisted?: boolean }) => void,
+      ) {
+        // The test drives only editor input events.
+      },
+    };
+    const replacements = new Map<string, unknown>([
+      ["document", document],
+      ["HTMLInputElement", FakeInput],
+      ["HTMLTextAreaElement", FakeTextArea],
+      ["HTMLButtonElement", FakeButton],
+      ["HTMLFormElement", FakeForm],
+      ["HTMLElement", FakeElement],
+      ["HTMLOListElement", FakeList],
+      [
+        "Worker",
+        class extends FakeBrowserWorker {
+          constructor() {
+            super();
+            workers.push(this);
+          }
+        },
+      ],
+      ["window", page],
+    ]);
+    for (const [name, value] of replacements) {
+      assert.equal(Reflect.set(globalThis, name, value), true);
+    }
+    await import(
+      `${pathToFileURL(`${outputDirectory}/app.js`).href}?editor-test`
+    );
+    const worker = workers[0];
+    if (worker === undefined) throw new Error("Browser Worker is missing.");
+    worker.emit("message", { data: { type: "ready" } });
+
+    const editors = virtualSources.querySelectorAll("fieldset");
+    assert.equal(editors.length, 2);
+    const firstLegend = editors[0]?.children[0];
+    const firstPath = editors[0]?.querySelector("input");
+    const secondLegend = editors[1]?.children[0];
+    const secondPath = editors[1]?.querySelector("input");
+    if (
+      firstLegend === undefined || !(firstPath instanceof FakeInput) ||
+      secondLegend === undefined || !(secondPath instanceof FakeInput)
+    ) {
+      throw new Error("Virtual source editor controls are missing.");
+    }
+    assert.equal(firstLegend.textContent, "Toss source 1: math.toss");
+    assert.equal(secondLegend.textContent, "Toss source 2: macros.toss");
+
+    firstPath.value = "numbers.toss";
+    firstPath.listeners.get("input")?.();
+    assert.equal(firstLegend.textContent, "Toss source 1: numbers.toss");
+    firstPath.value = "";
+    firstPath.listeners.get("input")?.();
+    assert.equal(firstLegend.textContent, "Toss source 1: (unnamed)");
+    firstPath.value = "macros.toss";
+    firstPath.listeners.get("input")?.();
+    assert.equal(firstLegend.textContent, "Toss source 1: macros.toss");
+    assert.equal(secondLegend.textContent, "Toss source 2: macros.toss");
+    assert.notEqual(firstLegend.textContent, secondLegend.textContent);
+    assert.equal(submit.disabled, true);
+    assert.equal(reset.disabled, true);
+    assert.match(status.textContent, /More than one editor/);
+  } finally {
+    for (const worker of workers) worker.terminate();
+    for (const [name, value] of originalGlobals) {
+      if (value === undefined) Reflect.deleteProperty(globalThis, name);
+      else Reflect.set(globalThis, name, value);
+    }
     await Deno.remove(outputDirectory, { recursive: true });
   }
 });

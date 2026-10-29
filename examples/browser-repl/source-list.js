@@ -21,6 +21,10 @@ export function validateVirtualSourceEntries(entries) {
   return { ok: true };
 }
 
+export function virtualSourceEditorLegend(editorNumber, path) {
+  return `Toss source ${editorNumber}: ${path || "(unnamed)"}`;
+}
+
 function normalizeSourceId(path) {
   if (path.length === 0 || path.startsWith("/") || path.includes("\\")) {
     throw new TypeError("Virtual paths must be root-relative POSIX paths.");

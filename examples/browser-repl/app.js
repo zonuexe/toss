@@ -2,7 +2,10 @@ import {
   bindWorkerPageLifecycle,
   createWorkerClient,
 } from "./worker-client.js";
-import { validateVirtualSourceEntries } from "./source-list.js";
+import {
+  validateVirtualSourceEntries,
+  virtualSourceEditorLegend,
+} from "./source-list.js";
 
 const form = document.querySelector("#cell-form");
 const source = document.querySelector("#cell-source");
@@ -78,8 +81,9 @@ function createSourceEditor(pathValue, sourceValue) {
   const sourceLabel = document.createElement("label");
   const content = document.createElement("textarea");
   const remove = document.createElement("button");
-  const editorId = `virtual-source-${nextSourceNumber++}`;
-  legend.textContent = "Toss source";
+  const editorNumber = nextSourceNumber++;
+  const editorId = `virtual-source-${editorNumber}`;
+  legend.textContent = virtualSourceEditorLegend(editorNumber, pathValue);
   pathLabel.htmlFor = `${editorId}-path`;
   pathLabel.textContent = "Virtual path";
   path.id = `${editorId}-path`;
@@ -96,6 +100,7 @@ function createSourceEditor(pathValue, sourceValue) {
   remove.textContent = "Remove source";
   remove.setAttribute("aria-label", `Remove ${pathValue || "unnamed"}`);
   path.addEventListener("input", () => {
+    legend.textContent = virtualSourceEditorLegend(editorNumber, path.value);
     remove.setAttribute("aria-label", `Remove ${path.value || "unnamed"}`);
     updateSources();
   });
