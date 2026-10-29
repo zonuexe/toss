@@ -11,9 +11,18 @@ type RuntimeBridge = {
   ) => void;
 };
 
-export function createReplRuntime(): RuntimeBridge {
+export function createReplRuntime(
+  outputHandler?: (text: string) => void,
+): RuntimeBridge {
   const bridgeSource = [
-    ...runtimePreludeLines(true),
+    ...runtimePreludeLines(
+      true,
+      undefined,
+      outputHandler === undefined ? undefined : "replOutput",
+    ),
+    ...(outputHandler === undefined ? [] : [
+      "function replOutput(text, location) { try { replOutputHandler(text); } catch (cause) { throw new TossRuntimeError('REPL output handler failed.', location, {cause}); } }",
+    ]),
     ...fileRootSetupLines(),
     ...moduleRuntimeLines(),
     "const javascriptImportNames = new Map();",
@@ -34,8 +43,13 @@ export function createReplRuntime(): RuntimeBridge {
     "return error.message + (cause instanceof Error ? '\\n  caused by: ' + cause.message : '');",
     "}",
   ].join("\n");
-  const factory = Function(bridgeSource);
-  const bridge: unknown = Reflect.apply(factory, undefined, []);
+  const bridge: unknown = outputHandler === undefined
+    ? Reflect.apply(Function(bridgeSource), undefined, [])
+    : Reflect.apply(
+      Function("replOutputHandler", bridgeSource),
+      undefined,
+      [outputHandler],
+    );
   if (!isRuntimeBridge(bridge)) {
     throw new TypeError("Generated REPL runtime has an invalid bridge.");
   }

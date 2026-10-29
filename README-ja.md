@@ -22,16 +22,19 @@ Objectの既定の `inspect` は `<object>`、Blockは本体を実行せず `<bl
 
 JSモジュールも `#path bind: %jsImport('node:path').` で読み込めます。`%js(module = $path; module.basename('/tmp/hello.txt')).` は `'hello.txt'` を返します。未実行のBlock内も含めてJS依存先を入力の実行前に読み込み、その間の入力やコマンドも順番に処理します。読込エラー後も入力を続けられます。`:reset` はToss側の状態を消去し、JSモジュールのキャッシュは保持します。JSも初期化し直すにはREPLプロセスを再起動します。REPL入力からのexportは未対応です。[ADR-47](docs/adr/0047-repl-javascript-imports.md) を参照してください。
 
+ブラウザ向けには `src/repl_core.ts` の `createBrowserReplSession()` を利用できます。非同期セッションで束縛とローカルマクロを保持し、必要なら `loadJavaScriptModule` を指定できます。`onOutput(text)` を指定するとTossの `print`・`dump` の出力を受け取れます。JavaScript自身のコンソールは変わりません。`sources` に仮想ソースのマップを渡すと、Tossファイルと共有マクロライブラリをimportできます。[ADR-55](docs/adr/0055-browser-repl-virtual-sources.md) を参照してください。Acornをバンドルするかブラウザで解決できるようにしてください。事前コンパイル済みの出力とは異なり、対話評価には `eval` と `Function` が必要で、ブラウザのCSPでも文字列からのコード生成を許可する必要があります。リセットはToss側の状態を消し、JSモジュールキャッシュはホストが管理します。
+
 ### ブラウザ向けの例
 
-どちらもTossを事前にJSへコンパイルし、静的なESモジュールとして配信します。Denoはビルドに使い、ブラウザでは生成したJSとTossランタイムが動きます。
+Vueとブラウザ検証の例はTossを事前にJSへコンパイルし、静的なESモジュールとして配信します。ブラウザREPLはコンパイラと評価エンジンをバンドルし、入力されたTossをWorkerで評価します。
 
 | 例 | 目的 |
 | --- | --- |
 | [Vueカウンター](examples/vue/README.md) | アプリケーションの例。Vueが描画とリアクティブな状態を管理し、通常のJS関数を通じてTossの処理を呼び出します。 |
 | [ブラウザ検証](examples/browser/README.md) | テスト用ページ。メッセージ・モジュール・コールバック・非同期Block・CSPをPASS/FAILで確認します。 |
+| [ブラウザREPL](examples/browser-repl/README.md) | WorkerでTossを対話評価し、通常のリセットとJSの再初期化を選べます。 |
 
-コンパイラやREPL自体をブラウザで動かす例ではありません。生成JSは既定でランタイムとpreludeを含み、Vueの例では別のランタイムESモジュールを読み込みます。Tree-shakingは未対応です。検証済みの範囲とブラウザ内コンパイルの課題は、[ブラウザランタイムの検討メモ](docs/browser-runtime.md) に整理しています。
+Vueとブラウザ検証の例では事前に生成したJSを実行します。ブラウザREPLは別のWorkerで対話評価します。生成JSは既定でランタイムとpreludeを含み、Vueの例では別のランタイムESモジュールを読み込みます。検証済みの範囲とブラウザ内コンパイルの課題は、[ブラウザランタイムの検討メモ](docs/browser-runtime.md) に整理しています。
 
 `--format esm` を付けると、エントリーの `%export(値).` をJSのdefault exportとして公開します。この形式ではファイル直下のexportが1つ必要です。たとえば `%export({ count -> $count add: 1 } asJSCallback).` をコンパイルすると、JS側から `import increment from './increment.js'` で関数を読み込めます。通常のBlockは自動変換せず、`asJSCallback` を明示します。既定の `program` 形式は従来どおりです。[ADR-48](docs/adr/0048-javascript-module-output.md) に仕様を記録しています。
 
@@ -43,7 +46,7 @@ Denoのファイル操作を使わずにソース文字列をコンパイルす�
 
 複数のソース文字列からコンパイルする場合は `src/source_compiler.ts` の `compileSources(entry, sources, options)` を使えます。`sources` は仮想ルートからのPOSIX形式のパスをキーとする `ReadonlyMap` です。Tossモジュールと共有マクロのimportをその中で解決します。ファイルやネットワークは読み込みません。[ADR-52](docs/adr/0052-virtual-source-compilation.md) に記録しています。
 
-[ブラウザ内コンパイラの例](examples/browser-compiler/README.md) では、2つのTossソースを入力してimportを試し、生成JavaScriptを確認できます。コンパイル専用の例で、生成したコードの実行やREPLは含みません。
+[ブラウザ内コンパイラの例](examples/browser-compiler/README.md) では、複数のTossソースを追加・編集するかローカルファイルから読み込み、生成JavaScriptを確認・ダウンロードできます。コンパイル専用の例で、生成したコードの実行やREPLは含みません。
 
 ランタイムを内蔵する場合は、コンパイル時に `--tree-shake-prelude` を指定すると、使われないpreludeメッセージを省いて生成JSを小さくできます。APIでは `treeShakePrelude: true` を指定します。動的な `perform:`、親呼び出し、JavaScript相互運用を含む場合は完全なpreludeに戻します。バンドル外のホストコードがランタイムで使うJavaScriptの組み込み機能を変更する場合も、完全なpreludeを使ってください。共有ランタイムを使う `--runtime-import` との併用はできません。[ADR-51](docs/adr/0051-prelude-tree-shaking.md) を参照してください。
 

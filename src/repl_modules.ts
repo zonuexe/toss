@@ -6,31 +6,19 @@ import { collectJavaScriptImportExpressions } from "./javascript_import_analysis
 import { analyzeModule, type ModuleImport } from "./module_analysis.ts";
 import { expandProgram } from "./macro_compile.ts";
 import { createReplMacroImportState } from "./repl_macro_import.ts";
+import type {
+  ReplModule,
+  ReplModuleCandidate,
+  ReplModuleState,
+} from "./repl_host.ts";
 
-export type ReplModule = {
-  readonly id: number;
-  readonly canonical: string;
-  readonly generated: string;
-};
-export type ReplModuleState = {
-  readonly files: ReadonlyMap<string, ReplModule>;
-  readonly nextId: number;
-};
-type CompiledImports = {
-  readonly state: ReplModuleState;
-  readonly modules: readonly ReplModule[];
-  readonly imports: readonly { readonly path: string; readonly id: number }[];
-  readonly javascriptImports: readonly {
-    readonly specifier: string;
-    readonly location: SourceLocation;
-  }[];
-};
+export type { ReplModule, ReplModuleState } from "./repl_host.ts";
 
 export function compileReplModules(
   expressions: readonly Expression[],
   base: string,
   state: ReplModuleState,
-): CompiledImports {
+): ReplModuleCandidate {
   const files = new Map(state.files);
   const visiting = new Set<string>();
   const modules: ReplModule[] = [];

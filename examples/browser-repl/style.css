@@ -1,0 +1,18 @@
+label {
+  display: block;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 48rem;
+}
+
+input[type="text"] {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+#transcript {
+  overflow-wrap: anywhere;
+}

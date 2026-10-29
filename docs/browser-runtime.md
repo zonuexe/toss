@@ -18,9 +18,11 @@ The examples have different purposes:
   Toss's single `%export` value becomes a JS default export; no named JS
   export syntax is added.
 - [`examples/browser-compiler`](../examples/browser-compiler/README.md)
-  bundles the source compiler and lets a browser compile two editable virtual
-  source files and display the generated JavaScript. It does not execute that
-  JavaScript.
+  bundles the source compiler and lets a browser compile editable virtual
+  source files or locally selected Toss files, then display or download the
+  generated JavaScript. It does not execute that JavaScript.
+- [`examples/browser-repl`](../examples/browser-repl/README.md) evaluates
+  cells in a Worker and separates Toss session reset from Worker replacement.
 
 The first two use Deno to compile before deployment. The generated JS embeds the Toss
 runtime and prelude by default. The Vue build selects a separate runtime
@@ -59,11 +61,17 @@ used a policy allowing scripts from the local server and `blob:`, without
 one browser smoke test, not a browser REPL or a file-loading implementation.
 
 The separate browser-compiler example makes source compilation repeatable.
-Its script policy uses `script-src 'self'` without `unsafe-eval`; no Blob URL
-is needed because the example displays the output instead of running it.
+Its script policy uses `script-src 'self'` without `unsafe-eval`. It displays
+the output without running it and uses a Blob URL when the user downloads it.
 In the Codex in-app browser, the two-file example compiled a local module
 import, reported a missing source and cleared stale output, then successfully
 compiled a shared macro library after the inputs were corrected.
+The browser also downloaded a generated `main.mjs`; importing the downloaded
+file in Deno produced the expected default value `42`. Editing a source
+disabled the download until the next successful compilation.
+A browser test also selected a local `extra.toss` file and observed its source
+appear in the virtual file list; the later helper extraction was covered by
+automated tests and a fresh browser startup and compilation check.
 
 ### Vue application
 
@@ -100,8 +108,8 @@ These are uncompressed sizes for this example, not a tree-shaking result.
 | Compiler entry | `src/source_compiler.ts` compiles a source string or a host-provided map of virtual sources without filesystem services. `src/compiler.ts` also exports `compileFile`, which uses `node:path` and Deno filesystem services. | Bundle or resolve the pure entry and its parser dependency for the browser. The host supplies source and macro library strings. |
 | Parser dependency | Acorn is mapped to an npm package in `deno.json`. | Bundle or provide a browser-resolvable Acorn artifact for browser-hosted compilation. Generated programs do not need this compiler dependency. |
 | REPL runtime | `src/repl_runtime.ts` uses `Function` and direct `eval`. | Every interactive session needs string compilation, including cells without `%js`. |
-| REPL host | `src/repl_session_state.ts`, `src/repl_modules.ts` and `src/repl_macro_import.ts` use working directories, paths and filesystem reads. | Define source loading and identity for browser-hosted Toss and macro imports. |
-| JS loader | `loadJavaScriptModule` is injectable in the session options. | Reuse the seam for host resolution, but it does not remove the other Deno dependencies. |
+| REPL host | `src/repl_core.ts` provides a browser-compatible asynchronous session sharing the terminal evaluator. A host-supplied virtual source map resolves Toss and macro-library imports; the Deno host resolves them from disk. | Browser hosts supply source strings and decide how to edit or load them. |
+| JS loader | `loadJavaScriptModule` is injectable in the session options. | The browser host can provide resolution; module caching and permissions remain host policy. |
 
 ## Module resolution
 
@@ -125,6 +133,20 @@ string compilers. User JS can still request them explicitly and is subject
 to host policy. The current REPL evaluates submitted strings, so moving it
 into a Worker does not remove the need to address string compilation.
 [MDN script-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src)
+
+A temporary browser smoke test bundled `src/repl_core.ts` and Acorn and used
+`script-src 'self' 'unsafe-eval'`. It verified persistent bindings, a local
+macro, recovery after an error, an injected JS module loader and reset. This
+checks the session API in one browser; it is not a browser REPL interface or
+a Worker-based reload implementation.
+
+The separate Worker REPL example was also exercised in the Codex in-app
+browser. A binding and later message returned `42`; `print` appeared before
+the inspected result. After a normal reset, the JS fixture retained its
+Worker state. Replacing the Worker created a fresh JS module context. The
+example permits `unsafe-eval` in the Worker policy, not the page policy.
+With its built-in virtual source map, the browser also imported a Toss module
+and a macro library, reported a missing file and continued after that error.
 
 A DOM-integrated page and a Worker playground are different targets. Worker
 messages cannot clone functions, Symbols or DOM nodes, and do not preserve

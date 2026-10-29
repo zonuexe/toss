@@ -2,7 +2,11 @@ import { runtimeAsyncJavaScript } from "./runtime_async.ts";
 import { runtimeJavaScriptAot } from "./runtime_javascript_aot.ts";
 import { runtimeJavaScriptCallback } from "./runtime_javascript_callback.ts";
 
-export const runtimeJavaScript = `class TossRuntimeError extends Error {
+export function runtimeJavaScript(outputHook?: string): string {
+  const outputCall = outputHook === undefined
+    ? "console.log(text);"
+    : outputHook + "(text, context.location);";
+  return `class TossRuntimeError extends Error {
   constructor(reason, location, options) {
     super(location.file + ":" + location.line + ":" + location.column +
       ": RuntimeError: " + reason + formatMacroTrace(location.trace));
@@ -232,6 +236,7 @@ function writeOutput(receiver, conversion, context) {
   if (typeof text !== "string") {
     throw new TossRuntimeError(conversion + " must return a string.", context.location);
   }
-  console.log(text);
+  ${outputCall}
   return receiver;
 }`;
+}

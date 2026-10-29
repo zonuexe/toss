@@ -48,6 +48,7 @@ function messageTable(
 export function runtimePreludeLines(
   includeDynamicJavaScript = false,
   selectedSelectors?: ReadonlySet<string>,
+  outputHook?: string,
 ): string[] {
   return [
     '"use strict";',
@@ -93,7 +94,7 @@ export function runtimePreludeLines(
       outputPrint,
       outputDump,
     ], selectedSelectors),
-    runtimeJavaScript,
+    runtimeJavaScript(outputHook),
     ...(includeDynamicJavaScript ? [runtimeJavaScriptDynamic] : []),
   ];
 }

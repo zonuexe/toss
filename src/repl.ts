@@ -1,75 +1,33 @@
-import { TossSyntaxError } from "./diagnostic.ts";
 import {
   createReplSessionState,
-  type ReplResult,
   type ReplSessionOptions,
 } from "./repl_session_state.ts";
+import {
+  type AsyncReplSession,
+  createAsynchronousReplSession,
+  createSynchronousReplSession,
+  type ReplSession,
+} from "./repl_session_controller.ts";
+import { createDenoReplSessionHost } from "./repl_host_deno.ts";
 
 export type { ReplResult, ReplSessionOptions } from "./repl_session_state.ts";
-
-export type ReplSession = {
-  readonly submit: (source: string) => ReplResult;
-  readonly reset: () => void;
-};
-
-export type AsyncReplSession = {
-  readonly submit: (source: string) => Promise<ReplResult>;
-  readonly reset: () => Promise<void>;
-};
+export type {
+  AsyncReplSession,
+  ReplSession,
+} from "./repl_session_controller.ts";
 
 export function createReplSession(
   options: ReplSessionOptions = {},
 ): ReplSession {
-  const state = createReplSessionState(options);
-  const submit = (source: string): ReplResult => {
-    const candidate = state.prepare(source);
-    if (candidate.kind === "error") return candidate;
-    const first = candidate.moduleCandidate.javascriptImports[0];
-    if (first !== undefined) {
-      return {
-        kind: "error",
-        message: new TossSyntaxError(
-          first.location,
-          "%jsImport requires createAsyncReplSession.",
-        ).message,
-      };
-    }
-    state.commit(candidate, []);
-    return state.evaluate(candidate);
-  };
-  return Object.freeze({ submit, reset: state.reset });
+  const host = createDenoReplSessionHost(options.baseDirectory ?? Deno.cwd());
+  return createSynchronousReplSession(createReplSessionState(options, host));
 }
 
 export function createAsyncReplSession(
   options: ReplSessionOptions = {},
 ): AsyncReplSession {
-  const state = createReplSessionState(options);
-  let queue = Promise.resolve();
-  const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
-    const result = queue.then(operation);
-    queue = result.then(() => undefined, () => undefined);
-    return result;
-  };
-  const submit = (source: string): Promise<ReplResult> =>
-    enqueue(async () => {
-      const candidate = state.prepare(source);
-      if (candidate.kind === "error") return candidate;
-      const namespaces: (readonly [string, unknown])[] = [];
-      try {
-        for (const item of candidate.moduleCandidate.javascriptImports) {
-          const namespace = await state.load(item.specifier, item.location);
-          namespaces.push([item.specifier, namespace]);
-        }
-      } catch (error) {
-        if (error instanceof TossSyntaxError) {
-          return { kind: "error", message: error.message };
-        }
-        throw error;
-      }
-      state.commit(candidate, namespaces);
-      return state.evaluate(candidate);
-    });
-  const reset = (): Promise<void> =>
-    enqueue(() => Promise.resolve(state.reset()));
-  return Object.freeze({ submit, reset });
+  const host = createDenoReplSessionHost(options.baseDirectory ?? Deno.cwd());
+  return createAsynchronousReplSession(
+    createReplSessionState(options, host),
+  );
 }

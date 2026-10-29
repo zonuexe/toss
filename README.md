@@ -105,6 +105,18 @@ Ordinary `%js` remains available. Root `%await`, automatic waiting,
 disk history and completion are deferred. See
 [ADR-44](docs/adr/0044-initial-repl.md).
 
+For a browser host, `createBrowserReplSession()` from `src/repl_core.ts`
+provides an asynchronous session without Deno filesystem or terminal APIs.
+It keeps bindings and local macros between submissions and accepts an optional
+`loadJavaScriptModule` function. An optional `onOutput(text)` callback receives
+Toss `print` and `dump` text; JavaScript's own console is unchanged. Supply a
+`sources` map to resolve Toss file and macro-library imports from virtual paths.
+Bundle or resolve Acorn for the browser. See
+[ADR-55](docs/adr/0055-browser-repl-virtual-sources.md).
+Unlike ahead-of-time output, interactive evaluation uses `eval` and `Function`
+and requires a policy that permits string compilation. Reset clears Toss
+state; the host's JavaScript module cache remains under host control.
+
 ### Browser examples
 
 The browser examples cover precompiled applications and source compilation in
@@ -114,11 +126,13 @@ the browser. Deno builds the assets before they are served as static ES modules.
 | --- | --- |
 | [Vue counter](examples/vue/README.md) | An application: Vue owns rendering and reactive state, and calls Toss logic through ordinary JS functions. |
 | [Browser verification](examples/browser/README.md) | A test harness: checks messages, modules, callbacks, async Blocks and CSP with visible PASS/FAIL results. |
-| [Browser source compiler](examples/browser-compiler/README.md) | Compiles two editable source files in the browser and displays the generated JavaScript. |
+| [Browser source compiler](examples/browser-compiler/README.md) | Compiles editable virtual sources or locally selected Toss files in the browser, then displays or downloads JavaScript. |
+| [Browser REPL](examples/browser-repl/README.md) | Evaluates Toss cells in a Worker, with separate session reset and JavaScript reload. |
 
 The Vue and browser verification examples run precompiled JavaScript. The
 source compiler example runs the compiler in the browser; it does not run the
-generated JavaScript or provide a REPL. Generated JS embeds the runtime and
+generated JavaScript. The REPL example evaluates cells in a separate Worker.
+Generated JS embeds the runtime and
 prelude by default. The Vue build uses a separate
 runtime ES module; neither form is tree-shaken. See the
 [browser runtime assessment](docs/browser-runtime.md) for verified scope and

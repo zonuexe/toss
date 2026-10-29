@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Toss browser REPL</title>
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Toss browser REPL</h1>
+      <p>Submit stateful Toss cells. Evaluation runs in a Worker so it does not block this page.</p>
+      <p>The Worker includes <code>math.toss</code> and <code>macros.toss</code> in its virtual source map. Try <code>%import('./math.toss').</code> or <code>%macroImport('./macros.toss'). %answer().</code></p>
+      <p>Browser REPL evaluation uses JavaScript string compilation. The Worker is not a security sandbox for arbitrary <code>%js</code>.</p>
+      <p>JavaScript modules use absolute URLs, for example <code id="demo-import-example"></code>.</p>
+      <section aria-labelledby="virtual-sources-heading">
+        <h2 id="virtual-sources-heading">Virtual Toss sources</h2>
+        <p>Edit the in-memory files used by <code>%import</code> and <code>%macroImport</code>. Edits reach the Worker immediately; imported Toss files stay cached until Reset session.</p>
+        <div id="virtual-sources"></div>
+        <button id="add-source" type="button">Add Toss source</button>
+      </section>
+      <form id="cell-form">
+        <label for="cell-source">Toss cell</label>
+        <textarea id="cell-source" rows="6"
+          spellcheck="false">%import('./math.toss').</textarea>
+        <p>
+          <button id="submit" type="submit" disabled>Submit cell</button>
+          <button id="reset" type="button" disabled>Reset session</button>
+          <button id="reload" type="button">Reload JavaScript modules</button>
+        </p>
+      </form>
+      <p id="status" role="status" aria-live="polite">Starting Worker…</p>
+      <h2>Session transcript</h2>
+      <ol id="transcript" role="log" aria-live="polite"
+        aria-relevant="additions"></ol>
+    </main>
+  </body>
+</html>

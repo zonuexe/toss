@@ -1,6 +1,7 @@
 import { resolve as resolvePath } from "node:path";
 import type { SourceLocation } from "./diagnostic.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
+import type { ReplMacroImportState } from "./repl_host.ts";
 import {
   findMacroImports,
   parseMacroLibrary,
@@ -8,15 +9,7 @@ import {
 } from "./macro_compile.ts";
 import type { LocalMacroDefinition } from "./macro_registry.ts";
 
-export type ReplMacroImportState = {
-  readonly baseDirectory: string;
-  readonly copy: () => ReplMacroImportState;
-  readonly resolve: (
-    source: string,
-    file: string,
-    startLocation: SourceLocation,
-  ) => readonly ResolvedMacroImport[];
-};
+export type { ReplMacroImportState } from "./repl_host.ts";
 
 export function createReplMacroImportState(
   baseDirectory = Deno.cwd(),
