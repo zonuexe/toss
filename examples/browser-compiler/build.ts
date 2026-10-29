@@ -7,7 +7,12 @@ const defaultOutputDirectory = resolve(
   repositoryDirectory,
   "out/browser-compiler",
 );
-const staticFiles = ["index.html", "app.js", "style.css"] as const;
+const staticFiles = [
+  "index.html",
+  "app.js",
+  "local_sources.js",
+  "style.css",
+] as const;
 
 export async function buildBrowserCompilerExample(
   outputDirectory = defaultOutputDirectory,

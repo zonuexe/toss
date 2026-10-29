@@ -1,10 +1,19 @@
 # Browser compiler example
 
-This page compiles two Toss source files in your browser and displays the
-generated JavaScript as text. The `main.toss` and `math.toss` fields form the
-complete source map for the example; imports and macro libraries resolve only
-between those two fields. It is not a general file picker. The page does not
-execute the output or send source anywhere.
+This page compiles virtual Toss source files in your browser and displays the
+generated JavaScript as text. It starts with `main.toss` and `math.toss`; add,
+rename, or remove source entries and choose the entry path to experiment with
+local module and macro imports. New files start at a predictable virtual path;
+the added path field receives focus. Duplicate paths and missing entry sources
+are reported when you compile. After a successful compile, use **Download
+JavaScript module** to save the displayed code as an `.mjs` file. Editing any
+source or changing the entry disables the download until the next successful
+compile. External JavaScript import specifiers remain for the host application
+to resolve when it later uses the downloaded module. You can select local
+`.toss` files to add their contents to the editor; each file's name becomes its
+virtual path because the file picker does not preserve directory structure.
+Selection is all-or-nothing and stays in the browser; files are not uploaded or
+saved. The page never executes source or generated output.
 
 Build the browser bundle and serve it on loopback:
 

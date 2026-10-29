@@ -9,6 +9,10 @@ const defaultOutputDirectory = resolve(
 const assets = new Map([
   ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
   ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
+  ["/local_sources.js", {
+    file: "local_sources.js",
+    type: "text/javascript; charset=utf-8",
+  }],
   ["/style.css", { file: "style.css", type: "text/css; charset=utf-8" }],
   ["/compiler.js", {
     file: "compiler.js",

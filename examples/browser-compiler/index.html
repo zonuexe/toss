@@ -10,18 +10,23 @@
   <body>
     <main>
       <h1>Toss browser compiler</h1>
-      <p>Compile the two Toss source files below to JavaScript ESM. The output is shown as text and is never run.</p>
-      <p>This example supplies these two files only; it is not a general file picker.</p>
-      <label for="main-source">main.toss</label>
-      <textarea id="main-source" rows="8" cols="72"
-        spellcheck="false">%export(%import('./math.toss')).</textarea>
-      <label for="math-source">math.toss</label>
-      <textarea id="math-source" rows="8" cols="72"
-        spellcheck="false">%export(40 add: 2).</textarea>
+      <p>Compile the Toss source files in this editor to JavaScript ESM. The output is shown as text and is never run.</p>
+      <p>Add or rename virtual source paths to resolve Toss imports and macro libraries, or select local .toss files. Selected file names become root-relative IDs; directory paths are not preserved.</p>
+      <label for="local-files">Select local Toss files</label>
+      <input id="local-files" type="file" accept=".toss" multiple>
+      <label for="entry-path">Entry source path</label>
+      <input id="entry-path" type="text" value="main.toss" autocomplete="off">
+      <fieldset>
+        <legend>Toss source files</legend>
+        <div id="source-files"></div>
+        <button id="add-file" type="button"
+          aria-controls="source-files">Add source file</button>
+      </fieldset>
       <p><button id="compile" type="button">Compile</button></p>
       <p id="status" role="status" aria-live="polite">Ready to compile.</p>
       <h2><label for="output">Generated JavaScript</label></h2>
       <textarea id="output" rows="20" cols="72" readonly></textarea>
+      <p><button id="download" type="button" disabled>Download JavaScript module</button></p>
     </main>
   </body>
 </html>
