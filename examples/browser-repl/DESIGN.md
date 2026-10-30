@@ -13,7 +13,8 @@ All evaluation belongs to one same-origin module Worker. The page presents
 automatic cell results, Toss `print`/`dump` output, and errors as separate
 transcript entries. Worker output has session order but no claimed originating
 cell, because async Blocks can print after their call returns. Retain only the
-most recent 200 transcript entries in the page.
+most recent 200 transcript entries in the page. **Clear transcript** removes
+visible entries without changing Worker or Toss session state.
 
 **Reset session** queues a Toss-state reset in the current Worker and leaves the
 host JavaScript module cache intact. Editing virtual source files updates the

@@ -44,6 +44,10 @@ entries and does not persist source or session state. If the browser restores
 this page from its back-forward cache, it starts a fresh Worker and resets both
 Toss state and the JavaScript module cache.
 
+**Clear transcript** removes the entries currently shown on the page. It does
+not cancel a pending cell, reset the Toss session, or stop later output from
+appearing in the transcript.
+
 Build the browser module and serve the example on loopback:
 
 ```sh

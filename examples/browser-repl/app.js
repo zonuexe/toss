@@ -14,6 +14,7 @@ const resetButton = document.querySelector("#reset");
 const reloadButton = document.querySelector("#reload");
 const status = document.querySelector("#status");
 const transcript = document.querySelector("#transcript");
+const clearTranscriptButton = document.querySelector("#clear-transcript");
 const demoImportExample = document.querySelector("#demo-import-example");
 const virtualSources = document.querySelector("#virtual-sources");
 const addSourceButton = document.querySelector("#add-source");
@@ -26,6 +27,7 @@ if (
   !(reloadButton instanceof HTMLButtonElement) ||
   !(status instanceof HTMLElement) ||
   !(transcript instanceof HTMLOListElement) ||
+  !(clearTranscriptButton instanceof HTMLButtonElement) ||
   !(demoImportExample instanceof HTMLElement) ||
   !(virtualSources instanceof HTMLElement) ||
   !(addSourceButton instanceof HTMLButtonElement)
@@ -215,6 +217,10 @@ form.addEventListener("submit", (event) => {
   addEntry("Cell", submittedSource);
   source.value = "";
   source.focus();
+});
+
+clearTranscriptButton.addEventListener("click", () => {
+  transcript.replaceChildren();
 });
 
 addSourceButton.addEventListener("click", () => {

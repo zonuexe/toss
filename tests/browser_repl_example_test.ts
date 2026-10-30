@@ -61,6 +61,12 @@ class FakeElement {
     }
   }
 
+  replaceChildren(...elements: FakeElement[]): void {
+    for (const child of this.children) child.parent = undefined;
+    this.children.splice(0, this.children.length);
+    this.append(...elements);
+  }
+
   remove(): void {
     const index = this.parent?.children.indexOf(this) ?? -1;
     if (index !== -1) this.parent?.children.splice(index, 1);
@@ -283,6 +289,134 @@ Deno.test("browser REPL accepts an absolute URL to its served JS fixture", async
   assert.deepEqual(printed, ["42", "42", "42"]);
 });
 
+Deno.test("browser REPL transcript can be cleared while a cell is pending", async () => {
+  const outputDirectory = await Deno.makeTempDir({
+    prefix: "toss-browser-repl-transcript-",
+  });
+  const globalNames = [
+    "document",
+    "HTMLInputElement",
+    "HTMLTextAreaElement",
+    "HTMLButtonElement",
+    "HTMLFormElement",
+    "HTMLElement",
+    "HTMLOListElement",
+    "Worker",
+    "window",
+  ];
+  const originalGlobals = new Map(
+    globalNames.map((name) => [name, Reflect.get(globalThis, name)]),
+  );
+  const workers: FakeBrowserWorker[] = [];
+  try {
+    await buildBrowserReplExample(outputDirectory);
+    const document = new FakeDocument();
+    const form = new FakeForm();
+    const cell = new FakeTextArea();
+    const submit = new FakeButton();
+    const reset = new FakeButton();
+    const reload = new FakeButton();
+    const status = new FakeElement();
+    const transcript = new FakeList();
+    const clearTranscript = new FakeButton();
+    const importExample = new FakeElement();
+    const virtualSources = new FakeElement();
+    const addSource = new FakeButton();
+    for (
+      const [selector, element] of [
+        ["#cell-form", form],
+        ["#cell-source", cell],
+        ["#submit", submit],
+        ["#reset", reset],
+        ["#reload", reload],
+        ["#status", status],
+        ["#transcript", transcript],
+        ["#clear-transcript", clearTranscript],
+        ["#demo-import-example", importExample],
+        ["#virtual-sources", virtualSources],
+        ["#add-source", addSource],
+      ] as const
+    ) {
+      document.elements.set(selector, element);
+    }
+    const page = {
+      location: { origin: "http://localhost" },
+      addEventListener(
+        _name: string,
+        _listener: (event: { persisted?: boolean }) => void,
+      ) {
+        // The test does not navigate the page.
+      },
+    };
+    const replacements = new Map<string, unknown>([
+      ["document", document],
+      ["HTMLInputElement", FakeInput],
+      ["HTMLTextAreaElement", FakeTextArea],
+      ["HTMLButtonElement", FakeButton],
+      ["HTMLFormElement", FakeForm],
+      ["HTMLElement", FakeElement],
+      ["HTMLOListElement", FakeList],
+      [
+        "Worker",
+        class extends FakeBrowserWorker {
+          constructor() {
+            super();
+            workers.push(this);
+          }
+        },
+      ],
+      ["window", page],
+    ]);
+    for (const [name, value] of replacements) {
+      assert.equal(Reflect.set(globalThis, name, value), true);
+    }
+    await import(
+      `${pathToFileURL(`${outputDirectory}/app.js`).href}?transcript-test`
+    );
+    const worker = workers[0];
+    if (worker === undefined) throw new Error("Browser Worker is missing.");
+    worker.emit("message", { data: { type: "ready" } });
+
+    cell.value = "42.";
+    form.listeners.get("submit")?.({ preventDefault: () => {} });
+    assert.equal(transcript.children.length, 1);
+    assert.equal(field(worker.messages.at(-1), "type"), "submit");
+    const messagesBeforeClear = worker.messages.length;
+    const statusBeforeClear = status.textContent;
+    clearTranscript.click();
+    assert.equal(transcript.children.length, 0);
+    assert.equal(worker.messages.length, messagesBeforeClear);
+    assert.equal(worker.terminated, false);
+    assert.equal(status.textContent, statusBeforeClear);
+
+    worker.emit("message", { data: { type: "output", text: "42" } });
+    worker.emit("message", {
+      data: {
+        type: "complete",
+        requestId: 1,
+        result: { kind: "value", display: "42" },
+      },
+    });
+    assert.equal(transcript.children.length, 2);
+    assert.equal(transcript.children[0]?.children[0]?.textContent, "Output: ");
+    assert.equal(transcript.children[0]?.children[1]?.textContent, "42");
+    assert.equal(transcript.children[1]?.children[0]?.textContent, "Result: ");
+
+    cell.value = "1.";
+    form.listeners.get("submit")?.({ preventDefault: () => {} });
+    assert.equal(worker.messages.length, messagesBeforeClear + 1);
+    assert.equal(field(worker.messages.at(-1), "type"), "submit");
+    assert.equal(worker.terminated, false);
+  } finally {
+    for (const worker of workers) worker.terminate();
+    for (const [name, value] of originalGlobals) {
+      if (value === undefined) Reflect.deleteProperty(globalThis, name);
+      else Reflect.set(globalThis, name, value);
+    }
+    await Deno.remove(outputDirectory, { recursive: true });
+  }
+});
+
 Deno.test("browser REPL source editor rejects invalid and normalized duplicate paths", async () => {
   const outputDirectory = await Deno.makeTempDir({
     prefix: "toss-browser-repl-sources-",
@@ -366,6 +500,7 @@ Deno.test("browser REPL editor updates accessible legends with each virtual path
     const reload = new FakeButton();
     const status = new FakeElement();
     const transcript = new FakeList();
+    const clearTranscript = new FakeButton();
     const importExample = new FakeElement();
     const virtualSources = new FakeElement();
     const addSource = new FakeButton();
@@ -378,6 +513,7 @@ Deno.test("browser REPL editor updates accessible legends with each virtual path
         ["#reload", reload],
         ["#status", status],
         ["#transcript", transcript],
+        ["#clear-transcript", clearTranscript],
         ["#demo-import-example", importExample],
         ["#virtual-sources", virtualSources],
         ["#add-source", addSource],
