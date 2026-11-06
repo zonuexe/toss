@@ -15,20 +15,15 @@ function asyncResult(promise) {
 }
 
 async function awaitToss(value, context) {
-  let pending;
   if (asyncResults.has(value)) {
-    pending = asyncResults.get(value);
-  } else if (hostValues.has(value)) {
-    pending = Promise.resolve(hostValues.get(value)).then((resolved) =>
-      ({value: fromJavaScript(resolved, context)})
-    );
-  } else {
-    pending = Promise.resolve({value});
+    return await asyncResults.get(value);
   }
+  if (!hostValues.has(value)) return {value};
+  let resolved;
   try {
-    return await pending;
+    resolved = await hostValues.get(value);
   } catch (error) {
-    if (error instanceof TossRuntimeError) throw error;
     throw new TossRuntimeError("JavaScript Promise rejected.", context.location, {cause: error});
   }
+  return {value: fromJavaScript(resolved, context)};
 }`;
