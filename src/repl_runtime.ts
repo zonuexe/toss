@@ -39,8 +39,11 @@ export function createReplRuntime(
     "},",
     "});",
     "function runtimeDiagnostic(error) {",
+    "try {",
     "const cause = error.cause;",
-    "return error.message + (cause instanceof Error ? '\\n  caused by: ' + cause.message : '');",
+    "const detail = cause instanceof Error ? cause.message : undefined;",
+    "return error.message + (typeof detail === 'string' ? '\\n  caused by: ' + detail : '');",
+    "} catch { return error.message; }",
     "}",
   ].join("\n");
   const bridge: unknown = outputHandler === undefined
