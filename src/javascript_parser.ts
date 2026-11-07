@@ -175,8 +175,15 @@ function skipTrivia(source: string, start: number): number {
   let offset = start;
   while (offset < source.length) {
     if (/\s/.test(source[offset] ?? "")) offset++;
-    else if (source.startsWith("//", offset)) {
-      while (offset < source.length && !/[\r\n]/.test(source[offset] ?? "")) {
+    else if (
+      source.startsWith("//", offset) || source.startsWith("<!--", offset) ||
+      (source.startsWith("-->", offset) &&
+        /[\r\n\u2028\u2029]/.test(source.slice(start, offset)))
+    ) {
+      while (
+        offset < source.length &&
+        !/[\r\n\u2028\u2029]/.test(source[offset] ?? "")
+      ) {
         offset++;
       }
     } else if (source.startsWith("/*", offset)) {
