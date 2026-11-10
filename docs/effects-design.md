@@ -846,3 +846,20 @@ Toss modules or handlers, represent multiple cleanup failures, implement the
 full error-envelope design, handle arbitrary iterator protocols or verify
 async/JS boundaries. It assumes cleanup itself cannot suspend and does not
 establish a production API.
+
+## Experiment: cooperative generated module initialization
+
+Run `deno run --allow-run experiments/effects-codegen-module.mjs`. This patches
+an actual compiled two-module artifact in memory: both initializers, import
+calls and `initializeModule` cooperate as generators, and a fixed test driver
+handles one synthetic request in the imported initializer. The test checks that
+while suspended the imported module is running, a re-entrant import fails, and
+after resumption the module initializes once and both imports obtain its export.
+
+A second execution makes the driver abandon the suspended computation. The
+naively transformed real module runtime incorrectly keeps the module marked
+running, so a later import reports re-entry instead of interruption. This
+negative result motivates an explicit abandonment transition such as the
+isolated state-model experiment, but that model has not been integrated here.
+The probe does not implement Toss effect syntax, handlers, cleanup error
+aggregation, async/JS boundaries or a general compiler transformation.
