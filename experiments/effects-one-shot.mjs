@@ -14,13 +14,38 @@ function* handle(computation, cases) {
       }
       let used = false;
       let active = true;
+      let suspended = false;
       function* resume(value) {
-        if (!active || used) throw new Error("invalid resume");
+        if (!active || suspended || used) throw new Error("invalid resume");
         used = true;
         return yield* drive(iterator.next(value));
       }
+      const caseIterator = cases.get(request.effect)(request.payload, resume);
+      const caseDelegate = {
+        [Symbol.iterator]() {
+          return this;
+        },
+        next(value) {
+          suspended = false;
+          const next = caseIterator.next(value);
+          suspended = !next.done;
+          return next;
+        },
+        throw(error) {
+          suspended = false;
+          const next = caseIterator.throw(error);
+          suspended = !next.done;
+          return next;
+        },
+        return(value) {
+          suspended = false;
+          const next = caseIterator.return(value);
+          suspended = !next.done;
+          return next;
+        },
+      };
       try {
-        return yield* cases.get(request.effect)(request.payload, resume);
+        return yield* caseDelegate;
       } finally {
         active = false;
       }
@@ -150,6 +175,53 @@ assert.throws(() =>
       }]]),
     )
   ), /invalid resume/);
+
+// An outer case must not invoke the resume of an inner suspended case.
+const suspendEffect = Symbol("suspend");
+assert.throws(
+  () =>
+    run(() =>
+      handle(
+        function* () {
+          return yield* handle(
+            function* () {
+              return yield { effect: missing, payload: null };
+            },
+            new Map([[missing, function* (_payload, resume) {
+              return yield { effect: suspendEffect, payload: resume };
+            }]]),
+          );
+        },
+        new Map([[suspendEffect, function* (innerResume) {
+          return yield* innerResume(9);
+        }]]),
+      )
+    ),
+  /invalid resume/,
+);
+
+// Once the outer case resumes the inner case, its original resume is usable.
+assert.equal(
+  run(() =>
+    handle(
+      function* () {
+        return yield* handle(
+          function* () {
+            return yield { effect: missing, payload: null };
+          },
+          new Map([[missing, function* (_payload, resume) {
+            const value = yield { effect: suspendEffect, payload: null };
+            return yield* resume(value);
+          }]]),
+        );
+      },
+      new Map([[suspendEffect, function* (_payload, resume) {
+        return yield* resume(9);
+      }]]),
+    )
+  ),
+  9,
+);
 
 // An explicitly transformed analogue of the current map: Prelude snapshots its
 // input and delegates to each transformed callback in sequence.

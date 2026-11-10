@@ -693,8 +693,7 @@ and every participating call cooperate explicitly using `yield*`.
 
 This is not generated Toss code and does not establish integration feasibility.
 It does not implement dynamic Object/prototype lookup, `self`/`%super`, module
-caching, locations, error aggregation, async or JS boundaries, or the
-restriction on invoking a resume belonging to a suspended case. In particular
+caching, locations, error aggregation, or async or JS boundaries. In particular
 native `finally` failure can replace an earlier exception, contrary to the
 agreed error aggregation rules; a production implementation needs explicit
 handling. Cleanup that yields is rejected by this experiment. Compare this
@@ -773,3 +772,13 @@ parent calls, cleanup, errors, module initialization, host boundaries, or effect
 propagation through other Prelude operations. Its string patches deliberately
 assert their expected shape, so compiler changes cause the probe to fail rather
 than silently changing the experiment. No compiler or runtime source is changed.
+
+## Experiment: suspended handler lifetime
+
+The generator model initially permitted an outer handler to invoke the resume
+capability of an inner case suspended by another request. A negative assertion
+reproduced the violation. The model now tracks whether each case is suspended
+while relaying a request and rejects use of its resume until that case is
+resumed. The experiment checks both rejection while suspended and successful use
+after the outer handler resumes the case. This bookkeeping remains isolated
+experimental machinery, not a Toss runtime implementation.
