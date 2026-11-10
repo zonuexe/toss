@@ -75,8 +75,21 @@ ${body.length === 0 ? "return null;" : body.join("\n")}
       return `(yield* effectParent([${
         expression.arguments.map((item) => emit(item, scope)).join(", ")
       }], ${context}, ${scope}))`;
+    case "extend": {
+      const entries = expression.entries.map((entry) =>
+        `yield* effectSend(extendTarget, {name: "at:put:", arguments: [${
+          emit(entry.key, scope)
+        }, ${emit(entry.value, scope)}]}, {location: ${
+          JSON.stringify(entry.location)
+        }, environment: ${scope}});`
+      );
+      return `(yield* (function*(extendTarget) {
+if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget) || isJavaScriptReference(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);
+${entries.join("\n")}
+return extendTarget;
+})(${emit(expression.input, scope)}))`;
+    }
     case "await":
-    case "extend":
     case "import":
     case "javascriptImport":
     case "export":
@@ -164,6 +177,38 @@ function* effectSend(receiver, message, context) {
       throw new TossRuntimeError("Invalid resume.", context.location);
     return yield* effectInvoke(receiver, args, context);
   }
+  if (typeof receiver === "boolean" && (name === "ifTrue:" || name === "ifFalse:" || name === "ifTrue:ifFalse:")) {
+    const first = blockArgument(args[0], context);
+    if (name === "ifTrue:ifFalse:") {
+      const second = blockArgument(args[1], context);
+      return yield* effectInvoke(receiver ? first : second, [], context);
+    }
+    const selected = name === "ifTrue:" ? receiver : !receiver;
+    return selected ? yield* effectInvoke(first, [], context) : null;
+  }
+  if (typeof receiver === "number" && name === "times:") {
+    if (!Number.isSafeInteger(receiver) || receiver < 0) throw new TossRuntimeError("Nonnegative safe integer required.", context.location);
+    const block = blockArgument(args[0], context);
+    let result = null;
+    for (let index = 0; index < receiver; index++) result = yield* effectInvoke(block, [], context);
+    return result;
+  }
+  if (Array.isArray(receiver) && name === "filter:") {
+    const block = blockArgument(args[0], context);
+    const result = [];
+    for (const value of receiver.slice()) {
+      const accepted = yield* effectInvoke(block, [value], context);
+      if (typeof accepted !== "boolean") throw new TossRuntimeError("Boolean result required.", context.location);
+      if (accepted) result.push(value);
+    }
+    return result;
+  }
+  if (Array.isArray(receiver) && name === "reduce:with:") {
+    const block = blockArgument(args[1], context);
+    let result = args[0];
+    for (const value of receiver.slice()) result = yield* effectInvoke(block, [result, value], context);
+    return result;
+  }
   if (Array.isArray(receiver) && name === "map:") {
     const block = blockArgument(args[0], context);
     const result = [];
@@ -180,7 +225,7 @@ function* effectSend(receiver, message, context) {
       throw new TossRuntimeError("Unsupported native method in experimental effects compiler.", context.location);
     }
   }
-  const allowed = new Set(["bind:", "clone", "at:", "at:put:", "add:", "multiplyBy:", "length", "print"]);
+  const allowed = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);
   if (!allowed.has(name) || (name === "print" && typeof receiver === "object" && receiver !== null))
     throw new TossRuntimeError("Unsupported message in experimental effects compiler: " + name, context.location);
   return send(receiver, message, context);

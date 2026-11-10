@@ -1023,8 +1023,9 @@ source-specific patch with a fixed handler driver, not the public feature.
 expander and generates a cooperative generator program from a restricted set of
 AST forms. It reuses the existing emitted runtime for lexical Environments,
 Object slots, Block arity, method receiver and parent-call context, while an
-experimental adapter handles effect requests, `handleWith:`, Block calls and
-Array `map:`. It introduces no public compiler option or production Prelude. Run
+experimental adapter handles effect requests, `handleWith:`, Block calls,
+Boolean branches, repetition, Array `map:`, `filter:` and `reduce:with:`, and
+`%extend`. It introduces no public compiler option or production Prelude. Run
 `deno run --allow-run experiments/effects-compiler-test.mjs`, or the
 `effects:probe` task, to check actual Toss source for dynamic method calls, map,
 nested handlers, resumption and abandonment, inherited handler cases, `%super`,
@@ -1032,8 +1033,8 @@ invalid resume lifetimes, source position, evaluation order and unhandled
 effects.
 
 This is a vertical slice, not the complete agreed design. It deliberately
-rejects imports, JS expressions/imports, async Blocks, await, `%extend`, and
-other unsupported AST forms. It permits only a small set of Prelude messages;
+rejects imports, JS expressions/imports, async Blocks, await, and other
+unsupported AST forms. It permits only a small set of Prelude messages;
 unsupported messages fail rather than silently invoking a callback without
 propagating suspension. It does not implement `ensure:`, cleanup failure
 aggregation, module initialization, JS/async boundaries, REPL integration,
