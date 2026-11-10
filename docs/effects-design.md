@@ -878,8 +878,8 @@ original caller receives that cleanup error and a later import receives a cached
 interruption carrying the cleanup failure. This is a patched generated artifact,
 not a general compiler or runtime implementation. The experiment uses one
 JavaScript Error and does not implement nested cleanup aggregation, stable
-public diagnostics, actual Toss handlers, normal-path coverage for this
-particular adapter, or async and JS boundary enforcement.
+public diagnostics, actual Toss handlers, or async and JS boundary enforcement.
+A no-cleanup-failure run also confirms normal completion with this adapter.
 
 ## Experiment: explicit JS and async boundaries
 

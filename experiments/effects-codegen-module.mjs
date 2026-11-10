@@ -202,3 +202,26 @@ assert.equal(
 console.log(
   "PASS: generated module abandonment preserves cleanup failure and caches interruption",
 );
+
+const adapterNormal = cleanupAbandonment
+  .replace("    step = iterator.return();", "    step = iterator.next();")
+  .replace(
+    'try { yield {effect: "probe"}; } finally { throw new Error("cleanup failed"); }',
+    'yield {effect: "probe"};',
+  );
+assert.notEqual(adapterNormal, cleanupAbandonment);
+const adapterCompleted = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", adapterNormal],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  adapterCompleted.success,
+  true,
+  decoder.decode(adapterCompleted.stderr),
+);
+assert.equal(
+  decoder.decode(adapterCompleted.stdout),
+  "handled\ninitialized\n7\n7\n",
+);
+console.log("PASS: abandonment-aware adapter also preserves normal completion");
