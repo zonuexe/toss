@@ -81,3 +81,75 @@ assert.deepEqual(associated.get(abandonedInner), [abandonedOuter]);
 console.log(
   "PASS: naive finally masks errors; explicit bookkeeping preserves primary and cleanup order",
 );
+
+// A fresh per-failure envelope avoids sharing metadata when the same thrown
+// value is reused and permits primitive JS thrown values. It changes the
+// internal thrown object, so host-boundary behavior needs separate design.
+class Failure {
+  constructor(primary) {
+    this.primary = primary;
+    this.cleanup = [];
+  }
+}
+function* ensureEnvelope(body, cleanup) {
+  let failure;
+  try {
+    return yield* body();
+  } catch (error) {
+    failure = error instanceof Failure ? error : new Failure(error);
+    throw failure;
+  } finally {
+    try {
+      cleanup();
+    } catch (error) {
+      const cleanupFailure = error instanceof Failure
+        ? error
+        : new Failure(error);
+      if (failure === undefined) throw cleanupFailure;
+      failure.cleanup.push(cleanupFailure);
+    }
+  }
+}
+function failedOutcome(iterator) {
+  try {
+    iterator.next();
+  } catch (error) {
+    assert.ok(error instanceof Failure);
+    return error;
+  }
+  throw new Error("expected failure");
+}
+const sharedError = new Error("reused");
+const firstCleanup = new Error("first cleanup");
+const first = failedOutcome(ensureEnvelope(
+  function* () {
+    throw sharedError;
+  },
+  () => {
+    throw firstCleanup;
+  },
+));
+const second = failedOutcome(ensureEnvelope(
+  function* () {
+    throw sharedError;
+  },
+  () => {},
+));
+assert.equal(first.primary, sharedError);
+assert.equal(second.primary, sharedError);
+assert.notEqual(first, second);
+assert.deepEqual(first.cleanup.map((error) => error.primary), [firstCleanup]);
+assert.deepEqual(second.cleanup, []);
+const primitive = failedOutcome(ensureEnvelope(
+  function* () {
+    throw undefined;
+  },
+  () => {
+    throw 7;
+  },
+));
+assert.equal(primitive.primary, undefined);
+assert.equal(primitive.cleanup[0].primary, 7);
+console.log(
+  "PASS: per-failure envelopes isolate reused errors and retain primitive throws",
+);

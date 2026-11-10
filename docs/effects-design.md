@@ -799,3 +799,14 @@ and Toss diagnostics, causes and external runtime interfaces need defined
 behavior. It does not integrate with the handler prototype, module caching or
 CLI/REPL diagnostics. A per-failure representation and treatment of foreign
 thrown values must be designed before integrating this technique.
+
+The cleanup probe also compares a per-failure envelope. It keeps separate
+cleanup records when the identical Error object is thrown in two independent
+executions, and can retain primitive thrown values including `undefined`. Unlike
+attaching metadata to a reused Error, this models a failure occurrence. The
+experiment throws the envelope internally, however, so it is not drop-in
+compatible with Toss: ADR-37 requires later imports to rethrow the same cached
+error, while ADR-38 and JS callback tests preserve the original JS thrown value
+as `cause`. A future boundary design must preserve these observable identities
+and diagnostic data. The experiment does not establish how to expose associated
+cleanup failures without losing either identity or failure-specific metadata.
