@@ -134,3 +134,111 @@ assert.equal(failedCleanup.success, false);
 assert.equal(decoder.decode(failedCleanup.stdout), "");
 assert.match(decoder.decode(failedCleanup.stderr), /cleanup failed/);
 console.log("PASS: generated handler abandonment propagates a cleanup failure");
+
+// The experimental recursive driver keeps a JS frame per nested resume.
+// This is an implementation limit of the probe, not a Toss language limit.
+const arrayLiteral = 'send([1, 2], {name: "map:"';
+assert.equal(output.split(arrayLiteral).length - 1, 1);
+const manyValues = Array.from({ length: 10000 }, (_, index) => index).join(
+  ", ",
+);
+const manyRequests = output.replace(
+  arrayLiteral,
+  `send([${manyValues}], {name: "map:"`,
+);
+const stress = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", manyRequests],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(stress.success, false);
+assert.match(decoder.decode(stress.stderr), /Maximum call stack size exceeded/);
+console.log(
+  "PASS: recursive handler driver overflows under many successive requests",
+);
+
+// Heap-backed experimental driver for cases that resume exactly once. It keeps
+// each suspended case explicitly, so case code can continue after resume.
+// It deliberately does not implement abandonment, cleanup or boundary rules.
+const driverStart = manyRequests.indexOf(
+  "function runHandled(iterator, context) {",
+);
+const driverEnd = manyRequests.indexOf(
+  "function send(receiver, message, context) {",
+  driverStart,
+);
+assert.ok(driverStart >= 0 && driverEnd > driverStart);
+const iterativeDriver = `function runHandled(iterator, context) {
+  const handler = fetchBinding("h", context);
+  const pending = [];
+  let current = iterator;
+  let input;
+  while (true) {
+    const step = current.next(input);
+    input = undefined;
+    if (step.done) {
+      if (pending.length === 0) return step.value;
+      current = pending.pop();
+      input = step.value;
+      continue;
+    }
+    if (step.value.kind === "resume") {
+      pending.push(current);
+      current = iterator;
+      input = step.value.value;
+      continue;
+    }
+    const {effect, payload} = step.value;
+    const owner = slotOwner(handler, effect);
+    if (owner === null) throw new Error("unhandled probe effect");
+    let used = false;
+    function* resume(value) {
+      if (used) throw new Error("invalid resume");
+      used = true;
+      return yield {kind: "resume", value};
+    }
+    current = invokeSlot(handler, effect, owner, [payload, resume], context);
+  }
+}
+`;
+const iterative = manyRequests.slice(0, driverStart) + iterativeDriver +
+  manyRequests.slice(driverEnd);
+const scalable = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", iterative],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(scalable.success, true, decoder.decode(scalable.stderr));
+assert.equal(decoder.decode(scalable.stdout), "10\n11\n");
+console.log(
+  "PASS: explicit pending-case stack handles 10000 one-shot resumptions",
+);
+
+const smallStart = output.indexOf("function runHandled(iterator, context) {");
+const smallEnd = output.indexOf(
+  "function send(receiver, message, context) {",
+  smallStart,
+);
+assert.ok(smallStart >= 0 && smallEnd > smallStart);
+let afterResume = output.slice(0, smallStart) + iterativeDriver +
+  output.slice(smallEnd);
+const resumeLine = afterResume.split("\n").find((line) =>
+  line.startsWith('return yield* send(fetchBinding("resume",')
+);
+assert.ok(resumeLine);
+afterResume = afterResume.replace(
+  resumeLine,
+  `${
+    resumeLine.replace("return ", "const resumedValue = ")
+  }\nconsole.log("after", arg0); return resumedValue;`,
+);
+const continued = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", afterResume],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(continued.success, true, decoder.decode(continued.stderr));
+assert.equal(decoder.decode(continued.stdout), "after 2\nafter 1\n11\n12\n");
+console.log(
+  "PASS: explicit pending-case stack returns to handler cases in nesting order",
+);

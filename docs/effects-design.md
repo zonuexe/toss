@@ -942,11 +942,11 @@ resulting mapped values are 11 and 12.
 The source does not use implemented `raise:with:` or `handleWith:`: the test
 inserts a JavaScript yield and automatically installs one hard-coded handler
 around the `map:` dispatch. Both relevant Toss Blocks and the `resume` call are
-specifically rewritten. The driver handles synchronous resumption only; it does
-not support outward requests from a case, abandonment cleanup, unhandled-effect
-diagnostics, async/JS boundaries or general dispatch. Its recursive driver has
-no proven stack or performance properties. This is one concrete integration
-path, not an accepted implementation strategy.
+specifically rewritten. The original driver handles synchronous resumption only;
+it does not support outward requests from a case, unhandled-effect diagnostics,
+async/JS boundaries or general dispatch. Its recursive driver has no proven
+stack or performance properties. This is one concrete integration path, not an
+accepted implementation strategy.
 
 The generated handler probe additionally constructs an alternate case that
 returns without resuming. A synthetic `finally` around the patched `map:` runs
@@ -956,3 +956,20 @@ is one synthetic cleanup; it does not implement Toss `ensure:`, failure
 aggregation, cleanup during handler failure, or interruption of an imported
 module. The initial success path and the alternate abandonment path use separate
 in-memory patches.
+
+## Experiment: stack use across repeated resumptions
+
+The generated-handler probe includes a stress case with 10,000 sequential
+requests. On the tested Deno runtime, its recursive driver overflows the JS call
+stack. A separate in-memory driver for cases that resume exactly once stores
+pending case generators in an explicit Array and completes the same case. A
+second check confirms that code after resume runs in nested order before the
+final mapped values are returned.
+
+This is a feasibility comparison, not a benchmark or a general implementation.
+The iterative driver does not implement cases that abandon, cleanup, case-raised
+effects, expired capabilities, module initialization, boundaries or diagnostic
+rules; it uses a synthetic request protocol that would need robust internal
+identity and validation. It allocates pending case frames and no memory or
+performance measurements have been made. The observed stack limit is specific to
+the tested runtime, not a language guarantee.
