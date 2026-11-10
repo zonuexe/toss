@@ -140,6 +140,7 @@ export function compileExperimentalEffects(
     ...fileRootSetupLines(),
     experimentalEffectRuntime,
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
+    "registerEffectSymbolRoot(symbolRoot);",
     `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
     "})();",
   ].join("\n");
@@ -213,7 +214,7 @@ export function compileExperimentalEffectsSources(
       fileRootSetupLines(module.imports.map(({ path, id }) =>
         `[${JSON.stringify(path)}, ${id}]`
       )).join("\n")
-    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\n${body}\nreturn moduleExport;\n};`;
+    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
   });
   return [
     "(() => {",

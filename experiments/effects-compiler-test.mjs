@@ -112,6 +112,11 @@ const cases = [
     "#h bind: $Object clone. $h at: #A put: { p, k -> ($p equals: 1) ifTrue: { ($k value: 10) add: 1 } ifFalse: { 42 } }. ({ $Effect raise: #A with: 1. $Effect raise: #A with: 2 } handleWith: $h) print.",
     "43\n",
   ],
+  [
+    "unique symbol effect",
+    "#key bind: $Symbol generateUnique. #h bind: $Object clone. $h at: $key put: { p, k -> $k value: 9 }. ({ $Effect raise: $key with: $Nil } handleWith: $h) print.",
+    "9\n",
+  ],
   ["ordinary Block", "({ n -> $n add: 1 } value: 4) print.", "5\n"],
   [
     "resumption through map",
@@ -218,6 +223,12 @@ const invalidCleanup = await execute("{ 'never' print } ensure: { x -> $x }.");
 assert.equal(invalidCleanup.success, false);
 assert.equal(invalidCleanup.stdout, "");
 assert.match(invalidCleanup.stderr, /Block expects 1 argument/);
+const distinctUnique = await execute(
+  "#first bind: $Symbol generateUnique. #second bind: $Symbol generateUnique. #h bind: $Object clone. $h at: $first put: { p, k -> $k value: 1 }. { $Effect raise: $second with: 'secret' } handleWith: $h.",
+);
+assert.equal(distinctUnique.success, false);
+assert.match(distinctUnique.stderr, /Unhandled effect #<unique>/);
+assert.ok(!distinctUnique.stderr.includes("secret"));
 const unhandled = await execute("$Effect raise: #Missing with: $Nil.");
 assert.equal(unhandled.success, false);
 assert.match(

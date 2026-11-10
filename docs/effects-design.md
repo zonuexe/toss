@@ -1086,3 +1086,9 @@ module loading, JS module output, an external runtime, source-map support, or
 production compilation. Error metadata is still Error-keyed and experimental.
 Static dependency collection and validation reuse existing modules, but the
 prototype does not claim parity across every loader edge case.
+
+The AST slice now registers the actual built-in `generateUnique` method for each
+module root rather than treating it as an unsupported native method. Tests cover
+matching a unique effect Symbol, rejecting a different unique Symbol without
+displaying its payload, and sharing a unique Symbol through a module export.
+Arbitrary native methods remain unsupported in this experimental path.

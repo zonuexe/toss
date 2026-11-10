@@ -197,3 +197,26 @@ assert.match(abandonedCleanupError, /Unbound name "cleanup"/);
 console.log(
   "PASS: abandoned initialization caches interruption with cleanup failure",
 );
+const functionEffect = await execute(
+  "#f bind: %import('./lib.toss'). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: ($p add: 1) }. ({ $f value: 4 } handleWith: $h) print.",
+  "%export({ x -> $Effect raise: #A with: $x }).",
+);
+assert.equal(functionEffect.success, true, functionEffect.stderr);
+assert.equal(functionEffect.stdout, "5\n");
+
+const canonicalImports = await execute(
+  "#a bind: %import('./dir/../lib.toss'). #b bind: %import('./lib.toss'). $a print. $b print.",
+  "'once' print. %export(7).",
+);
+assert.equal(canonicalImports.success, true, canonicalImports.stderr);
+assert.equal(canonicalImports.stdout, "once\n7\n7\n");
+console.log(
+  "PASS: exported Blocks propagate effects and canonical imports share initialization",
+);
+const moduleUnique = await execute(
+  "#key bind: %import('./lib.toss'). #h bind: $Object clone. $h at: $key put: { p, k -> $k value: 11 }. ({ $Effect raise: $key with: $Nil } handleWith: $h) print.",
+  "%export($Symbol generateUnique).",
+);
+assert.equal(moduleUnique.success, true, moduleUnique.stderr);
+assert.equal(moduleUnique.stdout, "11\n");
+console.log("PASS: unique Symbol effect identity survives module import");

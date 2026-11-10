@@ -1,6 +1,8 @@
 // Experimental runtime source; not the production Toss runtime.
 export const experimentalEffectRuntime = `
 const effectBlocks = new WeakSet();
+const effectNativeSymbols = new WeakSet();
+function registerEffectSymbolRoot(root) { effectNativeSymbols.add(Reflect.get(root, "generateUnique")); }
 const effectResumeStates = new WeakMap();
 const effectCleanupFailures = new WeakMap();
 let effectCleanupDepth = 0;
@@ -214,7 +216,7 @@ function* effectSend(receiver, message, context) {
       const block = Reflect.get(owner, name, receiver);
       if (typeof block === "function" && effectBlocks.has(block))
         return yield* effectInvoke(block, args, {...context, methodReceiver: {kind: "tossInvocation", context: {receiver, key: name, owner}}});
-      if (typeof block !== "function") return send(receiver, message, context);
+      if (typeof block !== "function" || effectNativeSymbols.has(block)) return send(receiver, message, context);
       throw new TossRuntimeError("Unsupported native method in experimental effects compiler.", context.location);
     }
   }
