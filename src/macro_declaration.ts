@@ -1,6 +1,6 @@
 import { TossSyntaxError } from "./diagnostic.ts";
 import { expandSyntax } from "./macro_expand_tree.ts";
-import { LocalMacroRegistry } from "./macro_registry.ts";
+import type { LocalMacroRegistry } from "./macro_registry.ts";
 import { parseSyntaxExpression } from "./macro_syntax_parse.ts";
 import { type SyntaxGroup, syntaxGroup, type SyntaxNode } from "./syntax.ts";
 

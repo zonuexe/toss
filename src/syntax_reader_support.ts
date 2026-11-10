@@ -1,9 +1,5 @@
 import type { SourceLocation } from "./diagnostic.ts";
-import {
-  type SyntaxGroup,
-  type SyntaxNode,
-  type SyntaxScope,
-} from "./syntax.ts";
+import type { SyntaxGroup, SyntaxNode, SyntaxScope } from "./syntax.ts";
 
 export type PrefixReadOptions = {
   readonly source: string;

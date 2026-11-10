@@ -2,7 +2,7 @@ import type { Expression } from "./ast.ts";
 import { mergeMacroTrace, TossSyntaxError } from "./diagnostic.ts";
 import { evaluateMacroExpression } from "./macro_evaluate.ts";
 import { invokeMacroBlock } from "./macro_primitive.ts";
-import { LocalMacroRegistry } from "./macro_registry.ts";
+import type { LocalMacroRegistry } from "./macro_registry.ts";
 import {
   macroRootEnvironment,
   MacroState,

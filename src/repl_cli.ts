@@ -4,6 +4,9 @@ import { IncompleteJavaScriptError, TossSyntaxError } from "./diagnostic.ts";
 import { readSyntax } from "./syntax_reader.ts";
 import type { SyntaxNode } from "./syntax.ts";
 import { createAsyncReplSession } from "./repl.ts";
+import { version } from "./version.ts";
+
+const usage = "Usage: deno task repl [--help | --version]";
 
 const help = [
   "Toss REPL commands:",
@@ -13,7 +16,20 @@ const help = [
   "  :quit    Exit",
 ].join("\n");
 
-export async function main(): Promise<void> {
+export async function main(args: readonly string[] = []): Promise<void> {
+  if (args.length === 1 && args[0] === "--version") {
+    console.log(`toss ${version}`);
+    return;
+  }
+  if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
+    console.log(`${usage}\n\n${help}`);
+    return;
+  }
+  if (args.length > 0) {
+    console.error(usage);
+    Deno.exitCode = 1;
+    return;
+  }
   const interactive = Deno.stdin.isTerminal() && Deno.stdout.isTerminal();
   const session = createAsyncReplSession();
   const input = createInterface({
@@ -177,4 +193,4 @@ function assertNever(value: never): never {
   throw new TypeError(`Unexpected REPL variant: ${JSON.stringify(value)}`);
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) await main(Deno.args);

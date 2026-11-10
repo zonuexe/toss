@@ -1,4 +1,26 @@
 {
+  "name": "@tosslang/toss",
+  "version": "0.0.1",
+  "exports": {
+    ".": "./src/compiler.ts",
+    "./source": "./src/source_compiler.ts",
+    "./repl": "./src/repl_core.ts",
+    "./cli": "./src/cli.ts",
+    "./repl-cli": "./src/repl_cli.ts",
+    "./runtime-cli": "./src/runtime_cli.ts"
+  },
+  "publish": {
+    "include": [
+      "deno.json",
+      "src/",
+      "lib/",
+      "LICENSE",
+      "README.md",
+      "README-ja.md",
+      "docs/",
+      "CHANGELOG.md"
+    ]
+  },
   "tasks": {
     "compile": "deno run --allow-read --allow-write src/cli.ts",
     "runtime": "deno run --allow-write src/runtime_cli.ts",

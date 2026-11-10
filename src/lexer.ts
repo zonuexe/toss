@@ -1,7 +1,7 @@
 import { type SourceLocation, TossSyntaxError } from "./diagnostic.ts";
 import { comparisonOperatorAt } from "./comparison_operator.ts";
 import { readJavaScriptMacro } from "./javascript_parser.ts";
-import { type Token } from "./token.ts";
+import type { Token } from "./token.ts";
 export type { Token } from "./token.ts";
 
 export function lex(

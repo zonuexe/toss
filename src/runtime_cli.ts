@@ -1,5 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { generateRuntimeModule } from "./runtime_module.ts";
+import { version } from "./version.ts";
 
 const usage = "Usage: deno task runtime -o <runtime.js>";
 
@@ -9,6 +10,10 @@ class UsageError extends Error {
 
 export async function main(args: readonly string[]): Promise<void> {
   try {
+    if (args.length === 1 && args[0] === "--version") {
+      console.log(`toss ${version}`);
+      return;
+    }
     if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
       console.log(usage);
       return;

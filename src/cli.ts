@@ -6,6 +6,7 @@ import {
 } from "./compile_options.ts";
 import type { CompileFormat } from "./compile_options.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
+import { version } from "./version.ts";
 
 const usage =
   "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm] [--runtime-import <specifier>] [--tree-shake-prelude]";
@@ -79,6 +80,10 @@ function parseArguments(args: readonly string[]): {
 
 export async function main(args: readonly string[]): Promise<void> {
   try {
+    if (args.length === 1 && args[0] === "--version") {
+      console.log(`toss ${version}`);
+      return;
+    }
     if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
       console.log(usage);
       return;
