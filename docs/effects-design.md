@@ -1042,10 +1042,10 @@ WeakMap keyed by Error, which cannot correctly distinguish independent failures
 that reuse the same Error and does not handle arbitrary thrown values. Its
 diagnostic formatting is provisional. It does not implement module
 initialization, JS/async boundaries, REPL integration, separate runtimes,
-tree-shaking, or a full set of diagnostics. The handler driver is recursive and
-can exhaust the JS stack. The `Effect` binding and syntax are experimental and
-must not be treated as released behavior. These limits are deliberate until the
-runtime protocol and failure representation are integrated and verified.
+tree-shaking, or a full set of diagnostics. The `Effect` binding and syntax are
+experimental and must not be treated as released behavior. These limits are
+deliberate until the runtime protocol and failure representation are integrated
+and verified.
 
 The AST compiler slice now uses an explicit pending-case stack within each
 handler rather than recursively invoking the driver on resume. Its Toss-source
@@ -1054,3 +1054,10 @@ through an earlier resumed case, cleanup of a suspended case and body, and
 nested cleanup failures. This does not establish bounded stack use for deeply
 nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
 error metadata, module, interop or unsupported syntax limitations above.
+
+`experiments/effects-compiler-conformance.mjs` compares 17 supported programs
+without effect requests against the production compiler, including lexical
+bindings, evaluation order, collection snapshots, inherited methods, `%super`,
+extension, and selected runtime failures with their source locations. It checks
+observable output and diagnostics for those cases only, not general equivalence.
+It is included in `deno task effects:probe`.
