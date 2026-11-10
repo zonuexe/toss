@@ -242,3 +242,203 @@ assert.equal(decoder.decode(continued.stdout), "after 2\nafter 1\n11\n12\n");
 console.log(
   "PASS: explicit pending-case stack returns to handler cases in nesting order",
 );
+
+// Extend only the experimental driver with synchronous, non-suspending
+// abandonment. It still does not handle thrown cleanup errors through pending
+// cases, handler-raised effects, expired resume capabilities, or boundaries.
+const abortDriver = `function runHandled(iterator, context) {
+  const handler = fetchBinding("h", context);
+  const pending = [];
+  let current = iterator;
+  let currentCase = null;
+  let input;
+  while (true) {
+    const step = current.next(input);
+    input = undefined;
+    if (step.done) {
+      if (currentCase !== null && !currentCase.used) {
+        const closed = iterator.return();
+        if (!closed.done) throw new Error("cleanup suspended");
+      }
+      if (pending.length === 0) return step.value;
+      const previous = pending.pop();
+      current = previous.iterator;
+      currentCase = previous.caseState;
+      input = step.value;
+      continue;
+    }
+    if (step.value.kind === "resume") {
+      pending.push({iterator: current, caseState: currentCase});
+      current = iterator;
+      currentCase = null;
+      input = step.value.value;
+      continue;
+    }
+    const {effect, payload} = step.value;
+    const owner = slotOwner(handler, effect);
+    if (owner === null) throw new Error("unhandled probe effect");
+    const caseState = {used: false};
+    function* resume(value) {
+      if (caseState.used) throw new Error("invalid resume");
+      caseState.used = true;
+      return yield {kind: "resume", value};
+    }
+    current = invokeSlot(handler, effect, owner, [payload, resume], context);
+    currentCase = caseState;
+  }
+}
+`;
+function useAbortDriver(code) {
+  const start = code.indexOf("function runHandled(iterator, context) {");
+  const end = code.indexOf(
+    "function send(receiver, message, context) {",
+    start,
+  );
+  assert.ok(start >= 0 && end > start);
+  return code.slice(0, start) + abortDriver + code.slice(end);
+}
+const abortResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAbortDriver(abandoned)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(abortResult.success, true, decoder.decode(abortResult.stderr));
+assert.equal(decoder.decode(abortResult.stdout), "cleanup\nresult 42\n");
+const abortFailure = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAbortDriver(cleanupFailure)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(abortFailure.success, false);
+assert.match(decoder.decode(abortFailure.stderr), /cleanup failed/);
+assert.equal(decoder.decode(abortFailure.stdout), "");
+const largeWithAbortDriver = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAbortDriver(manyRequests)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  largeWithAbortDriver.success,
+  true,
+  decoder.decode(largeWithAbortDriver.stderr),
+);
+assert.equal(decoder.decode(largeWithAbortDriver.stdout), "10\n11\n");
+console.log(
+  "PASS: explicit pending-case stack handles basic abandonment and cleanup",
+);
+const nestedAbandonment = abandoned.replace(
+  "return 42;",
+  `if (arg0 === 2) return 42;\n${caseLine}`,
+);
+assert.notEqual(nestedAbandonment, abandoned);
+const nestedAbort = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAbortDriver(nestedAbandonment)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(nestedAbort.success, true, decoder.decode(nestedAbort.stderr));
+assert.equal(decoder.decode(nestedAbort.stdout), "cleanup\nresult 42\n");
+console.log(
+  "PASS: later abandonment returns through an earlier resumed handler",
+);
+// A failure while abandoning must unwind pending handler cases. This deliberately
+// exposes a remaining bug in the experimental explicit-stack driver.
+let nestedCleanupFailure = cleanupFailure.replace(
+  "return 42;",
+  `if (arg0 === 2) return 42;\n${caseLine}`,
+);
+assert.notEqual(nestedCleanupFailure, cleanupFailure);
+nestedCleanupFailure = nestedCleanupFailure.replace(
+  "function*(arg0, arg1) {",
+  "function*(arg0, arg1) { try {",
+)
+  .replace(
+    "})(environment)]},",
+    `} finally { console.log("handler cleanup", arg0); }})(environment)]},`,
+  );
+const missingUnwind = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAbortDriver(nestedCleanupFailure)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(missingUnwind.success, false);
+assert.match(decoder.decode(missingUnwind.stderr), /cleanup failed/);
+assert.equal(decoder.decode(missingUnwind.stdout), "handler cleanup 2\n");
+console.log(
+  "PASS: probe exposes missing pending-handler cleanup during cleanup failure",
+);
+// Route failures through suspended case generators so their finally blocks run.
+// Error aggregation is deliberately not implemented by this probe.
+const unwindDriver = abortDriver
+  .replace(
+    "  while (true) {\n    const step = current.next(input);",
+    `  let throwNext = false;
+  while (true) {
+    try {
+    const step = throwNext ? current.throw(input) : current.next(input);
+    throwNext = false;`,
+  )
+  .replace(
+    "    currentCase = caseState;\n  }\n}",
+    `    currentCase = caseState;
+    } catch (error) {
+      if (pending.length === 0) throw error;
+      const previous = pending.pop();
+      current = previous.iterator;
+      currentCase = previous.caseState;
+      input = error;
+      throwNext = true;
+    }
+  }
+}`,
+  );
+assert.notEqual(unwindDriver, abortDriver);
+function useUnwindDriver(code) {
+  const start = code.indexOf("function runHandled(iterator, context) {");
+  const end = code.indexOf(
+    "function send(receiver, message, context) {",
+    start,
+  );
+  assert.ok(start >= 0 && end > start);
+  return code.slice(0, start) + unwindDriver + code.slice(end);
+}
+const unwound = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useUnwindDriver(nestedCleanupFailure)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(unwound.success, false);
+assert.match(decoder.decode(unwound.stderr), /cleanup failed/);
+assert.equal(
+  decoder.decode(unwound.stdout),
+  "handler cleanup 2\nhandler cleanup 1\n",
+);
+const unwindLarge = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useUnwindDriver(manyRequests)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(unwindLarge.success, true, decoder.decode(unwindLarge.stderr));
+assert.equal(decoder.decode(unwindLarge.stdout), "10\n11\n");
+console.log(
+  "PASS: failure reaches pending handler cleanup without recursive JS frames",
+);
+// A pending case's own cleanup can replace the error being propagated.
+// This demonstrates why routing errors alone is not error aggregation.
+const replacingCleanup = nestedCleanupFailure.replace(
+  'console.log("handler cleanup", arg0);',
+  'if (arg0 === 1) throw new Error("handler cleanup failed");',
+);
+assert.notEqual(replacingCleanup, nestedCleanupFailure);
+const replacedError = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useUnwindDriver(replacingCleanup)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(replacedError.success, false);
+assert.match(decoder.decode(replacedError.stderr), /handler cleanup failed/);
+assert.doesNotMatch(
+  decoder.decode(replacedError.stderr),
+  /Error: cleanup failed/,
+);
+console.log("PASS: probe exposes primary error replacement by handler cleanup");

@@ -973,3 +973,20 @@ rules; it uses a synthetic request protocol that would need robust internal
 identity and validation. It allocates pending case frames and no memory or
 performance measurements have been made. The observed stack limit is specific to
 the tested runtime, not a language guarantee.
+
+The generated-handler probe extends the explicit pending-case stack with a
+limited non-suspending abandonment path. It tests immediate abandonment,
+abandonment on a later request while an earlier case is waiting, cleanup
+execution, and 10,000 successful resumptions. A negative case showed that a
+cleanup failure originally skipped cleanup of an earlier suspended case. A
+further experimental variant throws that failure into the pending case
+iterators, causing their synthetic `finally` blocks to run in order.
+
+A remaining negative case has both the abandoned computation's cleanup and an
+outer handler cleanup fail: native generator unwinding replaces the first error
+with the second, contradicting the agreed primary-error rules. The variant does
+not integrate the separate per-failure error model and is not production-ready.
+It also does not cover handler-originated effects, arbitrary errors while a
+handler is running, invalid/expired resume calls, real Toss `ensure:`, module
+state, or JS/async boundaries. These tests use synthetic JavaScript `finally`
+and source-specific in-memory rewrites.
