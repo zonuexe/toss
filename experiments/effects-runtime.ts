@@ -5,6 +5,7 @@ const effectNativeSymbols = new WeakSet();
 function registerEffectSymbolRoot(root) { effectNativeSymbols.add(Reflect.get(root, "generateUnique")); }
 const effectResumeStates = new WeakMap();
 const effectCleanupFailures = new WeakMap();
+const effectHandlerContexts = new WeakMap();
 let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
@@ -17,6 +18,12 @@ function recordCleanupFailure(primary, secondary) {
   const failures = effectCleanupFailures.get(primary) ?? [];
   failures.push(secondary);
   effectCleanupFailures.set(primary, failures);
+}
+function recordHandlerContext(error, request) {
+  if (!(error instanceof Error)) return;
+  const contexts = effectHandlerContexts.get(error) ?? [];
+  if (!contexts.includes(request)) contexts.push(request);
+  effectHandlerContexts.set(error, contexts);
 }
 function validateZeroArgumentBlock(value, context) {
   const block = blockArgument(value, context);
@@ -77,7 +84,10 @@ function* effectHandle(block, handler, context) {
           continue;
         }
       } catch (error) {
-        if (currentState !== null) currentState.active = false;
+        if (currentState !== null) {
+          currentState.active = false;
+          recordHandlerContext(error, currentState.request);
+        }
         if (pending.length === 0) throw error;
         const previous = pending.pop();
         current = previous.iterator;
@@ -112,7 +122,7 @@ function* effectHandle(block, handler, context) {
       const selected = Reflect.get(owner, request.effect, handler);
       if (typeof selected !== "function" || !effectBlocks.has(selected))
         throw new TossRuntimeError("Handler case must be a synchronous Block.", request.location);
-      const state = {active: true, suspended: false, used: false};
+      const state = {active: true, suspended: false, used: false, request};
       const resume = markEffectBlock(function*(value) {
         if (!state.active || state.suspended || state.used) throw new TossRuntimeError("Invalid resume.", request.location);
         state.used = true;
@@ -239,9 +249,10 @@ function runEffectProgram(iterator) {
 }
 function reportEffectFailures(error) {
   if (!(error instanceof Error)) return;
-  const failures = effectCleanupFailures.get(error);
-  if (failures === undefined) return;
-  const lines = [];
+  const failures = effectCleanupFailures.get(error) ?? [];
+  const contexts = effectHandlerContexts.get(error) ?? [];
+  if (failures.length === 0 && contexts.length === 0) return;
+  const lines = contexts.map((request) => "\\n  while handling " + keyDescription(request.effect) + " at " + request.location.file + ":" + request.location.line + ":" + request.location.column);
   const seen = new Set([error]);
   function collect(failure) {
     lines.push("\\n  cleanup failure: " + (failure instanceof Error ? failure.message : String(failure)));

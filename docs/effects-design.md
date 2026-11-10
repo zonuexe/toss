@@ -1092,3 +1092,10 @@ module root rather than treating it as an unsupported native method. Tests cover
 matching a unique effect Symbol, rejecting a different unique Symbol without
 displaying its payload, and sharing a unique Symbol through a module export.
 Arbitrary native methods remain unsupported in this experimental path.
+
+The experimental runtime also records handler request context on errors: the
+original failure remains primary, and default output identifies the handled
+effect and request location without printing payloads. Toss-source tests cover
+nested handler contexts and ordering. The context table currently shares the
+same Error-keying and repeat-reporting limitations as cleanup metadata; it is
+not a final diagnostic representation.

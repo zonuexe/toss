@@ -264,6 +264,24 @@ for (
     );
   }
 }
+const handlerTraceSource =
+  "#h bind: $Object clone. $h at: #A put: { p, k -> $missing }. { $Effect raise: #A with: 'secret' } handleWith: $h.";
+const handlerTrace = await execute(handlerTraceSource);
+assert.equal(handlerTrace.success, false);
+assert.match(handlerTrace.stderr, /Unbound name "missing"/);
+assert.match(handlerTrace.stderr, /while handling #A at experimental\.toss:1:/);
+assert.ok(!handlerTrace.stderr.includes("secret"));
+const nestedHandlerTrace = await execute(
+  "#outer bind: $Object clone. $outer at: #B put: { p, k -> $missing }. #inner bind: $Object clone. $inner at: #A put: { p, k -> $Effect raise: #B with: 'secret' }. { { $Effect raise: #A with: 'private' } handleWith: $inner } handleWith: $outer.",
+);
+assert.equal(nestedHandlerTrace.success, false);
+const bTrace = nestedHandlerTrace.stderr.indexOf("while handling #B");
+const aTrace = nestedHandlerTrace.stderr.indexOf("while handling #A");
+assert.ok(bTrace >= 0 && aTrace > bTrace, nestedHandlerTrace.stderr);
+assert.ok(
+  !nestedHandlerTrace.stderr.includes("secret") &&
+    !nestedHandlerTrace.stderr.includes("private"),
+);
 const argumentsBeforeResumeValidation = await execute(
   "#box bind: $Object clone. #h bind: $Object clone. $h at: #A put: { p, k -> $box at: 'saved' put: $k. 42 }. { $Effect raise: #A with: $Nil } handleWith: $h. ($box at: 'saved') value: ('argument' print).",
 );
