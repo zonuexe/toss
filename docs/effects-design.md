@@ -880,3 +880,20 @@ not a general compiler or runtime implementation. The experiment uses one
 JavaScript Error and does not implement nested cleanup aggregation, stable
 public diagnostics, actual Toss handlers, normal-path coverage for this
 particular adapter, or async and JS boundary enforcement.
+
+## Experiment: explicit JS and async boundaries
+
+Run `node experiments/effects-boundaries.mjs`. A small lookup-only model resets
+its dynamic handler context on entry to an explicit boundary and restores it on
+return. The tests check that an outer handler is unavailable inside the
+boundary, a handler installed locally is available, and the outer context is
+restored afterward. An async Block analogue checks the boundary both before and
+after its first await, including a locally installed synchronous handler.
+
+This is not a continuation implementation or Toss integration. The boundary is
+called manually, so it does not establish that all JS callback, async Block,
+REPL and host entry points can be identified or instrumented. The toy process
+uses global mutable state and provides no guarantee for overlapping execution,
+multiple runtime instances, or arbitrary host re-entry. Effects intentionally
+fail as unhandled in this model; the agreed distinct boundary diagnostics and
+resume restrictions remain unimplemented.
