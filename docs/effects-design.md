@@ -750,3 +750,26 @@ inherited generator method with `Reflect.get`, preserves the child receiver via
 `Reflect.apply`, and resumes an effect inside the method. It checks the receiver
 idea only: it does not exercise Toss method lookup, `%super`, error locations or
 the actual runtime.
+
+## Experiment: cooperative map in generated Toss output
+
+Run `deno run --allow-run experiments/effects-codegen-map.mjs`. This probe
+compiles a real Toss `map:` program and patches the generated JavaScript in
+memory: it changes the callback and `map:` to generators, injects a synthetic
+request into the callback, and adds a fixed experimental driver around `map:`.
+The driver resumes each request with twice its payload. The generated program
+prints `2`, `4`, `2`, demonstrating the cooperative callback path.
+
+The same patch fails for an ordinary callback because the generator `map:` tries
+to delegate to a plain value. A further experiment explicitly marks the
+transformed callback in a WeakSet and branches in `map:`; both the transformed
+and ordinary callback then produce their expected output. The explicit marker
+avoids identifying an arbitrary Toss result as a generator by its properties.
+
+This hard-coded driver is not `handleWith:` and does not propagate a request
+through the caller of `map:`. The probe injects a JavaScript yield, not a Toss
+`raise:with:`. It does not solve dynamic methods, callbacks captured in Objects,
+parent calls, cleanup, errors, module initialization, host boundaries, or effect
+propagation through other Prelude operations. Its string patches deliberately
+assert their expected shape, so compiler changes cause the probe to fail rather
+than silently changing the experiment. No compiler or runtime source is changed.
