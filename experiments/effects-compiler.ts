@@ -108,11 +108,38 @@ return extendTarget;
 const experimentalRuntime = `
 const effectBlocks = new WeakSet();
 const effectResumeStates = new WeakMap();
+const effectCleanupFailures = new WeakMap();
+let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
 function* effectInvoke(block, args, context) {
   const result = invokeBlock(block, args, context);
   return effectBlocks.has(block) ? yield* result : result;
+}
+function recordCleanupFailure(primary, secondary) {
+  if (!(primary instanceof Error)) throw secondary;
+  const failures = effectCleanupFailures.get(primary) ?? [];
+  failures.push(secondary);
+  effectCleanupFailures.set(primary, failures);
+}
+function validateZeroArgumentBlock(value, context) {
+  const block = blockArgument(value, context);
+  if (block.length !== 0) throw new TossRuntimeError("Block expects " + block.length + " argument(s), received 0.", context.location);
+  return block;
+}
+function* effectEnsure(receiver, cleanup, context) {
+  const body = validateZeroArgumentBlock(receiver, context);
+  const finalizer = validateZeroArgumentBlock(cleanup, context);
+  let failed = false;
+  let primary;
+  try { return yield* effectInvoke(body, [], context); }
+  catch (error) { failed = true; primary = error; throw error; }
+  finally {
+    effectCleanupDepth++;
+    try { yield* effectInvoke(finalizer, [], context); }
+    catch (error) { if (failed) recordCleanupFailure(primary, error); else throw error; }
+    finally { effectCleanupDepth--; }
+  }
 }
 function* effectHandle(block, handler, context) {
   if (handler === null || typeof handler !== "object" || Array.isArray(handler) || isJavaScriptReference(handler))
@@ -149,8 +176,16 @@ function* effectHandle(block, handler, context) {
     done = true;
     return step.value;
   }
+  let failed = false;
+  let primary;
   try { return yield* drive(iterator.next()); }
-  finally { if (!done) iterator.return(); }
+  catch (error) { failed = true; primary = error; throw error; }
+  finally {
+    if (!done) {
+      try { iterator.return(); }
+      catch (error) { if (failed) recordCleanupFailure(primary, error); else throw error; }
+    }
+  }
 }
 function* effectParent(args, context, scope) {
   const method = scope.superContext;
@@ -168,8 +203,10 @@ function* effectSend(receiver, message, context) {
   const {name, arguments: args} = message;
   if (receiver === effectRoot && name === "raise:with:") {
     if (typeof args[0] !== "symbol") throw new TossRuntimeError("Effect identity must be a Symbol.", context.location);
+    if (effectCleanupDepth > 0) throw new TossRuntimeError("Effects are not allowed during cleanup.", context.location);
     return yield {effect: args[0], payload: args[1], location: context.location};
   }
+  if (typeof receiver === "function" && name === "ensure:") return yield* effectEnsure(receiver, args[0], context);
   if (typeof receiver === "function" && name === "handleWith:") return yield* effectHandle(receiver, args[0], context);
   if (typeof receiver === "function" && /^(?:value|(?:value:)+)$/.test(name)) {
     const state = effectResumeStates.get(receiver);
@@ -238,6 +275,12 @@ function runEffectProgram(iterator) {
   }
   return step.value;
 }
+function reportEffectFailures(error) {
+  if (!(error instanceof Error)) return;
+  const failures = effectCleanupFailures.get(error);
+  if (failures === undefined) return;
+  error.stack += failures.map((failure) => "\\n  cleanup failure: " + (failure instanceof Error ? failure.message : String(failure))).join("");
+}
 `;
 
 export function compileExperimentalEffects(
@@ -254,7 +297,7 @@ export function compileExperimentalEffects(
     ...fileRootSetupLines(),
     experimentalRuntime,
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
-    `runEffectProgram((function*() {\n${body}\n})());`,
+    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
     "})();",
   ].join("\n");
 }

@@ -77,6 +77,31 @@ const cases = [
     "($False ifTrue: { x -> $x }) print.",
     "nil\n",
   ],
+  [
+    "ensure returns protected value",
+    "({ 'body' print. 7 } ensure: { 'cleanup' print }) print.",
+    "body\ncleanup\n7\n",
+  ],
+  [
+    "ensure on resumption",
+    "#h bind: $Object clone. $h at: #A put: { p, k -> 'before' print. #result bind: ($k value: 1). 'after' print. $result }. ({ { $Effect raise: #A with: $Nil. 'body-end' print. 3 } ensure: { 'cleanup' print } } handleWith: $h) print.",
+    "before\nbody-end\ncleanup\nafter\n3\n",
+  ],
+  [
+    "ensure on abandonment",
+    "#h bind: $Object clone. $h at: #A put: { p, k -> 'handler' print. 42 }. ({ { $Effect raise: #A with: $Nil. 'never' print } ensure: { 'cleanup' print } } handleWith: $h) print.",
+    "handler\ncleanup\n42\n",
+  ],
+  [
+    "outer handler resumes suspended inner case",
+    "#outer bind: $Object clone. $outer at: #B put: { p, k -> $k value: 5 }. #inner bind: $Object clone. $inner at: #A put: { p, k -> #v bind: ($Effect raise: #B with: $Nil). $k value: $v }. ({ { $Effect raise: #A with: $Nil } handleWith: $inner } handleWith: $outer) print.",
+    "5\n",
+  ],
+  [
+    "same handler object has distinct installations",
+    "#h bind: $Object clone. $h at: #A put: { p, k -> ($p equals: 1) ifTrue: { $Effect raise: #A with: 2 } ifFalse: { $k value: 9 } }. ({ { $Effect raise: #A with: 1 } handleWith: $h } handleWith: $h) print.",
+    "9\n",
+  ],
   ["ordinary Block", "({ n -> $n add: 1 } value: 4) print.", "5\n"],
   [
     "resumption through map",
@@ -131,6 +156,51 @@ for (
   assert.match(result.stderr, error, name);
   assert.equal(result.stdout, expectedOutput, name);
 }
+for (
+  const [name, source, primary, cleanup] of [
+    [
+      "body and cleanup failures",
+      "{ $primary } ensure: { $cleanup }.",
+      'Unbound name "primary"',
+      'Unbound name "cleanup"',
+    ],
+    [
+      "handler and cleanup failures",
+      "#h bind: $Object clone. $h at: #A put: { p, k -> $primary }. { { $Effect raise: #A with: $Nil } ensure: { $cleanup } } handleWith: $h.",
+      'Unbound name "primary"',
+      'Unbound name "cleanup"',
+    ],
+  ]
+) {
+  const result = await execute(source);
+  assert.equal(result.success, false, name);
+  assert.ok(result.stderr.includes(primary), result.stderr);
+  assert.ok(result.stderr.includes(cleanup), result.stderr);
+  assert.ok(
+    result.stderr.indexOf(primary) < result.stderr.indexOf(cleanup),
+    result.stderr,
+  );
+}
+const multipleCleanup = await execute(
+  "{ { $primary } ensure: { $inner } } ensure: { $outer }.",
+);
+assert.equal(multipleCleanup.success, false);
+const primaryIndex = multipleCleanup.stderr.indexOf('Unbound name "primary"');
+const innerIndex = multipleCleanup.stderr.indexOf('Unbound name "inner"');
+const outerIndex = multipleCleanup.stderr.indexOf('Unbound name "outer"');
+assert.ok(
+  primaryIndex >= 0 && primaryIndex < innerIndex && innerIndex < outerIndex,
+  multipleCleanup.stderr,
+);
+const blockedCleanup = await execute(
+  "{ 1 } ensure: { $Effect raise: #A with: $Nil }.",
+);
+assert.equal(blockedCleanup.success, false);
+assert.match(blockedCleanup.stderr, /Effects are not allowed during cleanup/);
+const invalidCleanup = await execute("{ 'never' print } ensure: { x -> $x }.");
+assert.equal(invalidCleanup.success, false);
+assert.equal(invalidCleanup.stdout, "");
+assert.match(invalidCleanup.stderr, /Block expects 1 argument/);
 const unhandled = await execute("$Effect raise: #Missing with: $Nil.");
 assert.equal(unhandled.success, false);
 assert.match(
