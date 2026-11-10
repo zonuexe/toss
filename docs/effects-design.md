@@ -871,3 +871,12 @@ interruption, while the same patch preserves normal completion and caching. This
 is not a complete solution: an initializer cleanup failure enters the existing
 `catch` before `finally` and still needs explicit abandonment context and error
 aggregation. No production generator transform is introduced.
+
+The same generated-module probe now also tries an explicit abandonment-aware
+iterator adapter. With one synthetic cleanup failure in the imported module, the
+original caller receives that cleanup error and a later import receives a cached
+interruption carrying the cleanup failure. This is a patched generated artifact,
+not a general compiler or runtime implementation. The experiment uses one
+JavaScript Error and does not implement nested cleanup aggregation, stable
+public diagnostics, actual Toss handlers, normal-path coverage for this
+particular adapter, or async and JS boundary enforcement.

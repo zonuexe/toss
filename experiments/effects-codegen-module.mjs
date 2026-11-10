@@ -138,3 +138,67 @@ assert.equal(decoder.decode(completed.stdout), "handled\ninitialized\n7\n7\n");
 console.log(
   "PASS: explicit interruption transition preserves normal module completion",
 );
+
+// Explicitly relay abandonment into the generated module state machine.
+// The synthetic cleanup is intentionally a single JavaScript error.
+const moduleHeader = "function* initializeModule(id, location) {";
+const originalEnd = `${catchClause}\n}`;
+assert.equal(abandoned.split(moduleHeader).length - 1, 1);
+assert.equal(abandoned.split(originalEnd).length - 1, 1);
+const cleanupAbandonment = abandoned
+  .replace(
+    moduleHeader,
+    `function initializeModule(id, location) {
+  let abandoning = false;
+  const iterator = (function* () {`,
+  )
+  .replace(
+    originalEnd,
+    `catch (error) {
+  if (abandoning) {
+    const interruption = new TossRuntimeError('Module initialization interrupted.', location);
+    interruption.cleanup = [error];
+    moduleStates.set(id, {state: 'failed', error: interruption});
+  } else {
+    moduleStates.set(id, {state: 'failed', error});
+  }
+  throw error;
+} finally {
+  if (moduleStates.get(id)?.state === 'running') {
+    moduleStates.set(id, {state: 'failed', error: new TossRuntimeError('Module initialization interrupted.', location)});
+  }
+}
+})();
+return {
+  [Symbol.iterator]() { return this; },
+  next(value) { return iterator.next(value); },
+  throw(error) { return iterator.throw(error); },
+  return(value) { abandoning = true; return iterator.return(value); },
+};
+}`,
+  )
+  .replace(
+    'yield {effect: "probe"};',
+    'try { yield {effect: "probe"}; } finally { throw new Error("cleanup failed"); }',
+  )
+  .replace(
+    completion,
+    `try { ${completion} } catch (error) { console.log("primary " + error.message); }`,
+  )
+  .replace(
+    'error.message.includes("re-entered") ? "incorrectly running" : "unexpected"',
+    'error.message.includes("interrupted") && error.cleanup?.[0]?.message === "cleanup failed" ? "interrupted with cleanup" : "unexpected"',
+  );
+const failedCleanup = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", cleanupAbandonment],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(failedCleanup.success, true, decoder.decode(failedCleanup.stderr));
+assert.equal(
+  decoder.decode(failedCleanup.stdout),
+  "handled\nprimary cleanup failed\ninterrupted with cleanup\n",
+);
+console.log(
+  "PASS: generated module abandonment preserves cleanup failure and caches interruption",
+);
