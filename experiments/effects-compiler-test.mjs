@@ -117,6 +117,21 @@ const cases = [
     "#key bind: $Symbol generateUnique. #h bind: $Object clone. $h at: $key put: { p, k -> $k value: 9 }. ({ $Effect raise: $key with: $Nil } handleWith: $h) print.",
     "9\n",
   ],
+  [
+    "effect through dynamic Symbol dispatch",
+    "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. #o bind: $Object clone. $o at: #work put: { $Effect raise: #A with: $Nil }. ({ $o perform: #work } handleWith: $h) print.",
+    "7\n",
+  ],
+  [
+    "effect through dynamic argument dispatch",
+    "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: ($p add: 1) }. #o bind: $Object clone. $o at: #work put: { x -> $Effect raise: #A with: $x }. ({ $o perform: #work withArguments: [4] } handleWith: $h) print.",
+    "5\n",
+  ],
+  [
+    "effect through unique Symbol dispatch",
+    "#key bind: $Symbol generateUnique. #h bind: $Object clone. $h at: #A put: { p, k -> $k value: ($p add: 1) }. #o bind: $Object clone. $o at: $key put: { x -> $Effect raise: #A with: $x }. ({ $o perform: $key withArguments: [4] } handleWith: $h) print.",
+    "5\n",
+  ],
   ["ordinary Block", "({ n -> $n add: 1 } value: 4) print.", "5\n"],
   [
     "resumption through map",

@@ -235,7 +235,26 @@ function* effectSend(receiver, message, context) {
       if (typeof block !== "function" || effectNativeSymbols.has(block)) return send(receiver, message, context);
       throw new TossRuntimeError("Unsupported native method in experimental effects compiler.", context.location);
     }
+    if (name === "perform:" || name === "perform:withArguments:") {
+      const key = args[0];
+      if (typeof key !== "string" && typeof key !== "symbol")
+        throw new TossRuntimeError("Object key must be a string or symbol.", context.location);
+      let argumentsList = [];
+      if (name === "perform:withArguments:") {
+        if (!Array.isArray(args[1])) throw new TossRuntimeError("Arguments must be an Array.", context.location);
+        argumentsList = args[1].slice();
+      }
+      if (typeof key === "string" && !Reflect.has(receiver, key) && objectMessages.has(key)) {
+        const expected = [...key].filter((character) => character === ":").length;
+        if (name === "perform:" && expected > 0)
+          throw new TossRuntimeError("Message " + keyDescription(key) + " requires arguments.", context.location);
+        if (name === "perform:withArguments:" && argumentsList.length !== expected)
+          throw new TossRuntimeError("Message " + keyDescription(key) + " expects " + expected + " argument(s), received " + argumentsList.length + ".", context.location);
+      }
+      return yield* effectSend(receiver, {name: key, arguments: argumentsList}, context);
+    }
   }
+  if (typeof name === "symbol") return send(receiver, message, context);
   const allowed = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);
   if (!allowed.has(name) || (name === "print" && typeof receiver === "object" && receiver !== null))
     throw new TossRuntimeError("Unsupported message in experimental effects compiler: " + name, context.location);

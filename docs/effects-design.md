@@ -1054,7 +1054,7 @@ nested cleanup failures. This does not establish bounded stack use for deeply
 nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
 error metadata, module, interop or unsupported syntax limitations above.
 
-`experiments/effects-compiler-conformance.mjs` compares 20 supported programs
+`experiments/effects-compiler-conformance.mjs` compares 26 supported programs
 without effect requests against the production compiler, including lexical
 bindings, evaluation order, collection snapshots, inherited methods, `%super`,
 extension, and selected runtime failures with their source locations. It checks
@@ -1104,3 +1104,10 @@ not a final diagnostic representation.
 experimental compiler. It demonstrates two handled requests and cleanup using
 simulated time and file contents; it does not access a real clock or file
 through an effect library. The same demo is checked by `effects:probe`.
+
+The experimental runtime supports `perform:` and `perform:withArguments:`
+through cooperative dispatch, including Symbol and unique-Symbol method keys.
+Tests compare ordinary dynamic dispatch and error validation with the standard
+compiler, and exercise an effect raised by the dynamically selected method.
+Prelude fallbacks remain subject to the slice's explicit supported-message
+restrictions; not all runtime messages have been adapted.

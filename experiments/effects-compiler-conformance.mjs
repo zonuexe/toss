@@ -66,6 +66,27 @@ const cases = [
     "parent prelude clone",
     "#o bind: $Object clone. $o at: 'clone' put: { %super() }. #c bind: ($o clone). $c at: 'value' put: 7. $c value print.",
   ],
+  [
+    "dynamic inherited method",
+    "#p bind: $Object clone. $p at: #work put: { $self value }. #c bind: $p clone. $c at: 'value' put: 7. ($c perform: #work) print.",
+  ],
+  [
+    "dynamic method with arguments",
+    "#o bind: $Object clone. $o at: #sum put: { a, b -> $a add: $b }. ($o perform: #sum withArguments: [2, 3]) print.",
+  ],
+  ["dynamic missing Symbol", "#o bind: $Object clone. $o perform: #missing."],
+  [
+    "dynamic prelude missing arguments",
+    "#o bind: $Object clone. $o perform: 'at:'.",
+  ],
+  [
+    "dynamic invalid selector",
+    "#o bind: $Object clone. $o perform: 1 withArguments: [].",
+  ],
+  [
+    "dynamic invalid argument Array",
+    "#o bind: $Object clone. $o perform: #x withArguments: 1.",
+  ],
   ["invalid Block arity", "{ x -> $x } value."],
   ["invalid filter result", "[1] filter: { x -> 1 }."],
   ["invalid conditional branch", "$True ifTrue: { 'never' print } ifFalse: 1."],
