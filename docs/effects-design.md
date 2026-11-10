@@ -1016,3 +1016,29 @@ With both cases and the parent call patched to cooperate, the inherited case
 still sees the child as `$self`, resumes each request and produces 11 and 12.
 This uses existing runtime `invokeSlot` and `parentSend` behavior; it remains a
 source-specific patch with a fixed handler driver, not the public feature.
+
+## Experimental AST compiler and runtime slice
+
+`experiments/effects-compiler.ts` uses the actual Toss syntax reader and macro
+expander and generates a cooperative generator program from a restricted set of
+AST forms. It reuses the existing emitted runtime for lexical Environments,
+Object slots, Block arity, method receiver and parent-call context, while an
+experimental adapter handles effect requests, `handleWith:`, Block calls and
+Array `map:`. It introduces no public compiler option or production Prelude. Run
+`deno run --allow-run experiments/effects-compiler-test.mjs`, or the
+`effects:probe` task, to check actual Toss source for dynamic method calls, map,
+nested handlers, resumption and abandonment, inherited handler cases, `%super`,
+invalid resume lifetimes, source position, evaluation order and unhandled
+effects.
+
+This is a vertical slice, not the complete agreed design. It deliberately
+rejects imports, JS expressions/imports, async Blocks, await, `%extend`, and
+other unsupported AST forms. It permits only a small set of Prelude messages;
+unsupported messages fail rather than silently invoking a callback without
+propagating suspension. It does not implement `ensure:`, cleanup failure
+aggregation, module initialization, JS/async boundaries, REPL integration,
+separate runtimes, tree-shaking, or a full set of diagnostics. The handler
+driver is recursive and can exhaust the JS stack. The `Effect` binding and
+syntax are experimental and must not be treated as released behavior. These
+limits are deliberate until the runtime protocol and failure representation are
+integrated and verified.

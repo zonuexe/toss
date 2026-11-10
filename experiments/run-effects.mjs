@@ -9,3 +9,4 @@ await import("./effects-module-boundary.mjs");
 await import("./effects-codegen-module.mjs");
 await import("./effects-codegen-super.mjs");
 await import("./effects-codegen-handler.mjs");
+await import("./effects-compiler-test.mjs");
