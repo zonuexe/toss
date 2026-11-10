@@ -782,3 +782,20 @@ while relaying a request and rejects use of its resume until that case is
 resumed. The experiment checks both rejection while suspended and successful use
 after the outer handler resumes the case. This bookkeeping remains isolated
 experimental machinery, not a Toss runtime implementation.
+
+## Experiment: preserving cleanup failures
+
+Run `node experiments/effects-cleanup-errors.mjs`. A naive JavaScript
+`try/finally` demonstrably replaces a body failure with a cleanup failure. An
+isolated generator experiment explicitly retains cleanup failures alongside the
+original Error object and confirms inner-to-outer ordering; it also confirms
+that abandonment with two cleanup failures reports the first and retains the
+second.
+
+The experiment accepts Error objects only and associates metadata using a
+WeakMap. That is not an adequate production error model: JavaScript can throw
+arbitrary values, the same Error object can be reused across separate failures,
+and Toss diagnostics, causes and external runtime interfaces need defined
+behavior. It does not integrate with the handler prototype, module caching or
+CLI/REPL diagnostics. A per-failure representation and treatment of foreign
+thrown values must be designed before integrating this technique.
