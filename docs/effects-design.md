@@ -903,3 +903,19 @@ after resumption: the first caller receives the original Error and a later
 import rethrows the same Error object. This checks the existing ordinary
 module-failure identity contract for that synthetic path only; it does not
 resolve failure-specific cleanup metadata or JavaScript boundary conversion.
+
+## Experiment: generated inherited method and parent call
+
+Run `deno run --allow-run experiments/effects-codegen-super.mjs`. A real Toss
+program defines a child override that invokes `%super`, and its inherited parent
+method reads `$self` from the actual child receiver. The baseline prints 10. The
+in-memory patch transforms those two Blocks, explicitly delegates the parent
+call, injects a synthetic request in the parent and drives it at the top-level
+send. Resuming with twice the argument produces 13, confirming receiver and
+parent lookup on this one generated path. Removing delegation at `%super` causes
+the returned iterator to be treated as a normal Object and fails.
+
+This is a fixed source-specific patch, not a general effect transformation. It
+does not cover Symbol-keyed handler cases, selected-slot-owner changes during
+suspension, all dynamic sends, cleanup, async/JS boundaries, or handler lookup.
+The handler is a fixed test driver, not Toss `handleWith:`.
