@@ -810,3 +810,19 @@ error, while ADR-38 and JS callback tests preserve the original JS thrown value
 as `cause`. A future boundary design must preserve these observable identities
 and diagnostic data. The experiment does not establish how to expose associated
 cleanup failures without losing either identity or failure-specific metadata.
+
+## Experiment: module initialization boundary
+
+Run `deno run --allow-run experiments/effects-module-boundary.mjs`. A real
+compiled two-module program imports the same module twice; normally it prints
+its initialization side effect once and returns the cached export twice. When
+only the generated imported-module initializer is changed into a generator, the
+actual initializer body never executes: the existing `initializeModule` caches
+the iterator as a successful export. Both imports receive that iterator.
+
+Therefore transforming module bodies alone silently breaks the existing cache
+contract. A cooperative implementation must retain the `running` state while
+suspended, commit the export only after successful completion, and record
+failure or interruption on the appropriate exits, including cleanup failure.
+This experiment does not implement those transitions, test module re-entry while
+suspended, or choose a continuation representation.
