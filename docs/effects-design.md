@@ -947,3 +947,12 @@ not support outward requests from a case, abandonment cleanup, unhandled-effect
 diagnostics, async/JS boundaries or general dispatch. Its recursive driver has
 no proven stack or performance properties. This is one concrete integration
 path, not an accepted implementation strategy.
+
+The generated handler probe additionally constructs an alternate case that
+returns without resuming. A synthetic `finally` around the patched `map:` runs
+when the driver explicitly closes the suspended iterator, and the handler value
+is returned afterward. A failing cleanup propagates instead of that value. This
+is one synthetic cleanup; it does not implement Toss `ensure:`, failure
+aggregation, cleanup during handler failure, or interruption of an imported
+module. The initial success path and the alternate abandonment path use separate
+in-memory patches.

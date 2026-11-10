@@ -74,3 +74,63 @@ assert.equal(decoder.decode(result.stderr), "");
 console.log(
   "PASS: generated Toss handler Block handles synthetic requests across map",
 );
+
+// An alternate case returns without resuming. Add synthetic generator cleanup
+// to the patched map and explicitly close its suspended iterator.
+let abandoned = output;
+const caseLine = abandoned.split("\n").find((line) =>
+  line.startsWith('return yield* send(fetchBinding("resume",')
+);
+assert.ok(caseLine);
+abandoned = abandoned.replace(caseLine, "return 42;");
+const mapStart = abandoned.indexOf("function* map(receiver, context, block) {");
+const mapEnd = abandoned.indexOf("\n}", mapStart);
+assert.ok(mapStart >= 0 && mapEnd > mapStart);
+const mapCode = abandoned.slice(mapStart, mapEnd + 2)
+  .replace(
+    "function* map(receiver, context, block) {",
+    "function* map(receiver, context, block) { try {",
+  )
+  .replace(/\n}$/, '\n} finally { console.log("cleanup"); }\n}');
+abandoned = abandoned.slice(0, mapStart) + mapCode +
+  abandoned.slice(mapEnd + 2);
+const caseCompletion =
+  'if (!result.done) throw new Error("unexpected handler yield");\n      return result.value;';
+assert.equal(abandoned.split(caseCompletion).length - 1, 1);
+abandoned = abandoned.replace(
+  caseCompletion,
+  `if (!result.done) throw new Error("unexpected handler yield");
+      if (!used) { const closed = iterator.return(); if (!closed.done) throw new Error("cleanup suspended"); }
+      return result.value;`,
+);
+abandoned = abandoned.split("\n").filter((line) =>
+  !line.startsWith('send(send(fetchBinding("r",')
+).join("\n");
+const end = "})([], new Map([]));";
+assert.equal(abandoned.split(end).length - 1, 1);
+abandoned = abandoned.replace(
+  end,
+  `console.log("result", fetchBinding("r", {location: {file: "probe", line: 1, column: 1}, environment}));\n${end}`,
+);
+const stopped = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", abandoned],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(stopped.success, true, decoder.decode(stopped.stderr));
+assert.equal(decoder.decode(stopped.stdout), "cleanup\nresult 42\n");
+console.log("PASS: generated handler abandonment closes the cooperative map");
+const cleanupFailure = abandoned.replace(
+  'console.log("cleanup");',
+  'throw new Error("cleanup failed");',
+);
+assert.notEqual(cleanupFailure, abandoned);
+const failedCleanup = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", cleanupFailure],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(failedCleanup.success, false);
+assert.equal(decoder.decode(failedCleanup.stdout), "");
+assert.match(decoder.decode(failedCleanup.stderr), /cleanup failed/);
+console.log("PASS: generated handler abandonment propagates a cleanup failure");
