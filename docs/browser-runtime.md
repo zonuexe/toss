@@ -1,12 +1,25 @@
 # Browser runtime compatibility
 
+## 0.0.1 release status
+
+The supported compiler host for this development milestone is Deno 2.9.7 on
+macOS. Generated JavaScript targets browser ESM, but there is no verified
+Chromium/Firefox/Safari support matrix for 0.0.1. Node.js is not a promised
+runtime. Browser-hosted compilation and REPL applications remain examples.
+See the [release contract](release-contract.md).
+
+The observations below describe earlier example checks. They lack a recorded
+browser version and are historical notes, not fresh 0.0.1 release evidence.
+Release verification must record the exact browser and OS version and the
+tested source commit. A WebKit test alone does not establish Safari support.
+
 Start with JavaScript compiled by Deno and executed as a browser ES module.
 Running the compiler or REPL inside the browser is a larger, separate task.
 The [browser example](../examples/browser/README.md) implements this first
 step. The checks below passed in the Codex in-app browser. This verifies a
 small execution subset, not a supported-browser matrix or a browser compiler.
 
-## Verified example
+## Historical example observations
 
 The examples have different purposes:
 
@@ -169,11 +182,11 @@ transitive dependencies.
 
 ## Possible next steps
 
-The ahead-of-time example is complete. The source compiler entry is separate
-from filesystem services. A browser-hosted compiler needs to bundle or resolve
-its parser dependency and supply a virtual source map. A browser
-REPL also needs execution policy and a session boundary for full JS reload.
+The ahead-of-time, browser compiler and browser REPL examples exist. The source
+compiler entry is separate from filesystem services. Hosts must bundle or resolve
+its parser dependency and supply a virtual source map. The browser REPL example
+provides a Worker boundary for full JS reload and requires string evaluation.
 
 Supported browsers, a production script policy, and the choice of DOM page
-versus Worker playground remain open. The example does not change language
-semantics or implement a browser-hosted compiler or REPL.
+versus Worker playground remain product decisions for later work. These examples
+do not establish a supported browser-hosted compiler or REPL product.

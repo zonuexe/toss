@@ -6,6 +6,44 @@
 
 Inspired by the dynamic message-passing of Smalltalk, the metaprogramming power of Lisp, and the prototype chain of JavaScript, Toss targets modern JavaScript with a small runtime. The current compiler uses Deno.
 
+## 0.0.1 development release
+
+0.0.1 is a development milestone, not a stable language contract. The initial
+compiler host is Deno 2.9.7 on macOS. Generated JavaScript targets Deno and
+browser ESM; the browser examples do not establish a supported-browser matrix.
+Before 1.0, breaking changes require changelog entries and migration guidance.
+See the [release contract](docs/release-contract.md),
+[changelog](CHANGELOG.md), and [release checklist](docs/releasing.md).
+
+After `@tosslang/toss@0.0.1` is published, install these pinned commands:
+
+```sh
+deno install --global --allow-read --allow-write --name toss jsr:@tosslang/toss@0.0.1/cli
+deno install --global --allow-read --name toss-repl jsr:@tosslang/toss@0.0.1/repl-cli
+deno install --global --allow-write --name toss-runtime jsr:@tosslang/toss@0.0.1/runtime-cli
+toss --version
+```
+
+Each command supports `--help` and `--version`. Compiler permissions cover source
+and macro-library reads and output writes. The REPL reads local Toss modules
+and macro libraries without writing temporary modules; submitted JavaScript
+inherits its granted permissions. The runtime
+command only writes files. Grant additional host permissions only when your
+program needs them. Add Deno's installation directory to `PATH` as its installer
+instructs, or run without installation:
+
+```sh
+printf "'Hello, Toss!' print.\n" > hello.toss
+deno run --allow-read --allow-write jsr:@tosslang/toss@0.0.1/cli hello.toss -o hello.js
+deno run hello.js
+deno run --allow-read jsr:@tosslang/toss@0.0.1/repl-cli
+```
+
+The API entrypoints are `jsr:@tosslang/toss@0.0.1`,
+`jsr:@tosslang/toss@0.0.1/source`, and `jsr:@tosslang/toss@0.0.1/repl`.
+The following repository examples assume a checkout; they are separate from
+the pinned consumer commands above.
+
 ## Try the REPL
 
 Start a persistent session with Deno:
@@ -910,8 +948,9 @@ the existing JS-to-Toss conversion: a native fulfilled Array stays a JS
 reference. The final expression is the Block's Toss result; explicitly await
 a nested async result or native Promise when its fulfilled value is needed.
 
-No ordinary message implicitly awaits a result. For a mixed conditional,
-await the selected branch and mark only the asynchronous branch:
+No ordinary message implicitly awaits a result. Inside an async Block, with
+`$condition` and `$promise` already bound, await the selected branch and mark
+only the asynchronous branch:
 
 ```text
 %await($condition ifTrue: %async({
@@ -1029,32 +1068,16 @@ mise exec -- deno run out/macros.js
 * **Pure Message Passing:** Computation happens exclusively by tossing messages to objects (dictionaries). Unary, keyword, and block messages handle everything.
 * **Pipeline by Default:** The `|>` operator allows data to flow naturally from left to right, injecting results as the final argument of the next message.
 * **JavaScript Target:** Compiles to JavaScript with runtime support for message dispatch and `$self`. Use `%js(...)` for explicit JavaScript interop; further optimizations are planned.
-* **Algebraic Effects Built-in:** Advanced error handling and state management without the `try/catch` boilerplate, powered entirely by blocks and dictionaries.
+* **Algebraic Effects (planned):** Effect handlers and guaranteed cleanup are design ideas, not implemented features.
 
 ## 🚀 A Glimpse of the Syntax
 
-This design sketch includes planned statement macros.
-The implemented subset and runnable examples are described above.
+This example uses implemented bindings, Array messages, and pipelines.
 
 ```
-// 1. Statement Macros for clean declarations
-#M bind: %import('./math.toss').
-%const baseRate = 10.
-
-// 2. Prototype-based inheritance & 3. Block closures
-#Dog bind: $Animal clone |> %extend(
-    name: 'Pochi',
-    bark: { 
-        $self name print.
-        'Woof!' print 
-    }
-).
-
-// 4. Pipelines & 5. Message Passing
-[1, 2, 3, 4, 5]
-    filter: { x -> $(x % 2 == 0) }
-    map: { x -> $(x * $baseRate) }
+#baseRate bind: 10.
+([1, 2, 3, 4, 5] filter: { x -> $($x % 2 == 0) })
+    map: { x -> $($x * $baseRate) }
     |> #results bind:.
-
-$Dog bark.
+$results print.
 ```

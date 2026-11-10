@@ -2,6 +2,8 @@
 
 この文書は将来設計を含む言語ツアーです。実装済みの範囲は [README](../README.md) を参照してください。名前付きマクロは `%name`、シンボルは `#name`、呼び出しに関わる annotation は `@name` に分けます。[ADR-32](adr/0032-macro-and-annotation-sigils.md) に判断を記録しています。
 
+0.0.1 は開発版です。以下では未実装の例を「将来設計」と明記します。JSR の公開入口・対応ホスト・破壊的変更の方針は [公開契約](release-contract.md) にあります。
+
 `mise exec -- deno task repl` で、束縛やローカルマクロを保持しながら式を試せます。入力は通常どおり `.` で終え、結果を `inspect` で表示します。初版の範囲と操作は [README の REPL 節](../README.md#try-the-repl) と [ADR-44](adr/0044-initial-repl.md) を参照してください。
 
 ## 1. 言語のコア哲学
@@ -15,15 +17,15 @@
 
 ## 2. コア構文（5つの基本ルール）
 
-パーサーが理解すべきASTの基本ノードは以下の5つのみです。文の終端（ステートメント・ターミネーター）は **明示的なピリオド `.`** を使用し、ASI（Auto Semicolon Insertion、暗黙の補完）は行いません。
+以下の5項目で基本的な書き方を紹介します。文の終端（ステートメント・ターミネーター）は **明示的なピリオド `.`** を使用し、ASI（Auto Semicolon Insertion、暗黙の補完）は行いません。
 
 ### ① 単項メッセージ (Unary Message)
 
 引数を取らないメッセージです。
 
 ```
-Window new.
-'hello' upcase trim print.
+$Object clone.
+'hello' print.
 ```
 
 ### ② キーワードメッセージ (Keyword Message)
@@ -31,7 +33,8 @@ Window new.
 コロン `:` を使って引数を渡すメッセージです。複数の引数は交互に並びます。
 
 ```
-myArray at: 1 put: 'Apple'.
+#myArray bind: ['Pear', 'Orange'].
+$myArray at: 1 put: 'Apple'.
 ```
 
 ### ③ ブロック (Block / Closure)
@@ -40,11 +43,11 @@ myArray at: 1 put: 'Apple'.
 
 ```
 // 引数なしのブロック
-{ 'Hello' print }
+{ 'Hello' print } value.
 
 // 引数ありのブロック
-{ x -> $(x * 2) }
-{ name, age -> $('Name: ' + name) print }
+{ x -> $($x * 2) } value: 3.
+{ name, age -> $name print. $age print } value: 'Toss' value: 1.
 ```
 
 ### ④ マクロ (Macro / DSL)
@@ -73,13 +76,16 @@ $(1 + 2 * 3) print.
 
 ```
 // 1024 が put: の引数として注入される
-1024 |> myDict at: 'user_id' put:.
+#myDict bind: $Object clone.
+1024 |> $myDict at: 'user_id' put:.
 
 // 連続したデータ変換
-[1, 2, 3] 
-    flatMap: { x -> x timesMap: { x } }
+[1, 2, 3]
+    map: { x -> $($x * 2) }
     |> #resultArray bind:.
 ```
+
+`flatMap`・`filterMap`・`timesMap:` は未実装で、仕様を確定していません。
 
 ---
 
@@ -178,7 +184,7 @@ Object は `perform:` で引数なし、`perform:withArguments:` で配列に並
 #secretMultiplier bind: 42.
 
 // プライベート関数
-#internalCalc bind: { x -> $(x * $secretMultiplier) }.
+#internalCalc bind: { x -> $($x * $secretMultiplier) }.
 
 // 外部への公開
 %export($Object clone |> %extend(
@@ -214,13 +220,14 @@ Object は `perform:` で引数なし、`perform:withArguments:` で配列に並
 
 ## 6. 制御構造とエフェクトハンドラ
 
-`if` や `for` などの制御構造はすべてブロックへのメッセージです。さらに、エラーハンドリングはFlix等に見られる「エフェクトハンドラ」を辞書とメッセージの組み合わせで実現します。
+条件分岐と繰り返しはメッセージで実装されています。エフェクトハンドラと確実な後処理は将来設計です。
 
 ### 基本的な制御構造
 
 ```
 // 条件分岐
-$(x > 0)
+#x bind: 1.
+$($x > 0)
     ifTrue: { 'Positive' print }
     ifFalse: { 'Negative' print }.
 
@@ -228,7 +235,9 @@ $(x > 0)
 3 times: { 'Hello' print }.
 ```
 
-### `unwind-protect` (確実な後処理)
+### `unwind-protect` (確実な後処理・将来設計)
+
+以下の `$File` と `ensure:` は未実装です。
 
 ```
 #file bind: $File open: 'data.txt'.
@@ -239,7 +248,9 @@ $(x > 0)
 }.
 ```
 
-### エフェクトハンドラ（例外の発生と再開）
+### エフェクトハンドラ（例外の発生と再開・将来設計）
+
+以下の `$Effect` と `handleWith:` は未実装です。
 
 ```
 // エフェクトの発生（返答を待つ）
@@ -325,7 +336,7 @@ Promise は参照値として扱い、自動で待ちません。外側の `awai
 
 Prelude の `asJSCallback` は Block から JS 関数の参照値を作ります。JS 側から呼ぶと、Block の引数個数分だけを左から右に Toss 値へ変換し、余分な引数は変換前に無視します。不足する引数はエラーです。明示的な `undefined` は引数として数え、Nil に変換します。通常の Toss Block 呼び出しは、従来どおり引数個数の完全一致を要求します。
 
-戻り値は既存の Toss→JS 規則を使います。JS 参照値は元の値に戻すため、Hono の Response を返せます。Nil は `null`、普通の Block を直接返すとエラーになります。Object や Array の中身までは変換しません。Promise の参照値は返せますが、Toss の処理を中断して完了を待つ機能はまだありません。
+戻り値は既存の Toss→JS 規則を使います。JS 参照値は元の値に戻すため、Hono の Response を返せます。Nil は `null`、普通の Block を直接返すとエラーになります。Object や Array の中身までは変換しません。Promise の参照値は返せます。Toss 内で完了を待つには、後述の非同期 Block 内で `%await` を使います。
 
 同じ Block の変換は同じコールバックと参照値を返し、異なる Block は別のコールバックになります。JS の `this` は無視し、捕捉した変数・`$self`・親メソッド・マクロのスコープを維持します。呼び出しごとに新しいローカル Environment を作ります。Block 本体のエラーは元の位置を保って JS に伝え、外側の `%js` が捕捉した場合は既存の cause として保持します。境界の変換エラーは、最初に `asJSCallback` を実行した位置を示します。
 

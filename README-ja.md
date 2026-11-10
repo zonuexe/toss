@@ -6,6 +6,21 @@
 
 Smalltalkの動的なメッセージパシング、Lispのメタプログラミング、JavaScriptのプロトタイプチェーンに着想を得ています。小さなランタイムを伴うJavaScriptへコンパイルします。現在のコンパイラの開発・実行環境はDenoです。
 
+## 0.0.1 開発版
+
+0.0.1 は開発上の区切りであり、言語仕様の安定版ではありません。初期のコンパイラ対応環境は macOS の Deno 2.9.7 です。生成 JavaScript は Deno とブラウザの ESM を対象としますが、ブラウザ内コンパイラ・REPL はサンプルであり、3ブラウザでの動作保証はまだありません。1.0 より前の破壊的変更も変更履歴と移行手順を必要とします。[公開契約](docs/release-contract.md)、[変更履歴](CHANGELOG.md)、[リリース手順](docs/releasing.md) を参照してください。
+
+`@tosslang/toss@0.0.1` 公開後は、バージョンを固定してインストールできます。
+
+```sh
+deno install --global --allow-read --allow-write --name toss jsr:@tosslang/toss@0.0.1/cli
+deno install --global --allow-read --name toss-repl jsr:@tosslang/toss@0.0.1/repl-cli
+deno install --global --allow-write --name toss-runtime jsr:@tosslang/toss@0.0.1/runtime-cli
+toss --version
+```
+
+各コマンドは `--help` と `--version` に対応します。コンパイラはソース・共有マクロを読み、生成ファイルを書きます。REPL はローカルモジュールと共有マクロを読み、一時モジュールへの書込は行いません。入力した JavaScript は付与済みの Deno 権限で動きます。runtime コマンドは書込権限のみを使います。インストール時に表示されるディレクトリを `PATH` に追加してください。インストールせず直接実行する手順と API の公開入口は [英語版 README](README.md#001-development-release) にあります。以下の `deno task` とサンプルのパスはリポジトリの checkout を前提とします。
+
 ## REPL
 
 `mise exec -- deno task repl` で対話評価を開始できます。通常のTossと同じく文末の `.` で入力を完成させます。未完の入力は次の行へ続き、束縛・Object・クロージャ・ローカルマクロをセッション内で保持します。結果は `inspect` 形式で表示し、エラー後も次の入力を受け付けます。
@@ -101,31 +116,16 @@ Object の動的呼び出しは `perform:` と、引数を配列で渡す `perfo
 * **純粋なメッセージパシング:** すべての計算はオブジェクト（辞書）にメッセージを投げることでのみ行われます。
 * **パイプライン・ファースト:** パイプライン演算子 `|>` により、データは自然に左から右へと流れ、次のメッセージの最後の引数として暗黙的に注入されます。
 * **JavaScriptへのコンパイル:** メッセージ送信と `$self` をランタイムで支えます。`%js(...)` で明示的に JavaScript と連携できます。さらなる最適化は将来設計です。
-* **代数的エフェクトの組み込み:** `try/catch` の定型文を排除し、ブロックと辞書だけで完結する高度なエラーハンドリング（エフェクトハンドラ）を実現しています。
+* **代数的エフェクト（将来設計）:** エフェクトハンドラや確実な後処理は未実装です。
 
 ## 🚀 A Glimpse of the Syntax
 
-以下は将来の言語設計を含む例です。`%const` のようなステートメントマクロは未実装です。
+以下は実装済みの束縛・Array メッセージ・パイプラインを使った例です。`[20, 40]` を表示します。
 
 ```
-// 1. Statement Macros for clean declarations
-#M bind: %import('./math.toss').
-%const baseRate = 10.
-
-// 2. Prototype-based inheritance & 3. Block closures
-#Dog bind: $Animal clone |> %extend(
-    name: 'Pochi',
-    bark: {
-        $self name print.
-        'Woof!' print
-    }
-).
-
-// 4. Pipelines & 5. Message Passing
-[1, 2, 3, 4, 5]
-    filter: { x -> $(x % 2 == 0) }
-    map: { x -> $(x * $baseRate) }
+#baseRate bind: 10.
+([1, 2, 3, 4, 5] filter: { x -> $($x % 2 == 0) })
+    map: { x -> $($x * $baseRate) }
     |> #results bind:.
-
-$Dog bark.
+$results print.
 ```
