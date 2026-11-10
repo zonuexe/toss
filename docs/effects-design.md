@@ -1046,3 +1046,11 @@ tree-shaking, or a full set of diagnostics. The handler driver is recursive and
 can exhaust the JS stack. The `Effect` binding and syntax are experimental and
 must not be treated as released behavior. These limits are deliberate until the
 runtime protocol and failure representation are integrated and verified.
+
+The AST compiler slice now uses an explicit pending-case stack within each
+handler rather than recursively invoking the driver on resume. Its Toss-source
+scenarios include 10,000 sequential resumptions, a later handler abandoning
+through an earlier resumed case, cleanup of a suspended case and body, and
+nested cleanup failures. This does not establish bounded stack use for deeply
+nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
+error metadata, module, interop or unsupported syntax limitations above.

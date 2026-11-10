@@ -102,6 +102,16 @@ const cases = [
     "#h bind: $Object clone. $h at: #A put: { p, k -> ($p equals: 1) ifTrue: { $Effect raise: #A with: 2 } ifFalse: { $k value: 9 } }. ({ { $Effect raise: #A with: 1 } handleWith: $h } handleWith: $h) print.",
     "9\n",
   ],
+  [
+    "outer abandonment cleans suspended case and body",
+    "#outer bind: $Object clone. $outer at: #B put: { p, k -> 'outer' print. 42 }. #inner bind: $Object clone. $inner at: #A put: { p, k -> { $Effect raise: #B with: $Nil } ensure: { 'case-clean' print } }. ({ { { $Effect raise: #A with: $Nil } ensure: { 'body-clean' print } } handleWith: $inner } handleWith: $outer) print.",
+    "outer\ncase-clean\nbody-clean\n42\n",
+  ],
+  [
+    "later abandonment returns through earlier case",
+    "#h bind: $Object clone. $h at: #A put: { p, k -> ($p equals: 1) ifTrue: { ($k value: 10) add: 1 } ifFalse: { 42 } }. ({ $Effect raise: #A with: 1. $Effect raise: #A with: 2 } handleWith: $h) print.",
+    "43\n",
+  ],
   ["ordinary Block", "({ n -> $n add: 1 } value: 4) print.", "5\n"],
   [
     "resumption through map",
@@ -192,6 +202,13 @@ assert.ok(
   primaryIndex >= 0 && primaryIndex < innerIndex && innerIndex < outerIndex,
   multipleCleanup.stderr,
 );
+const nestedFailure = await execute(
+  "#h bind: $Object clone. $h at: #A put: { p, k -> ($p equals: 1) ifTrue: { { $k value: $Nil } ensure: { $outerCleanup } } ifFalse: { 42 } }. { { $Effect raise: #A with: 1. $Effect raise: #A with: 2 } ensure: { $innerCleanup } } handleWith: $h.",
+);
+assert.equal(nestedFailure.success, false);
+const nestedInner = nestedFailure.stderr.indexOf('Unbound name "innerCleanup"');
+const nestedOuter = nestedFailure.stderr.indexOf('Unbound name "outerCleanup"');
+assert.ok(nestedInner >= 0 && nestedOuter > nestedInner, nestedFailure.stderr);
 const blockedCleanup = await execute(
   "{ 1 } ensure: { $Effect raise: #A with: $Nil }.",
 );
@@ -249,3 +266,9 @@ assert.throws(
 console.log(
   `PASS: ${cases.length} experimental AST compiler scenarios, unhandled effect and async rejection`,
 );
+const manyResumptions = await execute(
+  "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $Nil }. { 10000 times: { $Effect raise: #A with: $Nil } } handleWith: $h. 'done' print.",
+);
+assert.equal(manyResumptions.success, true, manyResumptions.stderr);
+assert.equal(manyResumptions.stdout, "done\n");
+console.log("PASS: experimental AST runtime handles 10000 resumptions");

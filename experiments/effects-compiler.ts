@@ -145,12 +145,74 @@ function* effectHandle(block, handler, context) {
   if (handler === null || typeof handler !== "object" || Array.isArray(handler) || isJavaScriptReference(handler))
     throw new TossRuntimeError("Handler must be an Object.", context.location);
   const iterator = effectInvoke(block, [], context);
+  const resumeSignal = Symbol("resume");
+  const pending = [];
+  let current = iterator;
+  let currentState = null;
+  let input;
+  let throwNext = false;
   let done = false;
-  function* drive(step) {
-    while (!step.done) {
+  let failed = false;
+  let primary;
+  try {
+    while (true) {
+      let step;
+      try {
+        step = throwNext ? current.throw(input) : current.next(input);
+        throwNext = false;
+        input = undefined;
+        if (step.done) {
+          if (currentState !== null) {
+            currentState.active = false;
+            if (!currentState.used && !done) {
+              done = true;
+              const closed = iterator.return();
+              if (!closed.done) throw new TossRuntimeError("Cleanup suspended.", context.location);
+            }
+          } else {
+            done = true;
+          }
+          if (pending.length === 0) return step.value;
+          const previous = pending.pop();
+          current = previous.iterator;
+          currentState = previous.state;
+          currentState.suspended = false;
+          input = step.value;
+          continue;
+        }
+      } catch (error) {
+        if (currentState !== null) currentState.active = false;
+        if (pending.length === 0) throw error;
+        const previous = pending.pop();
+        current = previous.iterator;
+        currentState = previous.state;
+        currentState.suspended = false;
+        input = error;
+        throwNext = true;
+        continue;
+      }
+      if (step.value?.signal === resumeSignal) {
+        currentState.suspended = true;
+        pending.push({iterator: current, state: currentState});
+        current = iterator;
+        currentState = null;
+        input = step.value.value;
+        continue;
+      }
+      if (currentState !== null) {
+        currentState.suspended = true;
+        try { input = yield step.value; }
+        catch (error) { input = error; throwNext = true; }
+        finally { currentState.suspended = false; }
+        continue;
+      }
       const request = step.value;
       const owner = slotOwner(handler, request.effect);
-      if (owner === null) { step = iterator.next(yield request); continue; }
+      if (owner === null) {
+        try { input = yield request; }
+        catch (error) { input = error; throwNext = true; }
+        continue;
+      }
       const selected = Reflect.get(owner, request.effect, handler);
       if (typeof selected !== "function" || !effectBlocks.has(selected))
         throw new TossRuntimeError("Handler case must be a synchronous Block.", request.location);
@@ -158,33 +220,32 @@ function* effectHandle(block, handler, context) {
       const resume = markEffectBlock(function*(value) {
         if (!state.active || state.suspended || state.used) throw new TossRuntimeError("Invalid resume.", request.location);
         state.used = true;
-        return yield* drive(iterator.next(value));
+        return yield {signal: resumeSignal, value};
       });
       effectResumeStates.set(resume, state);
-      const selectedIterator = effectInvoke(selected, [request.payload, resume], {
+      current = effectInvoke(selected, [request.payload, resume], {
         ...context, methodReceiver: {kind: "tossInvocation", context: {receiver: handler, key: request.effect, owner}}
       });
-      const delegate = {
-        [Symbol.iterator]() { return this; },
-        next(value) { state.suspended = false; const step = selectedIterator.next(value); state.suspended = !step.done; return step; },
-        throw(error) { state.suspended = false; const step = selectedIterator.throw(error); state.suspended = !step.done; return step; },
-        return(value) { state.suspended = false; const step = selectedIterator.return(value); state.suspended = !step.done; return step; },
-      };
-      try { return yield* delegate; }
-      finally { state.active = false; }
+      currentState = state;
     }
-    done = true;
-    return step.value;
-  }
-  let failed = false;
-  let primary;
-  try { return yield* drive(iterator.next()); }
-  catch (error) { failed = true; primary = error; throw error; }
+  } catch (error) { failed = true; primary = error; throw error; }
   finally {
-    if (!done) {
-      try { iterator.return(); }
-      catch (error) { if (failed) recordCleanupFailure(primary, error); else throw error; }
+    let cleanupFailed = false;
+    let cleanupPrimary;
+    function close(target) {
+      try {
+        const result = target.return();
+        if (!result.done) throw new TossRuntimeError("Cleanup suspended.", context.location);
+      } catch (error) {
+        if (failed) recordCleanupFailure(primary, error);
+        else if (cleanupFailed) recordCleanupFailure(cleanupPrimary, error);
+        else { cleanupFailed = true; cleanupPrimary = error; }
+      }
     }
+    if (currentState !== null) { currentState.active = false; close(current); }
+    while (pending.length > 0) { const frame = pending.pop(); frame.state.active = false; close(frame.iterator); }
+    if (!done) close(iterator);
+    if (cleanupFailed) throw cleanupPrimary;
   }
 }
 function* effectParent(args, context, scope) {
