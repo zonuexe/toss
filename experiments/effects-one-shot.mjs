@@ -223,6 +223,34 @@ assert.equal(
   9,
 );
 
+// Case selection is live per request, while the selected case keeps running.
+const mutationTrace = [];
+const mutableCases = new Map([[missing, function* (_payload, resume) {
+  mutationTrace.push("old-start");
+  yield { effect: suspendEffect, payload: null };
+  mutationTrace.push("old-continue");
+  return yield* resume(3);
+}]]);
+const mutationResult = run(() =>
+  handle(
+    function* () {
+      return yield* handle(function* () {
+        yield { effect: missing, payload: null };
+        return yield { effect: missing, payload: null };
+      }, mutableCases);
+    },
+    new Map([[suspendEffect, function* (_payload, resume) {
+      mutableCases.set(missing, function* (_nextPayload, nextResume) {
+        mutationTrace.push("new");
+        return yield* nextResume(10);
+      });
+      return yield* resume(null);
+    }]]),
+  )
+);
+assert.equal(mutationResult, 10);
+assert.deepEqual(mutationTrace, ["old-start", "old-continue", "new"]);
+
 // An explicitly transformed analogue of the current map: Prelude snapshots its
 // input and delegates to each transformed callback in sequence.
 function* cooperativeMap(receiver, callback) {

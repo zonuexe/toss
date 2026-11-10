@@ -919,3 +919,12 @@ This is a fixed source-specific patch, not a general effect transformation. It
 does not cover Symbol-keyed handler cases, selected-slot-owner changes during
 suspension, all dynamic sends, cleanup, async/JS boundaries, or handler lookup.
 The handler is a fixed test driver, not Toss `handleWith:`.
+
+## Experiment: case mutation while suspended
+
+The one-shot generator model now checks a handler case that suspends while an
+outer case replaces its registration. When the outer case resumes it, the
+already-selected case finishes; a subsequent request selects the new case. This
+exercises live case lookup and preserves the selected callable in a Map-based
+model. It does not test Toss Object prototype mutation or actual generated
+handler dispatch.
