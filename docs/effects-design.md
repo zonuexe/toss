@@ -863,3 +863,11 @@ negative result motivates an explicit abandonment transition such as the
 isolated state-model experiment, but that model has not been integrated here.
 The probe does not implement Toss effect syntax, handlers, cleanup error
 aggregation, async/JS boundaries or a general compiler transformation.
+
+The generated-module probe additionally patches `initializeModule` with a
+`finally` transition from running to a cached interruption on abandonment. For
+an initializer with no failing cleanup, the subsequent import then reports an
+interruption, while the same patch preserves normal completion and caching. This
+is not a complete solution: an initializer cleanup failure enters the existing
+`catch` before `finally` and still needs explicit abandonment context and error
+aggregation. No production generator transform is introduced.

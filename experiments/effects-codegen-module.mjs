@@ -94,3 +94,47 @@ assert.equal(decoder.decode(aborted.stdout), "handled\nincorrectly running\n");
 console.log(
   "PASS: generated module resumes and caches, while naive abandonment leaves it running",
 );
+
+// This additional in-memory patch demonstrates only the no-cleanup-error
+// interruption transition. It is not a general module implementation.
+const catchClause =
+  "catch (error) { moduleStates.set(id, {state: 'failed', error}); throw error; }";
+assert.equal(abandoned.split(catchClause).length - 1, 1);
+const corrected = abandoned.replace(
+  catchClause,
+  `${catchClause}
+finally {
+  if (moduleStates.get(id)?.state === 'running') {
+    moduleStates.set(id, {state: 'failed', error: new TossRuntimeError('Module initialization interrupted.', location)});
+  }
+}`,
+)
+  .replace(
+    'error.message.includes("re-entered") ? "incorrectly running" : "unexpected"',
+    'error.message.includes("interrupted") ? "interrupted" : "unexpected"',
+  );
+const interrupted = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", corrected],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(interrupted.success, true, decoder.decode(interrupted.stderr));
+assert.equal(decoder.decode(interrupted.stdout), "handled\ninterrupted\n");
+console.log(
+  "PASS: explicit abandonment transition caches interruption in generated module path",
+);
+const correctedNormal = corrected.replace(
+  "    step = iterator.return();",
+  "    step = iterator.next();",
+);
+assert.notEqual(correctedNormal, corrected);
+const completed = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", correctedNormal],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(completed.success, true, decoder.decode(completed.stderr));
+assert.equal(decoder.decode(completed.stdout), "handled\ninitialized\n7\n7\n");
+console.log(
+  "PASS: explicit interruption transition preserves normal module completion",
+);
