@@ -1,0 +1,18 @@
+// Experimental compiler demo: all external results are simulated.
+#handler bind: $Object clone.
+$handler at: #CurrentTime put: { request, resume ->
+  $resume value: '2030-01-01T00:00:00Z'.
+}.
+$handler at: #ReadFile put: { path, resume ->
+  'reading' print.
+  $path print.
+  $resume value: 'example configuration'.
+}.
+{
+  {
+    #now bind: ($Effect raise: #CurrentTime with: $Nil).
+    #config bind: ($Effect raise: #ReadFile with: 'config.txt').
+    $now print.
+    $config print.
+  } ensure: { 'cleanup' print }.
+} handleWith: $handler.

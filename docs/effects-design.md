@@ -1054,7 +1054,7 @@ nested cleanup failures. This does not establish bounded stack use for deeply
 nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
 error metadata, module, interop or unsupported syntax limitations above.
 
-`experiments/effects-compiler-conformance.mjs` compares 17 supported programs
+`experiments/effects-compiler-conformance.mjs` compares 20 supported programs
 without effect requests against the production compiler, including lexical
 bindings, evaluation order, collection snapshots, inherited methods, `%super`,
 extension, and selected runtime failures with their source locations. It checks
@@ -1099,3 +1099,8 @@ effect and request location without printing payloads. Toss-source tests cover
 nested handler contexts and ordering. The context table currently shares the
 same Error-keying and repeat-reporting limitations as cleanup metadata; it is
 not a final diagnostic representation.
+
+`deno task effects:demo` runs `experiments/effects-demo.toss` with the isolated
+experimental compiler. It demonstrates two handled requests and cleanup using
+simulated time and file contents; it does not access a real clock or file
+through an effect library. The same demo is checked by `effects:probe`.
