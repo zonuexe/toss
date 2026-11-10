@@ -826,3 +826,23 @@ suspended, commit the export only after successful completion, and record
 failure or interruption on the appropriate exits, including cleanup failure.
 This experiment does not implement those transitions, test module re-entry while
 suspended, or choose a continuation representation.
+
+## Experiment: module state while suspended
+
+Run `node experiments/effects-module-state.mjs`. This isolated cooperative state
+model verifies that an initializer remains running during suspension, rejects
+re-entry, caches the completed export, records abandonment as an interruption,
+and rethrows the same original error after an ordinary failure.
+
+An additional test first exposed a distinction lost by a naive generator
+`catch`: if cleanup fails during generator `return()`, the cache incorrectly
+records that cleanup failure as an ordinary initialization failure. The model
+now explicitly marks a delegated `return()` as abandonment: it propagates the
+cleanup failure to the current caller but caches a separate interruption with
+that failure attached. The delegated-caller case is also tested.
+
+This mechanism is only a small state model. It does not integrate with generated
+Toss modules or handlers, represent multiple cleanup failures, implement the
+full error-envelope design, handle arbitrary iterator protocols or verify
+async/JS boundaries. It assumes cleanup itself cannot suspend and does not
+establish a production API.
