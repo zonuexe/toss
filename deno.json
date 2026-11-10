@@ -26,6 +26,7 @@
     "runtime": "deno run --allow-write src/runtime_cli.ts",
     "repl": "deno run --allow-read --allow-write src/repl_cli.ts",
     "test": "deno test --allow-read --allow-write --allow-run=deno tests/",
+    "effects:probe": "deno run --allow-run=deno experiments/run-effects.mjs",
     "check": "deno fmt --check && deno lint && deno check src/cli.ts src/runtime_cli.ts src/repl_cli.ts tests/*.ts"
   },
   "imports": {

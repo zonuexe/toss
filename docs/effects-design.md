@@ -5,6 +5,11 @@ is implemented or committed as a public language contract. ADR-0 states the
 direction; ADR-1 permits runtime support. The examples in the language tour are
 illustrative, not an accepted specification.
 
+Run `deno task effects:probe` to execute the exploratory probes together. Some
+probes intentionally confirm incorrect behavior in narrowly patched generated
+artifacts; their PASS means the limitation was reproduced, not that the Toss
+feature is implemented. The probes are separate from the production test suite.
+
 ## Goal and sequence
 
 Toss should be able to request an operation, handle it around a computation, and
