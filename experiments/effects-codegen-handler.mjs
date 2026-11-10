@@ -442,3 +442,76 @@ assert.doesNotMatch(
   /Error: cleanup failed/,
 );
 console.log("PASS: probe exposes primary error replacement by handler cleanup");
+
+// Combine the synthetic unwind path with a per-occurrence envelope. The test
+// driver prints associated failures only to demonstrate retained information.
+// This does not define Toss error objects or host-boundary behavior.
+const aggregationDriver = unwindDriver
+  .replace(
+    "  let throwNext = false;",
+    `  class ProbeFailure {
+    constructor(primary) { this.primary = primary; this.cleanup = []; }
+  }
+  let injected;
+  let throwNext = false;`,
+  )
+  .replace(
+    "    const step = throwNext ? current.throw(input) : current.next(input);",
+    `    injected = throwNext ? input : undefined;
+    const step = throwNext ? current.throw(input) : current.next(input);`,
+  )
+  .replace(
+    "    } catch (error) {\n      if (pending.length === 0) throw error;",
+    `    } catch (error) {
+      let failure;
+      if (injected instanceof ProbeFailure) {
+        failure = injected;
+        if (error !== injected) failure.cleanup.push(error);
+      } else {
+        failure = error instanceof ProbeFailure ? error : new ProbeFailure(error);
+      }
+      injected = undefined;
+      if (pending.length === 0) {
+        for (const secondary of failure.cleanup) console.error("associated", secondary.message);
+        throw failure.primary;
+      }`,
+  )
+  .replace(
+    "      input = error;\n      throwNext = true;",
+    "      input = failure;\n      throwNext = true;",
+  );
+assert.notEqual(aggregationDriver, unwindDriver);
+function useAggregationDriver(code) {
+  const start = code.indexOf("function runHandled(iterator, context) {");
+  const end = code.indexOf(
+    "function send(receiver, message, context) {",
+    start,
+  );
+  assert.ok(start >= 0 && end > start);
+  return code.slice(0, start) + aggregationDriver + code.slice(end);
+}
+const aggregated = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAggregationDriver(replacingCleanup)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(aggregated.success, false);
+assert.match(
+  decoder.decode(aggregated.stderr),
+  /associated handler cleanup failed/,
+);
+assert.match(decoder.decode(aggregated.stderr), /Error: cleanup failed/);
+const aggregateLarge = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", useAggregationDriver(manyRequests)],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  aggregateLarge.success,
+  true,
+  decoder.decode(aggregateLarge.stderr),
+);
+assert.equal(decoder.decode(aggregateLarge.stdout), "10\n11\n");
+console.log(
+  "PASS: per-failure experiment retains primary and handler cleanup failures",
+);

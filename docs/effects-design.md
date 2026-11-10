@@ -990,3 +990,17 @@ It also does not cover handler-originated effects, arbitrary errors while a
 handler is running, invalid/expired resume calls, real Toss `ensure:`, module
 state, or JS/async boundaries. These tests use synthetic JavaScript `finally`
 and source-specific in-memory rewrites.
+
+The generated-handler probe combines the explicit pending-case unwind with a
+per-failure envelope for the synthetic two-cleanup failure. It retains the
+original cleanup failure and the outer handler cleanup failure, and the 10,000
+request success case still completes. The probe prints the associated error
+separately to prove retention; its output order is not the agreed diagnostic
+format.
+
+This narrow technique treats a new error produced while injecting an earlier
+failure as an associated cleanup error. That assumption is only justified by the
+synthetic test and is not generally established for arbitrary handler code or
+host callbacks. The temporary envelope also changes the thrown value within the
+experiment. It does not establish JS cause identity, per-module caching, actual
+Toss `ensure:`, exact source locations or a supported error interface.
