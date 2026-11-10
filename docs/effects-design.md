@@ -928,3 +928,22 @@ already-selected case finishes; a subsequent request selects the new case. This
 exercises live case lookup and preserves the selected callable in a Map-based
 model. It does not test Toss Object prototype mutation or actual generated
 handler dispatch.
+
+## Experiment: generated Toss Block as a handler case
+
+Run `deno run --allow-run experiments/effects-codegen-handler.mjs`. A real Toss
+source creates a handler Object inheriting a Symbol-keyed case Block. In a
+fixed-shape in-memory rewrite, `map:` and its callback cooperate with a
+synthetic request, and a small experimental driver selects the case through
+Toss's actual `slotOwner` and `invokeSlot`. The case receives payload and
+resume, reads `$self` from the actual child handler Object, and resumes. The
+resulting mapped values are 11 and 12.
+
+The source does not use implemented `raise:with:` or `handleWith:`: the test
+inserts a JavaScript yield and automatically installs one hard-coded handler
+around the `map:` dispatch. Both relevant Toss Blocks and the `resume` call are
+specifically rewritten. The driver handles synchronous resumption only; it does
+not support outward requests from a case, abandonment cleanup, unhandled-effect
+diagnostics, async/JS boundaries or general dispatch. Its recursive driver has
+no proven stack or performance properties. This is one concrete integration
+path, not an accepted implementation strategy.
