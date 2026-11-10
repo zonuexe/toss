@@ -1034,18 +1034,17 @@ invalid resume lifetimes, source position, evaluation order and unhandled
 effects.
 
 This is a vertical slice, not the complete agreed design. It deliberately
-rejects imports, JS expressions/imports, async Blocks, await, and other
-unsupported AST forms. It permits only a small set of Prelude messages;
-unsupported messages fail rather than silently invoking a callback without
-propagating suspension. Cleanup failures are recorded experimentally using a
-WeakMap keyed by Error, which cannot correctly distinguish independent failures
-that reuse the same Error and does not handle arbitrary thrown values. Its
-diagnostic formatting is provisional. It does not implement module
-initialization, JS/async boundaries, REPL integration, separate runtimes,
-tree-shaking, or a full set of diagnostics. The `Effect` binding and syntax are
-experimental and must not be treated as released behavior. These limits are
-deliberate until the runtime protocol and failure representation are integrated
-and verified.
+rejects JS expressions/imports, async Blocks, await, and other unsupported AST
+forms. It permits only a small set of Prelude messages; unsupported messages
+fail rather than silently invoking a callback without propagating suspension.
+Cleanup failures are recorded experimentally using a WeakMap keyed by Error,
+which cannot correctly distinguish independent failures that reuse the same
+Error and does not handle arbitrary thrown values. Its diagnostic formatting is
+provisional. It does not implement JS/async boundaries, REPL integration,
+separate runtimes, tree-shaking, or a full set of diagnostics. The `Effect`
+binding and syntax are experimental and must not be treated as released
+behavior. These limits are deliberate until the runtime protocol and failure
+representation are integrated and verified.
 
 The AST compiler slice now uses an explicit pending-case stack within each
 handler rather than recursively invoking the driver on resume. Its Toss-source
@@ -1068,3 +1067,22 @@ and reports cleanup failures after the primary error without displaying the
 payload. A regression test also covers nested cleanup failures; provisional
 formatting walks nested cleanup records in execution order. The existing WeakMap
 and Error-only representation limitations still apply.
+
+## Experimental module compilation and runtime
+
+`compileExperimentalEffectsSources` accepts a virtual source map, uses existing
+Toss import analysis and graph validation, and emits generator-based module
+initializers. Its experimental module runtime maintains running, completed,
+failed and interrupted states across effect suspension. The module test runs
+real Toss sources through resumption and cached imports, abandonment,
+initialization re-entry, cleanup failure, missing dependencies and static
+cycles. It instruments generated test artifacts to confirm cached identity for
+handler failure and unhandled effects, and interruption metadata after a cleanup
+failure; there is not yet a language-level catch to observe those cases.
+
+The slice explicitly rejects macro-library imports, JS/async forms and
+unsupported messages. It does not implement filesystem module resolution, REPL
+module loading, JS module output, an external runtime, source-map support, or
+production compilation. Error metadata is still Error-keyed and experimental.
+Static dependency collection and validation reuse existing modules, but the
+prototype does not claim parity across every loader edge case.

@@ -126,19 +126,20 @@ function* effectHandle(block, handler, context) {
   finally {
     let cleanupFailed = false;
     let cleanupPrimary;
-    function close(target) {
+    function close(target, propagateFailure = false) {
       try {
-        const result = target.return();
+        const result = failed && propagateFailure ? target.throw(primary) : target.return();
         if (!result.done) throw new TossRuntimeError("Cleanup suspended.", context.location);
       } catch (error) {
-        if (failed) recordCleanupFailure(primary, error);
+        if (failed && error !== primary) recordCleanupFailure(primary, error);
+        else if (failed) return;
         else if (cleanupFailed) recordCleanupFailure(cleanupPrimary, error);
         else { cleanupFailed = true; cleanupPrimary = error; }
       }
     }
     if (currentState !== null) { currentState.active = false; close(current); }
     while (pending.length > 0) { const frame = pending.pop(); frame.state.active = false; close(frame.iterator); }
-    if (!done) close(iterator);
+    if (!done) close(iterator, true);
     if (cleanupFailed) throw cleanupPrimary;
   }
 }
@@ -228,8 +229,8 @@ function runEffectProgram(iterator) {
     const error = new TossRuntimeError("Unhandled effect " + keyDescription(step.value.effect) + ".", step.value.location);
     error.effect = step.value.effect;
     error.payload = step.value.payload;
-    try { iterator.return(); }
-    catch (cleanupError) { recordCleanupFailure(error, cleanupError); }
+    try { iterator.throw(error); }
+    catch (cleanupError) { if (cleanupError !== error) recordCleanupFailure(error, cleanupError); }
     throw error;
   }
   return step.value;
