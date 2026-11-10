@@ -897,3 +897,9 @@ uses global mutable state and provides no guarantee for overlapping execution,
 multiple runtime instances, or arbitrary host re-entry. Effects intentionally
 fail as unhandled in this model; the agreed distinct boundary diagnostics and
 resume restrictions remain unimplemented.
+
+The abandonment-aware generated-module adapter was also exercised with a failure
+after resumption: the first caller receives the original Error and a later
+import rethrows the same Error object. This checks the existing ordinary
+module-failure identity contract for that synthetic path only; it does not
+resolve failure-specific cleanup metadata or JavaScript boundary conversion.

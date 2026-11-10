@@ -225,3 +225,36 @@ assert.equal(
   "handled\ninitialized\n7\n7\n",
 );
 console.log("PASS: abandonment-aware adapter also preserves normal completion");
+
+const adapterFailure = cleanupAbandonment
+  .replace("    step = iterator.return();", "    step = iterator.next();")
+  .replace(
+    'try { yield {effect: "probe"}; } finally { throw new Error("cleanup failed"); }',
+    'yield {effect: "probe"}; throw globalThis.probeFailure;',
+  )
+  .replace(
+    "try { runProbe(initializeModule(0,",
+    'globalThis.probeFailure = new Error("original");\ntry { runProbe(initializeModule(0,',
+  )
+  .replace(
+    'error.message.includes("interrupted") && error.cleanup?.[0]?.message === "cleanup failed" ? "interrupted with cleanup" : "unexpected"',
+    'error === globalThis.probeFailure ? "same failure" : "unexpected"',
+  );
+assert.notEqual(adapterFailure, cleanupAbandonment);
+const ordinaryFailure = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", adapterFailure],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  ordinaryFailure.success,
+  true,
+  decoder.decode(ordinaryFailure.stderr),
+);
+assert.equal(
+  decoder.decode(ordinaryFailure.stdout),
+  "handled\nprimary original\nsame failure\n",
+);
+console.log(
+  "PASS: abandonment-aware adapter preserves ordinary module failure identity",
+);
