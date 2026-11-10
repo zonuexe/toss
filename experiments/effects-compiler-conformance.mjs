@@ -54,6 +54,18 @@ const cases = [
     "dynamic extension order",
     "#o bind: $Object clone. #key bind: { 'key' print. 'first' }. #value bind: { 'value' print. $o first }. $o |> %extend(($key value): ('written' print), ({ 'second' print. 'second' } value): $value value). ($o at: 'first') print.",
   ],
+  [
+    "parent value slot",
+    "#p bind: $Object clone. $p at: 'answer' put: 7. #c bind: $p clone. $c at: 'answer' put: { %super() }. ($c answer) print.",
+  ],
+  [
+    "parent non-callable with argument",
+    "#p bind: $Object clone. $p at: 'answer:' put: 7. #c bind: $p clone. $c at: 'answer:' put: { x -> %super($x) }. $c answer: 1.",
+  ],
+  [
+    "parent prelude clone",
+    "#o bind: $Object clone. $o at: 'clone' put: { %super() }. #c bind: ($o clone). $c at: 'value' put: 7. $c value print.",
+  ],
   ["invalid Block arity", "{ x -> $x } value."],
   ["invalid filter result", "[1] filter: { x -> 1 }."],
   ["invalid conditional branch", "$True ifTrue: { 'never' print } ifFalse: 1."],

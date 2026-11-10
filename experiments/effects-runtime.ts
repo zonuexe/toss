@@ -159,9 +159,15 @@ function* effectParent(args, context, scope) {
   const method = scope.superContext;
   if (method === undefined) throw new TossRuntimeError("%super requires a method invocation context.", context.location);
   const owner = slotOwner(Object.getPrototypeOf(method.owner), method.key);
-  if (owner === null) throw new TossRuntimeError("Missing parent method in experimental compiler.", context.location);
+  if (owner === null) {
+    const safe = new Set(["clone", "at:", "at:put:"]);
+    if (typeof method.key === "string" && objectMessages.has(method.key) && !safe.has(method.key))
+      throw new TossRuntimeError("Unsupported parent Prelude message in experimental effects compiler.", context.location);
+    return parentSend(args, context, scope);
+  }
   const block = Reflect.get(owner, method.key, method.receiver);
-  if (typeof block !== "function") throw new TossRuntimeError("Parent slot must be a Block.", context.location);
+  if (typeof block !== "function" || effectNativeSymbols.has(block)) return invokeSlot(method.receiver, method.key, owner, args, context);
+  if (!effectBlocks.has(block)) throw new TossRuntimeError("Unsupported native parent method in experimental effects compiler.", context.location);
   return yield* effectInvoke(block, args, {...context, methodReceiver: {kind: "tossInvocation", context: {receiver: method.receiver, key: method.key, owner}}});
 }
 function* effectPipeline(input, receiver, message, context) {
