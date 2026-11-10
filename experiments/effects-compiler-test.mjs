@@ -229,6 +229,22 @@ const distinctUnique = await execute(
 assert.equal(distinctUnique.success, false);
 assert.match(distinctUnique.stderr, /Unhandled effect #<unique>/);
 assert.ok(!distinctUnique.stderr.includes("secret"));
+const invalidHandler = await execute("{ 'never' print } handleWith: 42.");
+assert.equal(invalidHandler.success, false);
+assert.equal(invalidHandler.stdout, "");
+assert.match(invalidHandler.stderr, /Handler must be an Object/);
+const invalidCase = await execute(
+  "#outer bind: $Object clone. $outer at: #A put: { p, k -> 'outer' print. 42 }. #inner bind: $Object clone. $inner at: #A put: $Nil. { { $Effect raise: #A with: $Nil } handleWith: $inner } handleWith: $outer.",
+);
+assert.equal(invalidCase.success, false);
+assert.equal(invalidCase.stdout, "");
+assert.match(invalidCase.stderr, /Handler case must be a synchronous Block/);
+const invalidEffectIdentity = await execute(
+  "$Effect raise: 42 with: ('payload' print).",
+);
+assert.equal(invalidEffectIdentity.success, false);
+assert.equal(invalidEffectIdentity.stdout, "payload\n");
+assert.match(invalidEffectIdentity.stderr, /Effect identity must be a Symbol/);
 const unhandled = await execute("$Effect raise: #Missing with: $Nil.");
 assert.equal(unhandled.success, false);
 assert.match(
