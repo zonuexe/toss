@@ -259,6 +259,40 @@ const argumentsBeforeResumeValidation = await execute(
 assert.equal(argumentsBeforeResumeValidation.success, false);
 assert.equal(argumentsBeforeResumeValidation.stdout, "argument\n");
 assert.match(argumentsBeforeResumeValidation.stderr, /Invalid resume/);
+const unhandledCleanup = await execute(
+  "{ $Effect raise: #Private with: 'do-not-display' } ensure: { $cleanup }.",
+);
+assert.equal(unhandledCleanup.success, false);
+const unhandledIndex = unhandledCleanup.stderr.indexOf(
+  "Unhandled effect #Private",
+);
+const cleanupIndex = unhandledCleanup.stderr.indexOf('Unbound name "cleanup"');
+assert.ok(
+  unhandledIndex >= 0 && cleanupIndex > unhandledIndex,
+  unhandledCleanup.stderr,
+);
+assert.ok(
+  !unhandledCleanup.stderr.includes("do-not-display"),
+  unhandledCleanup.stderr,
+);
+const unhandledNestedCleanup = await execute(
+  "{ { $Effect raise: #Private with: 'secret' } ensure: { $inner } } ensure: { $outer }.",
+);
+assert.equal(unhandledNestedCleanup.success, false);
+const unhandledPrimary = unhandledNestedCleanup.stderr.indexOf(
+  "Unhandled effect #Private",
+);
+const unhandledInner = unhandledNestedCleanup.stderr.indexOf(
+  'Unbound name "inner"',
+);
+const unhandledOuter = unhandledNestedCleanup.stderr.indexOf(
+  'Unbound name "outer"',
+);
+assert.ok(
+  unhandledPrimary >= 0 && unhandledPrimary < unhandledInner &&
+    unhandledInner < unhandledOuter,
+  unhandledNestedCleanup.stderr,
+);
 assert.throws(
   () => compileExperimentalEffects("%async({ 1 }).", "experimental.toss"),
   /does not support async/,

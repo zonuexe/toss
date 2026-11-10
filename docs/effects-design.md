@@ -1061,3 +1061,10 @@ bindings, evaluation order, collection snapshots, inherited methods, `%super`,
 extension, and selected runtime failures with their source locations. It checks
 observable output and diagnostics for those cases only, not general equivalence.
 It is included in `deno task effects:probe`.
+
+The AST/runtime slice now constructs an unhandled-effect error before closing
+the suspended computation, retains effect identity and payload on that error,
+and reports cleanup failures after the primary error without displaying the
+payload. A regression test also covers nested cleanup failures; provisional
+formatting walks nested cleanup records in execution order. The existing WeakMap
+and Error-only representation limitations still apply.

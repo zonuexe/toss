@@ -225,8 +225,12 @@ function* effectSend(receiver, message, context) {
 function runEffectProgram(iterator) {
   const step = iterator.next();
   if (!step.done) {
-    iterator.return();
-    throw new TossRuntimeError("Unhandled effect.", step.value.location);
+    const error = new TossRuntimeError("Unhandled effect " + keyDescription(step.value.effect) + ".", step.value.location);
+    error.effect = step.value.effect;
+    error.payload = step.value.payload;
+    try { iterator.return(); }
+    catch (cleanupError) { recordCleanupFailure(error, cleanupError); }
+    throw error;
   }
   return step.value;
 }
@@ -234,6 +238,15 @@ function reportEffectFailures(error) {
   if (!(error instanceof Error)) return;
   const failures = effectCleanupFailures.get(error);
   if (failures === undefined) return;
-  error.stack += failures.map((failure) => "\\n  cleanup failure: " + (failure instanceof Error ? failure.message : String(failure))).join("");
+  const lines = [];
+  const seen = new Set([error]);
+  function collect(failure) {
+    lines.push("\\n  cleanup failure: " + (failure instanceof Error ? failure.message : String(failure)));
+    if (!(failure instanceof Error) || seen.has(failure)) return;
+    seen.add(failure);
+    for (const nested of effectCleanupFailures.get(failure) ?? []) collect(nested);
+  }
+  for (const failure of failures) collect(failure);
+  error.stack += lines.join("");
 }
 `;
