@@ -515,3 +515,66 @@ assert.equal(decoder.decode(aggregateLarge.stdout), "10\n11\n");
 console.log(
   "PASS: per-failure experiment retains primary and handler cleanup failures",
 );
+
+// A child handler case delegates to the Symbol-keyed parent case with %super.
+const childSource = source.replace(
+  "#r bind:",
+  "$h at: #Missing put: { payload, resume -> %super($payload, $resume) }. #r bind:",
+);
+assert.notEqual(childSource, source);
+let childOutput = compile(childSource, "handler-super-probe.toss");
+function childReplace(before, after, expected = 1) {
+  assert.equal(
+    childOutput.split(before).length - 1,
+    expected,
+    `expected ${expected} occurrences: ${before}`,
+  );
+  childOutput = expected === 1
+    ? childOutput.replace(before, after)
+    : childOutput.replaceAll(before, after);
+}
+childReplace("function(arg0, arg1) {", "function*(arg0, arg1) {", 2);
+childReplace(
+  'return send(fetchBinding("resume",',
+  'return yield* send(fetchBinding("resume",',
+);
+childReplace("return parentSend(", "return yield* parentSend(");
+childReplace(
+  "function(arg0) {",
+  `function*(arg0) {
+arg0 = yield {effect: Symbol.for("Missing"), payload: arg0};`,
+);
+childReplace(
+  "function map(receiver, context, block) {",
+  "function* map(receiver, context, block) {",
+);
+childReplace(
+  "result.push(invokeBlock(selected, [value], context));",
+  "result.push(yield* invokeBlock(selected, [value], context));",
+);
+const helperStart = output.indexOf("function runHandled(iterator, context) {");
+const helperEnd = output.indexOf(
+  "function send(receiver, message, context) {",
+  helperStart,
+);
+assert.ok(helperStart >= 0 && helperEnd > helperStart);
+childReplace(
+  "function send(receiver, message, context) {",
+  output.slice(helperStart, helperEnd) +
+    "function send(receiver, message, context) {",
+);
+childReplace(
+  "return implementation(receiver, context, ...message.arguments);",
+  `const result = implementation(receiver, context, ...message.arguments);
+return type === "Array" && key === "map:" ? runHandled(result, context) : result;`,
+);
+const handlerParent = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", childOutput],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(handlerParent.success, true, decoder.decode(handlerParent.stderr));
+assert.equal(decoder.decode(handlerParent.stdout), "11\n12\n");
+console.log(
+  "PASS: generated Symbol-keyed handler case delegates with %super and child self",
+);

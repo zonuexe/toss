@@ -1009,3 +1009,10 @@ synthetic test and is not generally established for arbitrary handler code or
 host callbacks. The temporary envelope also changes the thrown value within the
 experiment. It does not establish JS cause identity, per-module caching, actual
 Toss `ensure:`, exact source locations or a supported error interface.
+
+The generated-handler probe also compiles a second Toss source where a child
+handler overrides the Symbol-keyed case and calls `%super($payload, $resume)`.
+With both cases and the parent call patched to cooperate, the inherited case
+still sees the child as `$self`, resumes each request and produces 11 and 12.
+This uses existing runtime `invokeSlot` and `parentSend` behavior; it remains a
+source-specific patch with a fixed handler driver, not the public feature.
