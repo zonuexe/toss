@@ -232,3 +232,143 @@ const moduleJavaScript = await execute(
 assert.equal(moduleJavaScript.success, true, moduleJavaScript.stderr);
 assert.equal(moduleJavaScript.stdout, "5\n");
 console.log("PASS: module Block uses its generated JavaScript evaluator");
+const repeatedFailure = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { try { a(); } catch (e) { console.log('FIRST', e.stack); } try { b(); } catch (e) { console.log('SECOND', e.stack); } })()).",
+    ],
+    ["lib.toss", "%export($missing)."],
+  ]),
+);
+const repeatedResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", repeatedFailure],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const repeatedText = new TextDecoder().decode(repeatedResult.stdout);
+assert.equal(
+  repeatedResult.success,
+  true,
+  new TextDecoder().decode(repeatedResult.stderr),
+);
+const [firstFailure, secondFailure] = repeatedText.split("SECOND ");
+assert.ok(firstFailure.includes('Unbound name "cleanupA"'), repeatedText);
+assert.ok(secondFailure.includes('Unbound name "cleanupB"'), repeatedText);
+assert.ok(!secondFailure.includes('Unbound name "cleanupA"'), repeatedText);
+console.log(
+  "PASS: reused module error keeps cleanup information per invocation",
+);
+const cachedFailureWithCleanup = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; console.log('FIRST', e.stack); } try { b(); } catch (e) { console.log('SAME', e === first); console.log('SECOND', e.stack); } })()).",
+    ],
+    ["lib.toss", "%export({ $missing } ensure: { $moduleCleanup })."],
+  ]),
+);
+const cachedCleanupResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", cachedFailureWithCleanup],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const cachedCleanupText = new TextDecoder().decode(cachedCleanupResult.stdout);
+assert.equal(
+  cachedCleanupResult.success,
+  true,
+  new TextDecoder().decode(cachedCleanupResult.stderr),
+);
+assert.match(cachedCleanupText, /SAME true/);
+const [beforeSecond, afterSecond] = cachedCleanupText.split("SECOND ");
+assert.ok(
+  beforeSecond.includes('Unbound name "moduleCleanup"') &&
+    beforeSecond.includes('Unbound name "cleanupA"'),
+  cachedCleanupText,
+);
+assert.ok(
+  afterSecond.includes('Unbound name "moduleCleanup"') &&
+    afterSecond.includes('Unbound name "cleanupB"'),
+  cachedCleanupText,
+);
+assert.ok(!afterSecond.includes('Unbound name "cleanupA"'), cachedCleanupText);
+console.log(
+  "PASS: cached module cleanup remains while per-call cleanup is isolated and error identity is preserved",
+);
+const cachedHandlerContext = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $Nil }. #a bind: { { %import('./lib.toss') } handleWith: $h } asJSCallback. #b bind: { %import('./lib.toss') } asJSCallback. %js(a = $a, b = $b; (() => { try { a(); } catch (e) { console.log('FIRST', e.stack); } try { b(); } catch (e) { console.log('SECOND', e.stack); } })()).",
+    ],
+    ["lib.toss", "%export({ $Effect raise: #A with: $Nil. $missing } value)."],
+  ]),
+);
+const cachedContextResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", cachedHandlerContext],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const cachedContextText = new TextDecoder().decode(cachedContextResult.stdout);
+assert.equal(
+  cachedContextResult.success,
+  true,
+  new TextDecoder().decode(cachedContextResult.stderr),
+);
+const [withContext, withoutContext] = cachedContextText.split("SECOND ");
+assert.match(withContext, /while handling #A/);
+assert.doesNotMatch(withoutContext, /while handling #A/);
+console.log(
+  "PASS: cached module failure does not retain a later caller's handler context",
+);
+const frozenFailure = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { console.log('SAME', e === first, e.name); } })()).",
+    ],
+    ["lib.toss", "%export($missing)."],
+  ]),
+);
+const frozenResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", frozenFailure],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const frozenText = new TextDecoder().decode(frozenResult.stdout);
+assert.equal(
+  frozenResult.success,
+  true,
+  new TextDecoder().decode(frozenResult.stderr),
+);
+assert.equal(frozenText, "SAME true TossRuntimeError\n");
+console.log(
+  "PASS: frozen cached error keeps identity across repeated callbacks",
+);
+const hostileStackFailure = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: { %import('./lib.toss') } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanup } } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; Object.defineProperty(e, 'stack', {get() { throw 99; }, configurable: false}); } try { b(); } catch (e) { console.log('SAME', e === first, e.name); } })()).",
+    ],
+    ["lib.toss", "%export($missing)."],
+  ]),
+);
+const hostileStackResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", hostileStackFailure],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const hostileStackText = new TextDecoder().decode(hostileStackResult.stdout);
+assert.equal(
+  hostileStackResult.success,
+  true,
+  new TextDecoder().decode(hostileStackResult.stderr),
+);
+assert.equal(hostileStackText, "SAME true TossRuntimeError\n");
+console.log("PASS: hostile stack access cannot replace the cached error");

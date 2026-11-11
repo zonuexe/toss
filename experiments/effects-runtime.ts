@@ -58,6 +58,25 @@ function recordCleanupFailure(primary, secondary) {
   failures.push(secondary);
   effectCleanupFailures.set(primary, failures);
 }
+function setEffectErrorStack(error, value) {
+  try { return Reflect.set(error, "stack", value); }
+  catch (_failure) { return false; }
+}
+function snapshotEffectFailure(error) {
+  if (!(error instanceof Error)) return undefined;
+  return {
+    cleanup: [...(effectCleanupFailures.get(error) ?? [])],
+    contexts: [...(effectHandlerContexts.get(error) ?? [])],
+  };
+}
+function restoreEffectFailure(error, snapshot) {
+  if (!(error instanceof Error)) return;
+  if (snapshot === undefined || snapshot.cleanup.length === 0) effectCleanupFailures.delete(error);
+  else effectCleanupFailures.set(error, [...snapshot.cleanup]);
+  if (snapshot === undefined || snapshot.contexts.length === 0) effectHandlerContexts.delete(error);
+  else effectHandlerContexts.set(error, [...snapshot.contexts]);
+  if (effectOriginalErrorStacks.has(error)) setEffectErrorStack(error, effectOriginalErrorStacks.get(error));
+}
 function recordHandlerContext(error, request) {
   if (!(error instanceof Error)) return;
   const contexts = effectHandlerContexts.get(error) ?? [];
@@ -329,7 +348,10 @@ function reportEffectFailures(error) {
     for (const nested of effectCleanupFailures.get(failure) ?? []) collect(nested);
   }
   for (const failure of failures) collect(failure);
-  if (!effectOriginalErrorStacks.has(error)) effectOriginalErrorStacks.set(error, error.stack);
-  error.stack = effectOriginalErrorStacks.get(error) + lines.join("");
+  if (!effectOriginalErrorStacks.has(error)) {
+    try { effectOriginalErrorStacks.set(error, error.stack); }
+    catch (_failure) { return; }
+  }
+  setEffectErrorStack(error, effectOriginalErrorStacks.get(error) + lines.join(""));
 }
 `;

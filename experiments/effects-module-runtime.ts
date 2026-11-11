@@ -7,7 +7,10 @@ function effectInitialize(id, location) {
   const iterator = (function*() {
     const previous = effectModuleStates.get(id);
     if (previous?.state === "done") return previous.value;
-    if (previous?.state === "failed") throw previous.error;
+    if (previous?.state === "failed") {
+      restoreEffectFailure(previous.error, previous.metadata);
+      throw previous.error;
+    }
     if (previous?.state === "running") throw new TossRuntimeError("Module initialization re-entered.", location);
     effectModuleStates.set(id, {state: "running"});
     try {
@@ -18,9 +21,9 @@ function effectInitialize(id, location) {
       if (abandoning) {
         const interrupted = new TossRuntimeError("Module initialization interrupted.", location);
         recordCleanupFailure(interrupted, error);
-        effectModuleStates.set(id, {state: "failed", error: interrupted});
+        effectModuleStates.set(id, {state: "failed", error: interrupted, metadata: snapshotEffectFailure(interrupted)});
       } else {
-        effectModuleStates.set(id, {state: "failed", error});
+        effectModuleStates.set(id, {state: "failed", error, metadata: snapshotEffectFailure(error)});
       }
       throw error;
     } finally {

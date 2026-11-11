@@ -1167,3 +1167,22 @@ effects, shared namespace identity, an imported JavaScript function calling back
 into Toss, and ordinary behavior against the standard compiler. Relative JS
 specifiers remain rejected according to the existing parser rules. Static host
 initialization is outside the synchronous Toss handler scope.
+
+## Experimental cached-error metadata isolation
+
+The module/runtime slice snapshots cleanup failures and handler contexts when a
+module initialization fails, and restores that snapshot when the cached error is
+re-thrown. This prevents cleanup or handler context added by a later caller from
+being inherited by the next caller, while preserving the same Error identity and
+retaining cleanup that actually occurred during module initialization. Tests
+exercise repeated JS callbacks, module-local plus caller-local cleanup, and
+handler contexts. They also verify that a read-only or throwing `stack` property
+cannot replace the original cached error during formatting.
+
+This is a targeted cache fix, not a complete occurrence-based error model.
+Metadata is still keyed by Error, snapshots contain references to nested error
+records, and re-entrant/concurrent reuse needs further study. If a host makes
+`stack` unwritable or unreadable, the runtime preserves the original error and
+its internal records but cannot reliably rewrite that host-visible stack; the
+stack may be stale or omit associated failures. A non-mutating diagnostics
+interface is required before claiming general error-reporting guarantees.
