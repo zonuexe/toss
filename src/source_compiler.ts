@@ -66,6 +66,36 @@ export function compileSources(
   compileRuntimeImport(options);
   compileTreeShakePrelude(options);
   const format = compileFormat(options);
+  const { modules, edges, loadedEntry, entryExport, entryId } =
+    prepareVirtualSources(entry, sources);
+  if (format === "esm" && entryExport === undefined) {
+    throw new TossSyntaxError(
+      modules[loadedEntry]?.expressions[0]?.location ?? {
+        file: entryId,
+        line: 1,
+        column: 1,
+      },
+      "ES module output requires exactly one top-level %export.",
+    );
+  }
+  return generateBundle(
+    finalizeModuleGraph(modules, loadedEntry, edges),
+    loadedEntry,
+    options,
+  );
+}
+
+/** Internal shared resolution step for virtual-source compilers. */
+export function prepareVirtualSources(
+  entry: string,
+  sources: ReadonlyMap<string, string>,
+): {
+  readonly modules: readonly SourceModule[];
+  readonly edges: readonly ModuleGraphEdge[];
+  readonly loadedEntry: number;
+  readonly entryExport: ReturnType<typeof analyzeModule>["exported"];
+  readonly entryId: string;
+} {
   const canonicalSources = new Map<string, string>();
   for (const [path, source] of sources) {
     const id = normalizeVirtualSourceId(path);
@@ -163,19 +193,5 @@ export function compileSources(
   }
 
   const loadedEntry = load(entryId, false);
-  if (format === "esm" && entryExport === undefined) {
-    throw new TossSyntaxError(
-      modules[loadedEntry]?.expressions[0]?.location ?? {
-        file: entryId,
-        line: 1,
-        column: 1,
-      },
-      "ES module output requires exactly one top-level %export.",
-    );
-  }
-  return generateBundle(
-    finalizeModuleGraph(modules, loadedEntry, edges),
-    loadedEntry,
-    options,
-  );
+  return { modules, edges, loadedEntry, entryExport, entryId };
 }

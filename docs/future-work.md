@@ -9,3 +9,8 @@ These are candidates, not committed APIs or an implementation order.
   element, so it is not automatically a skip signal.
 - `flatMap`: transform elements and flatten the results. The callback result
   type and flattening depth are undecided.
+
+## Effects and cleanup
+
+- Explore synchronous effect handling, resumption and cleanup before choosing a
+  public interface. See [the exploration plan](effects-design.md).
