@@ -260,15 +260,16 @@ assert.ok(!secondFailure.includes('Unbound name "cleanupA"'), repeatedText);
 console.log(
   "PASS: reused module error keeps cleanup information per invocation",
 );
+const reentrantSources = new Map([
+  [
+    "main.toss",
+    "#b bind: { %import('./lib.toss') } asJSCallback. #a bind: { { { %import('./lib.toss') } ensure: { $innerCleanup } } ensure: { %js(f = $b; (() => { try { f(); } catch (e) {} })()) } } asJSCallback. %js(f = $a; (() => { try { f(); } catch (e) { console.log(e.stack); } })()).",
+  ],
+  ["lib.toss", "%export($missing)."],
+]);
 const reentrantFailure = compileExperimentalEffectsSources(
   "main.toss",
-  new Map([
-    [
-      "main.toss",
-      "#b bind: { %import('./lib.toss') } asJSCallback. #a bind: { { { %import('./lib.toss') } ensure: { $innerCleanup } } ensure: { %js(f = $b; (() => { try { f(); } catch (e) {} })()) } } asJSCallback. %js(f = $a; (() => { try { f(); } catch (e) { console.log(e.stack); } })()).",
-    ],
-    ["lib.toss", "%export($missing)."],
-  ]),
+  reentrantSources,
 );
 const reentrantResult = await new Deno.Command(Deno.execPath(), {
   args: ["eval", reentrantFailure],
@@ -282,6 +283,26 @@ assert.equal(
   new TextDecoder().decode(reentrantResult.stderr),
 );
 assert.match(reentrantText, /Unbound name "innerCleanup"/);
+const reentrantDirect = await new Deno.Command(Deno.execPath(), {
+  args: [
+    "eval",
+    compileExperimentalEffectsSources("main.toss", reentrantSources, {
+      sharedDispatchTables: true,
+      directBoundarySteps: true,
+    }),
+  ],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  reentrantDirect.success,
+  true,
+  new TextDecoder().decode(reentrantDirect.stderr),
+);
+assert.match(
+  new TextDecoder().decode(reentrantDirect.stdout),
+  /Unbound name "innerCleanup"/,
+);
 console.log(
   "PASS: reentrant cached failure preserves the outer cleanup failure",
 );

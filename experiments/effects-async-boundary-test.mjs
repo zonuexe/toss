@@ -4,6 +4,7 @@ import { compileExperimentalEffects } from "./effects-compiler.ts";
 async function execute(source, shared = false) {
   const javascript = compileExperimentalEffects(source, "async-boundary.toss", {
     sharedDispatchTables: shared,
+    directBoundarySteps: shared,
   });
   const result = await new Deno.Command(Deno.execPath(), {
     args: ["eval", javascript],
@@ -37,6 +38,34 @@ const local = await execute(
 );
 assert.equal(local.success, true, local.stderr);
 assert.equal(local.stdout, "7\n");
+const unguardedSource =
+  "#work bind: %async({ %await(%js(Promise.resolve(1))). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. { $Effect raise: #A with: $Nil } handleWith: $h }) asJSCallback. %js(f = $work; f().then(v => console.log('value', v), e => console.log('error', e.message))).";
+const guarded = compileExperimentalEffects(
+  unguardedSource,
+  "async-boundary.toss",
+);
+assert.equal(guarded.split("return yield* delegate;").length, 2);
+const unguarded = guarded.replace(
+  "return yield* delegate;",
+  "return yield* result;",
+);
+const unguardedResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", unguarded],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  unguardedResult.success,
+  true,
+  new TextDecoder().decode(unguardedResult.stderr),
+);
+assert.match(
+  new TextDecoder().decode(unguardedResult.stdout),
+  /error .*Invalid resume/,
+);
+console.log(
+  "PASS: omitting per-step boundary restoration breaks async resumption",
+);
 const concurrent = await execute(
   "#work bind: %async({ x -> %await(%js(Promise.resolve())). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: $p }. { $Effect raise: #A with: $x } handleWith: $h }) asJSCallback. %js(f = $work; Promise.all([f(1), f(2)]).then(v => console.log(v.join(',')))).",
 );

@@ -1,6 +1,7 @@
 // Experimental runtime source; not the production Toss runtime.
 export function experimentalEffectRuntime(
   sharedDispatchTables = false,
+  directBoundarySteps = false,
 ): string {
   const allowedMessages =
     `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);`;
@@ -43,6 +44,15 @@ const effectOriginalErrorStacks = new WeakMap();
 let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
+${
+    directBoundarySteps
+      ? `function effectIteratorStep(boundary, iterator, method, value) {
+  const previous = effectBoundary;
+  effectBoundary = boundary;
+  try { return iterator[method](value); } finally { effectBoundary = previous; }
+}`
+      : ""
+  }
 function* effectInvoke(block, args, context) {
   const boundary = context.boundary ?? effectBoundary;
   const methodReceiver = context.methodReceiver === undefined
@@ -52,9 +62,21 @@ function* effectInvoke(block, args, context) {
   if (!effectBlocks.has(block)) return result;
   const delegate = {
     [Symbol.iterator]() { return this; },
-    next(value) { return withEffectBoundaryValue(boundary, () => result.next(value)); },
-    throw(error) { return withEffectBoundaryValue(boundary, () => result.throw(error)); },
-    return(value) { return withEffectBoundaryValue(boundary, () => result.return(value)); },
+    next(value) { return ${
+    directBoundarySteps
+      ? 'effectIteratorStep(boundary, result, "next", value)'
+      : "withEffectBoundaryValue(boundary, () => result.next(value))"
+  }; },
+    throw(error) { return ${
+    directBoundarySteps
+      ? 'effectIteratorStep(boundary, result, "throw", error)'
+      : "withEffectBoundaryValue(boundary, () => result.throw(error))"
+  }; },
+    return(value) { return ${
+    directBoundarySteps
+      ? 'effectIteratorStep(boundary, result, "return", value)'
+      : "withEffectBoundaryValue(boundary, () => result.return(value))"
+  }; },
   };
   return yield* delegate;
 }

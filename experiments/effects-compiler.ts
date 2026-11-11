@@ -41,6 +41,7 @@ const directNumberMessages = new Set([
 type EffectCompilerOptions = {
   readonly directNumberSends?: boolean;
   readonly sharedDispatchTables?: boolean;
+  readonly directBoundarySteps?: boolean;
 };
 
 function createEffectEmitter(
@@ -261,7 +262,10 @@ export function compileExperimentalEffects(
     "((javascriptEvaluators, javascriptImportNames) => {",
     ...runtimePreludeLines(),
     ...fileRootSetupLines(),
-    experimentalEffectRuntime(options.sharedDispatchTables),
+    experimentalEffectRuntime(
+      options.sharedDispatchTables,
+      options.directBoundarySteps,
+    ),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = effectBoundary;",
     "registerEffectSymbolRoot(symbolRoot);",
@@ -309,7 +313,10 @@ export function compileExperimentalEffectsSources(
     ...emitJavaScriptImportStatements(imports, importAliases),
     "((javascriptEvaluators, javascriptImportNames) => {",
     ...runtimePreludeLines(),
-    experimentalEffectRuntime(options.sharedDispatchTables),
+    experimentalEffectRuntime(
+      options.sharedDispatchTables,
+      options.directBoundarySteps,
+    ),
     experimentalEffectModuleRuntime,
     ...initializers,
     `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw error; }`,

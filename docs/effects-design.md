@@ -1295,3 +1295,29 @@ test. The options remain disabled by default. The remaining overhead includes
 generator delegation, per-invocation boundary wrappers and dynamic dispatch;
 removing boundary work without proving behavior under re-entry and async
 suspension would risk changing semantics.
+
+### Generator boundary-step experiment
+
+An opt-in variant replaces the closure created for each delegated generator
+`next`, `throw` or `return` with a shared helper. Each operation still installs
+the invocation's boundary and restores the previous one in `finally`. The
+delegate and its `yield*` protocol remain in place; this tests one allocation
+strategy, not elimination of generator delegation. A negative probe bypasses
+the delegate altogether and demonstrates that a local async handler after
+`%await` then rejects a valid resume because its boundary is wrong.
+
+`deno task effects:benchmark-boundary` alternates two variants, both using the
+shared dispatch table, with eight warmups and 30 paired samples per workload.
+On Deno 2.9.7 / V8 15.0.245.2 on macOS arm64, two runs measured paired median
+candidate/baseline ratios of 1.00 and 1.01 for ordinary map callbacks, 1.00 and
+1.00 for dynamic methods, and 1.35 and 0.81 for effectful dynamic callbacks.
+The effectful result varies too much to establish an improvement, and the
+ordinary workloads show no meaningful gain. The additional helper also grows
+the artifact. Do not adopt this variant on current evidence; it remains an
+off-by-default experiment to make the comparison reproducible. This is not a
+claim about other engines or larger programs.
+
+The differential suite also exercises the variant on synchronous handler and
+cleanup scenarios, re-entry into a cached failed module, JS boundary checks and
+concurrent async callbacks. These cases do not prove arbitrary re-entry or solve
+the pre-existing error-occurrence isolation limitations.

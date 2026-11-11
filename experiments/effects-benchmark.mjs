@@ -74,6 +74,13 @@ for (const workload of workloads) {
     })),
   );
   console.log(
+    "  direct boundary steps",
+    measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
+      sharedDispatchTables: true,
+      directBoundarySteps: true,
+    })),
+  );
+  console.log(
     "  direct number",
     measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
       directNumberSends: true,

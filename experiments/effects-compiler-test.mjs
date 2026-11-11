@@ -5,6 +5,7 @@ async function execute(source) {
   const javascript = compileExperimentalEffects(source, "experimental.toss");
   const shared = compileExperimentalEffects(source, "experimental.toss", {
     sharedDispatchTables: true,
+    directBoundarySteps: true,
   });
   const run = (code) =>
     new Deno.Command(Deno.execPath(), {
