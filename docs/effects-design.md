@@ -1368,3 +1368,38 @@ effectful callbacks. Bun 1.3.14 / JavaScriptCore gave 0.86 and 0.85, 0.85 and
 the benchmark records its WebKit revision instead of treating that as its
 engine. These results support further study across engines but are still local
 microbenchmarks; the fluctuating Node effectful result is inconclusive.
+
+### Experimental external effect runtime
+
+The experimental compiler can now emit a static import of an experimental
+effect runtime module, for both single-source programs and virtual-source
+module graphs. The asset provides a factory, so every artifact receives its
+own effect boundary, handler data, module cache and Prelude runtime. The
+generated code reads the active boundary through a function rather than
+capturing the initial value; this matters when module initialization or a
+Block call happens inside a nested JS or async boundary. Embedded generation
+continues to be available. The earlier statements that this slice does not
+support an external runtime describe the state before this experiment.
+
+The experimental asset is fingerprinted using the existing production hash
+function. A generated artifact checks the fingerprint, factory and required
+bridge values before running Toss code. Runtime options that change the asset
+change its fingerprint. This is a compatibility check, not an integrity check.
+As with ordinary static ESM imports, host modules initialize before the artifact
+performs its runtime check. This is not the production runtime format or a
+public API; choosing the final bridge, diagnostics and versioning remains work.
+
+The probe compares embedded and external execution of handled effects, cleanup,
+JS re-entry, async handlers, static JS imports and module initialization. It
+also checks a mismatched or malformed runtime and that two artifacts using one
+asset have independent module caches. A small sample produced 47,906 bytes of
+embedded code versus 6,580 bytes of application code plus a 45,094-byte shared
+runtime asset. This illustrates the size tradeoff only; it is not a loading or
+performance benchmark. The pre-existing limited Prelude coverage, error-record
+isolation and production/REPL integration remain unresolved.
+
+The cross-engine probe also runs the same scenarios with an external runtime
+file in both Node and Bun, with both delegate variants. A large `data:` URL
+used in an initial test failed to resolve on Bun 1.3.14, so the portable probe
+uses temporary `.mjs` files and removes them afterwards. This observation does
+not imply that all `data:` URLs fail on Bun.

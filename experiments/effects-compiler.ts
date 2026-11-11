@@ -6,11 +6,13 @@ import { analyzeModule } from "../src/module_analysis.ts";
 import { finalizeModuleGraph } from "../src/module_graph.ts";
 import { prepareVirtualSources } from "../src/source_compiler.ts";
 import { experimentalEffectModuleRuntime } from "./effects-module-runtime.ts";
+import { experimentalRuntimeSetup } from "./effects-external-runtime.ts";
 import { containsDirectAwait } from "../src/codegen_analysis.ts";
 import {
   collectJavaScriptExpressions,
   emitJavaScriptEvaluators,
   javascriptImportAliases,
+  javascriptRuntimeAlias,
 } from "../src/codegen_javascript.ts";
 import { collectJavaScriptImports } from "../src/javascript_import_analysis.ts";
 import {
@@ -43,6 +45,7 @@ type EffectCompilerOptions = {
   readonly sharedDispatchTables?: boolean;
   readonly directBoundarySteps?: boolean;
   readonly sharedBoundaryDelegate?: boolean;
+  readonly runtimeImport?: string;
 };
 
 function createEffectEmitter(
@@ -56,7 +59,7 @@ function createEffectEmitter(
   ): string {
     const context = `{location: ${
       JSON.stringify(expression.location)
-    }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary}`;
+    }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? getEffectBoundary()}`;
     const call = (code: string): string =>
       asynchronous ? `runEffectProgram(${code}, "Async")` : `(yield* ${code})`;
     switch (expression.kind) {
@@ -101,7 +104,7 @@ const {carrier: localScope} = blockEnvironment(captured, ${
 localScope.effectBoundary = ${
           blockAsync
             ? "asyncBoundary"
-            : "invocation?.effectBoundary ?? captured.effectBoundary ?? effectBoundary"
+            : "invocation?.effectBoundary ?? captured.effectBoundary ?? getEffectBoundary()"
         };
 if (invocation?.kind === "tossInvocation") {
   localScope.superContext = invocation.context;
@@ -166,7 +169,7 @@ const invocation = this;${scopeSetup}
               emit(entry.key, scope, asynchronous)
             }, ${emit(entry.value, scope, asynchronous)}]}, {location: ${
               JSON.stringify(entry.location)
-            }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary})`;
+            }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? getEffectBoundary()})`;
           return `${call(operation)};`;
         });
         const validator =
@@ -249,6 +252,9 @@ export function compileExperimentalEffects(
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
   const imports = collectJavaScriptImports(expressions);
   const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const runtimeAlias = options.runtimeImport === undefined
+    ? undefined
+    : javascriptRuntimeAlias(javascriptExpressions);
   const emit = createEffectEmitter(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
@@ -260,21 +266,32 @@ export function compileExperimentalEffects(
   );
   return [
     ...emitJavaScriptImportStatements(imports, importAliases),
-    "((javascriptEvaluators, javascriptImportNames) => {",
-    ...runtimePreludeLines(),
+    ...(runtimeAlias === undefined ? [] : [
+      `import * as ${runtimeAlias} from ${
+        JSON.stringify(options.runtimeImport)
+      };`,
+    ]),
+    `((javascriptEvaluators, javascriptImportNames${
+      runtimeAlias === undefined ? "" : ", runtimeNamespace"
+    }) => {`,
+    ...(runtimeAlias === undefined
+      ? runtimePreludeLines()
+      : experimentalRuntimeSetup(options, "runtimeNamespace")),
     ...fileRootSetupLines(),
-    experimentalEffectRuntime(
-      options.sharedDispatchTables,
-      options.directBoundarySteps,
-      options.sharedBoundaryDelegate,
-    ),
+    ...(runtimeAlias === undefined
+      ? [experimentalEffectRuntime(
+        options.sharedDispatchTables,
+        options.directBoundarySteps,
+        options.sharedBoundaryDelegate,
+      )]
+      : []),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
-    "environment.effectBoundary = effectBoundary;",
+    "environment.effectBoundary = getEffectBoundary();",
     "registerEffectSymbolRoot(symbolRoot);",
     `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    });`,
+    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   ].join("\n");
 }
 
@@ -296,6 +313,9 @@ export function compileExperimentalEffectsSources(
     graph.flatMap((module) => module.expressions),
   );
   const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const runtimeAlias = options.runtimeImport === undefined
+    ? undefined
+    : javascriptRuntimeAlias(javascriptExpressions);
   const emit = createEffectEmitter(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
@@ -309,22 +329,35 @@ export function compileExperimentalEffectsSources(
       fileRootSetupLines(module.imports.map(({ path, id }) =>
         `[${JSON.stringify(path)}, ${id}]`
       )).join("\n")
-    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = effectBoundary;\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
+    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = getEffectBoundary();\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
   });
   return [
     ...emitJavaScriptImportStatements(imports, importAliases),
-    "((javascriptEvaluators, javascriptImportNames) => {",
-    ...runtimePreludeLines(),
-    experimentalEffectRuntime(
-      options.sharedDispatchTables,
-      options.directBoundarySteps,
-      options.sharedBoundaryDelegate,
-    ),
-    experimentalEffectModuleRuntime,
+    ...(runtimeAlias === undefined ? [] : [
+      `import * as ${runtimeAlias} from ${
+        JSON.stringify(options.runtimeImport)
+      };`,
+    ]),
+    `((javascriptEvaluators, javascriptImportNames${
+      runtimeAlias === undefined ? "" : ", runtimeNamespace"
+    }) => {`,
+    ...(runtimeAlias === undefined
+      ? runtimePreludeLines()
+      : experimentalRuntimeSetup(options, "runtimeNamespace")),
+    ...(runtimeAlias === undefined
+      ? [
+        experimentalEffectRuntime(
+          options.sharedDispatchTables,
+          options.directBoundarySteps,
+          options.sharedBoundaryDelegate,
+        ),
+        experimentalEffectModuleRuntime,
+      ]
+      : []),
     ...initializers,
     `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw error; }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    });`,
+    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   ].join("\n");
 }

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { pathToFileURL } from "node:url";
 import {
   compileExperimentalEffects,
   compileExperimentalEffectsSources,
 } from "./effects-compiler.ts";
+import { generateExperimentalEffectsRuntime } from "./effects-external-runtime.ts";
 
 const cases = [
   {
@@ -36,37 +38,58 @@ const cases = [
   },
 ];
 const decoder = new TextDecoder();
-for (const engine of ["node", "bun"]) {
-  for (const scenario of cases) {
-    for (const sharedBoundaryDelegate of [false, true]) {
-      const options = { sharedDispatchTables: true, sharedBoundaryDelegate };
-      const javascript = scenario.sources
-        ? compileExperimentalEffectsSources(
-          "main.toss",
-          scenario.sources,
-          options,
-        )
-        : compileExperimentalEffects(
-          scenario.source,
-          "cross-engine.toss",
-          options,
-        );
-      const result = await new Deno.Command(engine, {
-        args: ["--input-type=module", "-e", javascript],
-        stdout: "piped",
-        stderr: "piped",
-      }).output();
-      const label =
-        `${engine}: ${scenario.name}, delegate=${sharedBoundaryDelegate}`;
-      assert.equal(
-        result.success,
-        true,
-        `${label}: ${decoder.decode(result.stderr)}`,
-      );
-      assert.equal(decoder.decode(result.stdout), scenario.stdout, label);
-    }
+const directory = await Deno.makeTempDir({ prefix: "toss-effects-runtime-" });
+try {
+  for (const sharedBoundaryDelegate of [false, true]) {
+    const path = `${directory}/runtime-${sharedBoundaryDelegate}.mjs`;
+    await Deno.writeTextFile(
+      path,
+      generateExperimentalEffectsRuntime({
+        sharedDispatchTables: true,
+        sharedBoundaryDelegate,
+      }),
+    );
   }
-  console.log(
-    `PASS: ${engine} preserves re-entry, async and cleanup with both delegates`,
-  );
+  for (const engine of ["node", "bun"]) {
+    for (const scenario of cases) {
+      for (const sharedBoundaryDelegate of [false, true]) {
+        const base = { sharedDispatchTables: true, sharedBoundaryDelegate };
+        for (const external of [false, true]) {
+          const runtimeImport =
+            pathToFileURL(`${directory}/runtime-${sharedBoundaryDelegate}.mjs`)
+              .href;
+          const options = external ? { ...base, runtimeImport } : base;
+          const javascript = scenario.sources
+            ? compileExperimentalEffectsSources(
+              "main.toss",
+              scenario.sources,
+              options,
+            )
+            : compileExperimentalEffects(
+              scenario.source,
+              "cross-engine.toss",
+              options,
+            );
+          const result = await new Deno.Command(engine, {
+            args: ["--input-type=module", "-e", javascript],
+            stdout: "piped",
+            stderr: "piped",
+          }).output();
+          const label =
+            `${engine}: ${scenario.name}, delegate=${sharedBoundaryDelegate}, external=${external}`;
+          assert.equal(
+            result.success,
+            true,
+            `${label}: ${decoder.decode(result.stderr)}`,
+          );
+          assert.equal(decoder.decode(result.stdout), scenario.stdout, label);
+        }
+      }
+    }
+    console.log(
+      `PASS: ${engine} preserves re-entry, async and cleanup with embedded and external delegates`,
+    );
+  }
+} finally {
+  await Deno.remove(directory, { recursive: true });
 }

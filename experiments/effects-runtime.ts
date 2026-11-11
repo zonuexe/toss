@@ -11,6 +11,7 @@ const effectBlocks = new WeakSet();
 ${sharedDispatchTables ? allowedMessages : ""}
 const effectJavaScriptCallbacks = new WeakMap();
 let effectBoundary = Object.freeze({});
+function getEffectBoundary() { return effectBoundary; }
 function withEffectBoundaryValue(boundary, body) {
   const previous = effectBoundary;
   effectBoundary = boundary;
