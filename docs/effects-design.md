@@ -1403,3 +1403,26 @@ file in both Node and Bun, with both delegate variants. A large `data:` URL
 used in an initial test failed to resolve on Bun 1.3.14, so the portable probe
 uses temporary `.mjs` files and removes them afterwards. This observation does
 not imply that all `data:` URLs fail on Bun.
+
+### Cooperative display and diagnostic snapshots
+
+The experimental runtime now handles Array `inspect` and `toString` by
+cooperatively sending `inspect` to each element. It retains the standard
+runtime's snapshot and cycle-detection behavior and clears its active inspection
+state on normal completion, error or abandonment. `print` and `dump` likewise
+send their conversion messages cooperatively, so an Object's custom conversion
+can request an effect. The experimental output still uses its existing console
+path; this does not establish integration with REPL output hooks. Ordinary
+display programs are compared with the standard compiler, and effect probes
+cover resumption, mutation during suspension and abandonment in embedded and
+external runtime modes.
+
+The internal non-mutating failure-details operation now returns a frozen
+snapshot object with frozen cleanup and handler-context arrays. A regression
+test retains the first snapshot while the same cached Error is reused in a
+second callback: each list keeps its own caller's cleanup and both retain the
+original Error identity. This is shallow: the Errors and request objects inside
+the lists remain references, and internal metadata is still keyed by Error.
+It is not a general occurrence-based error model or a public diagnostics API;
+arbitrary re-entry, nested mutable records and concurrent propagation still
+need a design before production integration.

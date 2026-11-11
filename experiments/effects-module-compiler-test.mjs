@@ -288,7 +288,7 @@ const reentrantDirect = await new Deno.Command(Deno.execPath(), {
     "eval",
     compileExperimentalEffectsSources("main.toss", reentrantSources, {
       sharedDispatchTables: true,
-        sharedBoundaryDelegate: true,
+      sharedBoundaryDelegate: true,
     }),
   ],
   stdout: "piped",
@@ -424,7 +424,7 @@ const inspectionSource = compileExperimentalEffectsSources(
   new Map([
     [
       "main.toss",
-      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first, saved; try { a(); } catch (e) { first = e; saved = globalThis.effectProbe(e); Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first && saved.error === first); console.log('SAVED', saved.cleanup.map(x => x.message).join('|')); console.log('FROZEN', Object.isFrozen(saved), Object.isFrozen(saved.cleanup), Object.isFrozen(saved.contexts)); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
     ],
     ["lib.toss", "%export({ $missing } ensure: { $moduleCleanup })."],
   ]),
@@ -448,11 +448,15 @@ assert.equal(
   new TextDecoder().decode(inspectionResult.stderr),
 );
 assert.match(inspectionText, /SAME true/);
+assert.match(inspectionText, /FROZEN true true true/);
+const [savedInspection, currentInspection] = inspectionText.split("CLEANUP ");
+assert.match(savedInspection, /Unbound name "cleanupA"/);
+assert.doesNotMatch(savedInspection, /Unbound name "cleanupB"/);
 assert.match(
-  inspectionText,
-  /CLEANUP .*Unbound name "moduleCleanup".*Unbound name "cleanupB"/,
+  currentInspection,
+  /Unbound name "moduleCleanup".*Unbound name "cleanupB"/,
 );
-assert.doesNotMatch(inspectionText, /Unbound name "cleanupA"/);
+assert.doesNotMatch(currentInspection, /Unbound name "cleanupA"/);
 console.log(
   "PASS: non-mutating failure details retain frozen error identity and current cleanup",
 );

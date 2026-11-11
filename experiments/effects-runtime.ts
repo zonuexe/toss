@@ -428,9 +428,9 @@ function getEffectFailureDetails(error) {
   }
   if ((typeof error === "object" && error !== null) || typeof error === "function") {
     for (const failure of effectCleanupFailures.get(error) ?? []) collect(failure);
-    return {error, cleanup, contexts: [...(effectHandlerContexts.get(error) ?? [])]};
+    return Object.freeze({error, cleanup: Object.freeze(cleanup), contexts: Object.freeze([...(effectHandlerContexts.get(error) ?? [])])});
   }
-  return {error, cleanup, contexts: []};
+  return Object.freeze({error, cleanup: Object.freeze(cleanup), contexts: Object.freeze([])});
 }
 function reportEffectFailures(error) {
   if ((typeof error !== "object" || error === null) && typeof error !== "function") return;
