@@ -1,16 +1,10 @@
 // Experimental vertical slice. This compiler is not part of Toss's public API.
 import type { Expression } from "../src/ast.ts";
 import { experimentalEffectRuntime } from "./effects-runtime.ts";
-import { expandProgram, findMacroImports } from "../src/macro_compile.ts";
-import { analyzeModule, type ModuleImport } from "../src/module_analysis.ts";
-import { TossSyntaxError } from "../src/diagnostic.ts";
-import {
-  finalizeModuleGraph,
-  type ModuleGraphEdge,
-  normalizeVirtualSourceId,
-  type ResolvedModuleGraphNode,
-  resolveVirtualSourceId,
-} from "../src/module_graph.ts";
+import { expandProgram } from "../src/macro_compile.ts";
+import { analyzeModule } from "../src/module_analysis.ts";
+import { finalizeModuleGraph } from "../src/module_graph.ts";
+import { prepareVirtualSources } from "../src/source_compiler.ts";
 import { experimentalEffectModuleRuntime } from "./effects-module-runtime.ts";
 import { containsDirectAwait } from "../src/codegen_analysis.ts";
 import {
@@ -253,62 +247,10 @@ export function compileExperimentalEffectsSources(
   entry: string,
   sources: ReadonlyMap<string, string>,
 ): string {
-  const canonicalSources = new Map<string, string>();
-  for (const [path, source] of sources) {
-    const id = normalizeVirtualSourceId(path);
-    if (canonicalSources.has(id)) {
-      throw new TypeError(`Duplicate source map path: ${JSON.stringify(id)}.`);
-    }
-    canonicalSources.set(id, source);
-  }
-  const entryId = normalizeVirtualSourceId(entry);
-  if (!canonicalSources.has(entryId)) {
-    throw new TypeError(
-      `Entry source is not present: ${JSON.stringify(entryId)}.`,
-    );
-  }
-  const modules: ResolvedModuleGraphNode[] = [];
-  const ids = new Map<string, number>();
-  const edges: ModuleGraphEdge[] = [];
-  function load(
-    canonical: string,
-    imported: boolean,
-    location?: ModuleImport["location"],
-  ): number {
-    const previous = ids.get(canonical);
-    if (previous !== undefined) return previous;
-    const source = canonicalSources.get(canonical);
-    if (source === undefined) {
-      if (location === undefined) throw new TypeError("Missing entry source.");
-      throw new TossSyntaxError(
-        location,
-        `Imported file not found: ${JSON.stringify(canonical)}.`,
-      );
-    }
-    if (findMacroImports(source, canonical).length > 0) {
-      throw new Error(
-        "Experimental effects compiler does not support macro imports.",
-      );
-    }
-    const id = modules.length;
-    ids.set(canonical, id);
-    const expressions = expandProgram(source, { file: canonical });
-    const analysis = analyzeModule(expressions, canonical, imported);
-    modules.push({ expressions, imports: analysis.imports, importIds: [] });
-    const importIds = analysis.imports.map((dependency) => {
-      const dependencyId = resolveVirtualSourceId(
-        canonical,
-        dependency.path,
-        dependency.location,
-      );
-      const resolved = load(dependencyId, true, dependency.location);
-      edges.push({ from: id, to: resolved, location: dependency.location });
-      return resolved;
-    });
-    modules[id] = { expressions, imports: analysis.imports, importIds };
-    return id;
-  }
-  const root = load(entryId, false);
+  const { modules, edges, loadedEntry: root } = prepareVirtualSources(
+    entry,
+    sources,
+  );
   const graph = finalizeModuleGraph(modules, root, edges);
   const javascriptExpressions = collectJavaScriptExpressions(
     graph.flatMap((module) => module.expressions),

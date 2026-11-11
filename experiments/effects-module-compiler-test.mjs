@@ -410,3 +410,103 @@ assert.doesNotMatch(inspectionText, /Unbound name "cleanupA"/);
 console.log(
   "PASS: non-mutating failure details retain frozen error identity and current cleanup",
 );
+const macroSources = new Map([
+  [
+    "main.toss",
+    "%macroImport('./macros.toss'). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: ($p add: 1) }. ({ %request(4) } handleWith: $h) print.",
+  ],
+  [
+    "macros.toss",
+    "%macro(#request, { s -> %`($Effect raise: #A with: (%,($s))) }).",
+  ],
+]);
+const macroProgram = compileExperimentalEffectsSources(
+  "main.toss",
+  macroSources,
+);
+const macroResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", macroProgram],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const macroDecoder = new TextDecoder();
+assert.equal(
+  macroResult.success,
+  true,
+  macroDecoder.decode(macroResult.stderr),
+);
+assert.equal(macroDecoder.decode(macroResult.stdout), "5\n");
+const macroConsumers = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    ["main.toss", "%import('./a.toss') print. %import('./b.toss') print."],
+    [
+      "shared.toss",
+      "%macro(#offsetValue, { s -> %`((%,($s)) add: $offset) }).",
+    ],
+    [
+      "a.toss",
+      "%macroImport('./shared.toss'). #offset bind: 10. %export(%offsetValue(1)).",
+    ],
+    [
+      "b.toss",
+      "%macroImport('./shared.toss'). #offset bind: 20. %export(%offsetValue(1)).",
+    ],
+  ]),
+);
+const macroConsumerResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", macroConsumers],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  macroConsumerResult.success,
+  true,
+  macroDecoder.decode(macroConsumerResult.stderr),
+);
+assert.equal(macroDecoder.decode(macroConsumerResult.stdout), "11\n21\n");
+assert.throws(() =>
+  compileExperimentalEffectsSources(
+    "main.toss",
+    new Map([
+      ["main.toss", "%macroImport('./missing.toss')."],
+    ]),
+  ), /Macro library not found/);
+console.log("PASS: shared macros generate effects and preserve consumer roots");
+const nestedCachedFailures = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: { %import('./a.toss') } asJSCallback. #b bind: { %import('./b.toss') } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; console.log('FIRST', e.stack); } try { b(); } catch (e) { console.log('SAME', e === first); console.log('SECOND', e.stack); } })()).",
+    ],
+    ["a.toss", "%export({ %import('./b.toss') } ensure: { $aCleanup })."],
+    ["b.toss", "%export({ $missing } ensure: { $bCleanup })."],
+  ]),
+);
+const nestedCachedResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", nestedCachedFailures],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const nestedCachedText = new TextDecoder().decode(nestedCachedResult.stdout);
+assert.equal(
+  nestedCachedResult.success,
+  true,
+  new TextDecoder().decode(nestedCachedResult.stderr),
+);
+assert.match(nestedCachedText, /SAME true/);
+const [firstNested, secondNested] = nestedCachedText.split("SECOND ");
+assert.ok(
+  firstNested.includes('Unbound name "aCleanup"') &&
+    firstNested.includes('Unbound name "bCleanup"'),
+  nestedCachedText,
+);
+assert.ok(
+  secondNested.includes('Unbound name "bCleanup"') &&
+    !secondNested.includes('Unbound name "aCleanup"'),
+  nestedCachedText,
+);
+console.log(
+  "PASS: nested module caches retain distinct failure metadata with shared error identity",
+);

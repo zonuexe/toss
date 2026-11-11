@@ -1080,12 +1080,12 @@ cycles. It instruments generated test artifacts to confirm cached identity for
 handler failure and unhandled effects, and interruption metadata after a cleanup
 failure; there is not yet a language-level catch to observe those cases.
 
-The slice explicitly rejects macro-library imports and unsupported messages. It
-does not implement filesystem module resolution, REPL module loading, JS module
-output, an external runtime, source-map support, or production compilation.
-Error metadata is still Error-keyed and experimental. Static dependency
-collection and validation reuse existing modules, but the prototype does not
-claim parity across every loader edge case.
+The slice rejects unsupported messages. It does not implement filesystem module
+resolution, REPL module loading, JS module output, an external runtime,
+source-map support, or production compilation. Error metadata is still
+Error-keyed and experimental. Static dependency collection and validation reuse
+existing modules, but the prototype does not claim parity across every loader
+edge case.
 
 The AST slice now registers the actual built-in `generateUnique` method for each
 module root rather than treating it as an unsupported native method. Tests cover
@@ -1195,3 +1195,16 @@ still permits the current module and caller cleanup details to be inspected
 without changing error identity. This is not a public Toss or JS API; lifetime,
 concurrent access and presentation need further design. Normal stack formatting
 remains best-effort when the host prevents reading or writing `stack`.
+
+The production virtual-source compiler and the experimental compiler now share
+the same internal source-graph preparation, including macro-library imports. The
+experimental module probe checks that shared macros can generate an effect
+request, that consumer roots remain independent, and that missing macro
+libraries fail during compilation. The production compiler retains its existing
+public API and generation path; this does not enable effects in that compiler.
+
+A further module probe checks nested failed-module caches that share the same
+Error object: re-importing the inner module retains its own cleanup record but
+not cleanup added by the outer module. This validates that pair of cache
+snapshots; it does not establish correctness for arbitrary host re-entry or
+concurrent failure propagation.
