@@ -1,11 +1,38 @@
 // Experimental runtime source; not the production Toss runtime.
 export const experimentalEffectRuntime = `
 const effectBlocks = new WeakSet();
+const effectJavaScriptCallbacks = new WeakMap();
+let effectBoundary = Object.freeze({});
+function withEffectBoundary(body) {
+  const previous = effectBoundary;
+  effectBoundary = Object.freeze({});
+  try { return body(); } finally { effectBoundary = previous; }
+}
+function evaluateEffectJavaScript(evaluator, values, context) {
+  return withEffectBoundary(() => evaluateCompiledJavaScript(evaluator, values, context));
+}
+function effectJavaScriptCallback(receiver, context) {
+  if (effectResumeStates.has(receiver)) throw new TossRuntimeError("Resume cannot cross the JavaScript boundary.", context.location);
+  const previous = effectJavaScriptCallbacks.get(receiver);
+  if (previous !== undefined) return fromJavaScript(previous, context);
+  const callback = function(...hostArguments) {
+    try { return withEffectBoundary(() => {
+      if (hostArguments.length < receiver.length)
+        throw new TossRuntimeError("JavaScript callback expects " + receiver.length + " argument(s), received " + hostArguments.length + ".", context.location);
+      const args = hostArguments.slice(0, receiver.length).map((value) => fromJavaScript(value, context));
+      const lexicalContext = {location: context.location, environment: context.environment};
+      return toJavaScript(runEffectProgram(effectInvoke(receiver, args, lexicalContext), "JavaScript"), context);
+    }); } catch (error) { reportEffectFailures(error); throw error; }
+  };
+  effectJavaScriptCallbacks.set(receiver, callback);
+  return fromJavaScript(callback, context);
+}
 const effectNativeSymbols = new WeakSet();
 function registerEffectSymbolRoot(root) { effectNativeSymbols.add(Reflect.get(root, "generateUnique")); }
 const effectResumeStates = new WeakMap();
 const effectCleanupFailures = new WeakMap();
 const effectHandlerContexts = new WeakMap();
+const effectOriginalErrorStacks = new WeakMap();
 let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
@@ -122,9 +149,9 @@ function* effectHandle(block, handler, context) {
       const selected = Reflect.get(owner, request.effect, handler);
       if (typeof selected !== "function" || !effectBlocks.has(selected))
         throw new TossRuntimeError("Handler case must be a synchronous Block.", request.location);
-      const state = {active: true, suspended: false, used: false, request};
+      const state = {active: true, suspended: false, used: false, boundary: effectBoundary, request};
       const resume = markEffectBlock(function*(value) {
-        if (!state.active || state.suspended || state.used) throw new TossRuntimeError("Invalid resume.", request.location);
+        if (!state.active || state.suspended || state.used || state.boundary !== effectBoundary) throw new TossRuntimeError("Invalid resume.", request.location);
         state.used = true;
         return yield {signal: resumeSignal, value};
       });
@@ -180,11 +207,12 @@ function* effectSend(receiver, message, context) {
     if (effectCleanupDepth > 0) throw new TossRuntimeError("Effects are not allowed during cleanup.", context.location);
     return yield {effect: args[0], payload: args[1], location: context.location};
   }
+  if (typeof receiver === "function" && name === "asJSCallback") return effectJavaScriptCallback(receiver, context);
   if (typeof receiver === "function" && name === "ensure:") return yield* effectEnsure(receiver, args[0], context);
   if (typeof receiver === "function" && name === "handleWith:") return yield* effectHandle(receiver, args[0], context);
   if (typeof receiver === "function" && /^(?:value|(?:value:)+)$/.test(name)) {
     const state = effectResumeStates.get(receiver);
-    if (state !== undefined && (!state.active || state.suspended || state.used))
+    if (state !== undefined && (!state.active || state.suspended || state.used || state.boundary !== effectBoundary))
       throw new TossRuntimeError("Invalid resume.", context.location);
     return yield* effectInvoke(receiver, args, context);
   }
@@ -260,10 +288,11 @@ function* effectSend(receiver, message, context) {
     throw new TossRuntimeError("Unsupported message in experimental effects compiler: " + name, context.location);
   return send(receiver, message, context);
 }
-function runEffectProgram(iterator) {
+function runEffectProgram(iterator, boundary) {
   const step = iterator.next();
   if (!step.done) {
-    const error = new TossRuntimeError("Unhandled effect " + keyDescription(step.value.effect) + ".", step.value.location);
+    const reason = boundary === "JavaScript" ? "Effect cannot cross the JavaScript boundary: " : "Unhandled effect ";
+    const error = new TossRuntimeError(reason + keyDescription(step.value.effect) + ".", step.value.location);
     error.effect = step.value.effect;
     error.payload = step.value.payload;
     try { iterator.throw(error); }
@@ -286,6 +315,7 @@ function reportEffectFailures(error) {
     for (const nested of effectCleanupFailures.get(failure) ?? []) collect(nested);
   }
   for (const failure of failures) collect(failure);
-  error.stack += lines.join("");
+  if (!effectOriginalErrorStacks.has(error)) effectOriginalErrorStacks.set(error, error.stack);
+  error.stack = effectOriginalErrorStacks.get(error) + lines.join("");
 }
 `;

@@ -87,6 +87,15 @@ const cases = [
     "dynamic invalid argument Array",
     "#o bind: $Object clone. $o perform: #x withArguments: 1.",
   ],
+  ["JS expression bindings", "#x bind: 2. (%js(n = $x; n + 1)) print."],
+  [
+    "JS callback and identity",
+    "#cb bind: { n -> $n add: 1 } asJSCallback. (%js(a = $cb, b = $cb; a === b && a(4) === 5)) print.",
+  ],
+  [
+    "JS callback conversion error",
+    "#cb bind: { x -> $x } asJSCallback. %js(f = $cb; f()).",
+  ],
   ["invalid Block arity", "{ x -> $x } value."],
   ["invalid filter result", "[1] filter: { x -> 1 }."],
   ["invalid conditional branch", "$True ifTrue: { 'never' print } ifFalse: 1."],

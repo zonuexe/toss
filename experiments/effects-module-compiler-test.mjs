@@ -220,3 +220,10 @@ const moduleUnique = await execute(
 assert.equal(moduleUnique.success, true, moduleUnique.stderr);
 assert.equal(moduleUnique.stdout, "11\n");
 console.log("PASS: unique Symbol effect identity survives module import");
+const moduleJavaScript = await execute(
+  "#f bind: %import('./lib.toss'). ($f value: 4) print.",
+  "%export({ x -> %js(n = $x; n + 1) }).",
+);
+assert.equal(moduleJavaScript.success, true, moduleJavaScript.stderr);
+assert.equal(moduleJavaScript.stdout, "5\n");
+console.log("PASS: module Block uses its generated JavaScript evaluator");

@@ -1034,12 +1034,12 @@ invalid resume lifetimes, source position, evaluation order and unhandled
 effects.
 
 This is a vertical slice, not the complete agreed design. It deliberately
-rejects JS expressions/imports, async Blocks, await, and other unsupported AST
-forms. It permits only a small set of Prelude messages; unsupported messages
-fail rather than silently invoking a callback without propagating suspension.
-Cleanup failures are recorded experimentally using a WeakMap keyed by Error,
-which cannot correctly distinguish independent failures that reuse the same
-Error and does not handle arbitrary thrown values. Its diagnostic formatting is
+rejects JS module imports, async Blocks, await, and other unsupported AST forms.
+It permits only a small set of Prelude messages; unsupported messages fail
+rather than silently invoking a callback without propagating suspension. Cleanup
+failures are recorded experimentally using a WeakMap keyed by Error, which
+cannot correctly distinguish independent failures that reuse the same Error and
+does not handle arbitrary thrown values. Its diagnostic formatting is
 provisional. It does not implement JS/async boundaries, REPL integration,
 separate runtimes, tree-shaking, or a full set of diagnostics. The `Effect`
 binding and syntax are experimental and must not be treated as released
@@ -1054,7 +1054,7 @@ nested cleanup failures. This does not establish bounded stack use for deeply
 nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
 error metadata, module, interop or unsupported syntax limitations above.
 
-`experiments/effects-compiler-conformance.mjs` compares 26 supported programs
+`experiments/effects-compiler-conformance.mjs` compares 29 supported programs
 without effect requests against the production compiler, including lexical
 bindings, evaluation order, collection snapshots, inherited methods, `%super`,
 extension, and selected runtime failures with their source locations. It checks
@@ -1080,12 +1080,13 @@ cycles. It instruments generated test artifacts to confirm cached identity for
 handler failure and unhandled effects, and interruption metadata after a cleanup
 failure; there is not yet a language-level catch to observe those cases.
 
-The slice explicitly rejects macro-library imports, JS/async forms and
-unsupported messages. It does not implement filesystem module resolution, REPL
-module loading, JS module output, an external runtime, source-map support, or
-production compilation. Error metadata is still Error-keyed and experimental.
-Static dependency collection and validation reuse existing modules, but the
-prototype does not claim parity across every loader edge case.
+The slice explicitly rejects macro-library imports, JS module imports, async
+forms and unsupported messages. It does not implement filesystem module
+resolution, REPL module loading, JS module output, an external runtime,
+source-map support, or production compilation. Error metadata is still
+Error-keyed and experimental. Static dependency collection and validation reuse
+existing modules, but the prototype does not claim parity across every loader
+edge case.
 
 The AST slice now registers the actual built-in `generateUnique` method for each
 module root rather than treating it as an unsupported native method. Tests cover
@@ -1111,3 +1112,23 @@ Tests compare ordinary dynamic dispatch and error validation with the standard
 compiler, and exercise an effect raised by the dynamically selected method.
 Prelude fallbacks remain subject to the slice's explicit supported-message
 restrictions; not all runtime messages have been adapted.
+
+## Experimental JavaScript boundary
+
+The AST slice compiles `%js` using the existing ahead-of-time evaluator
+collection and supports synchronous `asJSCallback` adapters for effect-aware
+Blocks. A fresh boundary is installed for each JavaScript entry and callback.
+Requests that escape a callback fail at that boundary; a handler entirely inside
+the callback can handle its own requests. Resuming across the boundary and
+converting a resume capability to a JS callback are rejected. A boundary token
+also guards a resume hidden inside an Object passed to `%js`.
+
+`experiments/effects-js-boundary-test.mjs` tests these paths, callback identity
+and argument conversion, errors during cleanup, and preservation of a JS thrown
+value as `cause`. Callback errors are formatted before being passed into JS so
+that cleanup information is retained if the existing JS-expression wrapper adds
+a cause. The underlying error records are still Error-keyed; arbitrary host
+re-entry, asynchronous callbacks, JS module imports and public runtime
+integration remain unverified. `%js` still executes arbitrary host JavaScript,
+and passing nested Toss Blocks through object properties has no supported
+callback contract under ADR-38.
