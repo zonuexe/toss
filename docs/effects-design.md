@@ -1243,3 +1243,27 @@ that retain ordinary execution where possible while preserving propagation
 through dynamic method calls and callback-taking Prelude methods. The existing
 probes demonstrate why converting only visibly effectful Blocks is not enough;
 no optimization or public compiler mode is selected by this measurement.
+
+### Direct sends for known numeric receivers
+
+An opt-in experimental emitter now sends a small allowlist of numeric Prelude
+messages directly through the existing synchronous `send` when the receiver is
+a numeric literal. Arguments are still evaluated by the cooperative emitter
+first, so an argument can suspend and resume. `times:` is excluded because it
+invokes a Block; dynamic receivers remain on the cooperative path because an
+Object method with the same selector can raise an effect. Both single-source
+and virtual-module experimental compilation accept this internal option.
+
+The differential probe covers an effect in a numeric argument, a dynamic method
+inside a `map:` callback, an effect in `times:`, async awaiting, module
+initialization, and normal numeric errors and source locations. It is evidence
+for those cases, not a general proof of equivalence. The allowlist must be
+revisited if numeric Prelude methods acquire callback or effect behavior.
+
+In one local run of the benchmark above, literal numeric dispatch fell from
+6.61 ms to 3.26 ms (standard compiler: 1.14 ms). The existing `map:` workload
+has a dynamic numeric receiver and generated identical code with both options;
+observed timing differences there are measurement noise, not an optimization.
+The handled-effect workload likewise emitted identical code. This candidate
+therefore reduces a narrow part of the overhead but does not resolve the cost
+of cooperative Block calls or dynamic dispatch. It remains off by default.

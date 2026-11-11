@@ -56,4 +56,10 @@ for (const workload of workloads) {
     "  experimental",
     measure(compileExperimentalEffects(workload.source, "benchmark.toss")),
   );
+  console.log(
+    "  direct number",
+    measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
+      directNumberSends: true,
+    })),
+  );
 }

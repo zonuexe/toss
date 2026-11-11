@@ -22,7 +22,28 @@ import {
   runtimePreludeLines,
 } from "../src/codegen_prelude.ts";
 
-function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
+const directNumberMessages = new Set([
+  "toString",
+  "inspect",
+  "add:",
+  "subtract:",
+  "multiplyBy:",
+  "divideBy:",
+  "remainder:",
+  "negated",
+  "equals:",
+  "lessThan:",
+  "greaterThan:",
+  "lessThanOrEqual:",
+  "greaterThanOrEqual:",
+]);
+
+type EffectCompilerOptions = { readonly directNumberSends?: boolean };
+
+function createEffectEmitter(
+  evaluators: ReadonlyMap<Expression, number>,
+  options: EffectCompilerOptions,
+) {
   function emit(
     expression: Expression,
     scope = "environment",
@@ -105,15 +126,18 @@ try {${scopeSetup}
 const invocation = this;${scopeSetup}
 }))(${scope})`;
       }
-      case "send":
-        return call(
-          `effectSend(${
-            emit(expression.receiver, scope, asynchronous)
-          }, {name: ${JSON.stringify(expression.name)}, arguments: [${
-            expression.arguments.map((item) => emit(item, scope, asynchronous))
-              .join(", ")
-          }]}, ${context})`,
-        );
+      case "send": {
+        const direct = options.directNumberSends === true &&
+          expression.receiver.kind === "number" &&
+          directNumberMessages.has(expression.name);
+        const operation = `${direct ? "send" : "effectSend"}(${
+          emit(expression.receiver, scope, asynchronous)
+        }, {name: ${JSON.stringify(expression.name)}, arguments: [${
+          expression.arguments.map((item) => emit(item, scope, asynchronous))
+            .join(", ")
+        }]}, ${context})`;
+        return direct ? operation : call(operation);
+      }
       case "pipeline":
         return call(
           `effectPipeline(${emit(expression.input, scope, asynchronous)}, ${
@@ -207,6 +231,7 @@ const invocation = this;${scopeSetup}
 export function compileExperimentalEffects(
   source: string,
   file: string,
+  options: EffectCompilerOptions = {},
 ): string {
   const expressions = expandProgram(source, { file });
   const analysis = analyzeModule(expressions, file, false);
@@ -223,6 +248,7 @@ export function compileExperimentalEffects(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
     ),
+    options,
   );
   const body = expressions.map((expression) => `${emit(expression)};`).join(
     "\n",
@@ -246,6 +272,7 @@ export function compileExperimentalEffects(
 export function compileExperimentalEffectsSources(
   entry: string,
   sources: ReadonlyMap<string, string>,
+  options: EffectCompilerOptions = {},
 ): string {
   const { modules, edges, loadedEntry: root } = prepareVirtualSources(
     entry,
@@ -264,6 +291,7 @@ export function compileExperimentalEffectsSources(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
     ),
+    options,
   );
   const initializers = graph.map((module, id) => {
     const body = module.expressions.map((expression) => `${emit(expression)};`)

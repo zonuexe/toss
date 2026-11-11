@@ -11,6 +11,7 @@ await import("./effects-codegen-super.mjs");
 await import("./effects-codegen-handler.mjs");
 await import("./effects-compiler-test.mjs");
 await import("./effects-compiler-conformance.mjs");
+await import("./effects-direct-number-test.mjs");
 await import("./effects-module-compiler-test.mjs");
 await import("./effects-demo-test.mjs");
 await import("./effects-js-boundary-test.mjs");
