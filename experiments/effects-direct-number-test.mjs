@@ -6,7 +6,7 @@ import {
 
 const cases = [
   "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. ({ 1 add: ($Effect raise: #A with: $Nil) } handleWith: $h) print.",
-    "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $p }. #o bind: $Object clone. $o at: 'call:' put: { x -> $Effect raise: #A with: $x }. (({ [1, 2] map: { x -> 1 add: ($o call: $x) } } handleWith: $h) at: 0) print.",
+  "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $p }. #o bind: $Object clone. $o at: 'call:' put: { x -> $Effect raise: #A with: $x }. (({ [1, 2] map: { x -> 1 add: ($o call: $x) } } handleWith: $h) at: 0) print.",
   "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: 1 }. ({ 2 times: { $Effect raise: #A with: $Nil } } handleWith: $h) print.",
   "(1 divideBy: 0) print.",
   "(1 add: 'bad') print.",
@@ -42,7 +42,16 @@ for (const [index, source] of cases.entries()) {
     directNumberSends: true,
   });
   const actual = await execute(optimized);
-  assert.deepEqual(actual, await execute(baseline), source);
+  const expected = await execute(baseline);
+  assert.deepEqual(actual, expected, source);
+  assert.deepEqual(
+    await execute(compileExperimentalEffects(source, "direct.toss", {
+      sharedDispatchTables: true,
+      directNumberSends: true,
+    })),
+    expected,
+    source,
+  );
   if (index === 3 || index === 4) {
     assert.equal(actual.success, false, source);
     assert.match(actual.diagnostic ?? "", /RuntimeError:/, source);
@@ -69,6 +78,13 @@ assert.deepEqual(
 );
 assert.equal(moduleResult.success, true);
 assert.equal(moduleResult.stdout, "8\n");
+assert.deepEqual(
+  await execute(compileExperimentalEffectsSources("main.toss", sources, {
+    sharedDispatchTables: true,
+    directNumberSends: true,
+  })),
+  moduleResult,
+);
 console.log(
   "PASS: direct numeric sends preserve effect propagation, errors, async and module initialization",
 );

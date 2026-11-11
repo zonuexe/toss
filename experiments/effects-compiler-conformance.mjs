@@ -136,6 +136,20 @@ for (const [name, source] of cases) {
       directNumberSends: true,
     }),
   );
+  const shared = await execute(
+    compileExperimentalEffects(source, "conformance.toss", {
+      sharedDispatchTables: true,
+    }),
+  );
+  assert.equal(shared.success, experimental.success, name);
+  assert.equal(shared.stdout, experimental.stdout, name);
+  if (!experimental.success) {
+    assert.equal(
+      diagnostic(shared.stderr),
+      diagnostic(experimental.stderr),
+      name,
+    );
+  }
   assert.equal(optimized.success, experimental.success, name);
   assert.equal(optimized.stdout, experimental.stdout, name);
   if (!experimental.success) {
@@ -160,5 +174,5 @@ for (const [name, source] of cases) {
   }
 }
 console.log(
-  `PASS: ${cases.length} ordinary programs match the standard compiler with and without direct numeric sends`,
+  `PASS: ${cases.length} ordinary programs match with direct numeric sends and shared dispatch tables`,
 );

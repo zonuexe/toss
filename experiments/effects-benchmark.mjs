@@ -15,9 +15,20 @@ const workloads = [
       "#result bind: (2000 times: { [1, 2, 3, 4, 5] map: { x -> $x add: 1 } }). %js(v = $result; (() => { if (v.length !== 5 || v[4] !== 6) throw Error('wrong result'); })()).",
   },
   {
+    name: "dynamic method callbacks (10,000 calls)",
+    source:
+      "#o bind: $Object clone. $o at: 'run:' put: { x -> $x add: 1 }. #result bind: (10000 times: { $o run: 2 }). %js(v = $result; (() => { if (v !== 3) throw Error('wrong result'); })()).",
+  },
+  {
     name: "handled effect and resume (2,000 requests)",
     source:
       "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $p }. #result bind: ({ 2000 times: { $Effect raise: #A with: 3 } } handleWith: $h). %js(v = $result; (() => { if (v !== 3) throw Error('wrong result'); })()).",
+    effect: true,
+  },
+  {
+    name: "effect through dynamic map callback (1,500 requests)",
+    source:
+      "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $p }. #o bind: $Object clone. $o at: 'run:' put: { x -> $Effect raise: #A with: $x }. #result bind: ({ 500 times: { [1, 2, 3] map: { x -> $o run: $x } } } handleWith: $h). %js(v = $result; (() => { if (v.length !== 3 || v[2] !== 3) throw Error('wrong result'); })()).",
     effect: true,
   },
 ];
@@ -57,9 +68,22 @@ for (const workload of workloads) {
     measure(compileExperimentalEffects(workload.source, "benchmark.toss")),
   );
   console.log(
+    "  shared dispatch",
+    measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
+      sharedDispatchTables: true,
+    })),
+  );
+  console.log(
     "  direct number",
     measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
       directNumberSends: true,
+    })),
+  );
+  console.log(
+    "  both options",
+    measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
+      directNumberSends: true,
+      sharedDispatchTables: true,
     })),
   );
 }

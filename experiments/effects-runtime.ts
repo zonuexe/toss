@@ -1,6 +1,12 @@
 // Experimental runtime source; not the production Toss runtime.
-export const experimentalEffectRuntime = `
+export function experimentalEffectRuntime(
+  sharedDispatchTables = false,
+): string {
+  const allowedMessages =
+    `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);`;
+  return `
 const effectBlocks = new WeakSet();
+${sharedDispatchTables ? allowedMessages : ""}
 const effectJavaScriptCallbacks = new WeakMap();
 let effectBoundary = Object.freeze({});
 function withEffectBoundaryValue(boundary, body) {
@@ -323,8 +329,8 @@ function* effectSend(receiver, message, context) {
     }
   }
   if (typeof name === "symbol") return send(receiver, message, context);
-  const allowed = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);
-  if (!allowed.has(name) || (name === "print" && typeof receiver === "object" && receiver !== null))
+  ${sharedDispatchTables ? "" : allowedMessages}
+  if (!effectAllowedMessages.has(name) || (name === "print" && typeof receiver === "object" && receiver !== null))
     throw new TossRuntimeError("Unsupported message in experimental effects compiler: " + name, context.location);
   return send(receiver, message, context);
 }
@@ -375,3 +381,4 @@ function reportEffectFailures(error) {
   setEffectErrorStack(error, effectOriginalErrorStacks.get(error) + lines.join(""));
 }
 `;
+}

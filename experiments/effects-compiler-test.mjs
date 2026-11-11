@@ -3,12 +3,30 @@ import { compileExperimentalEffects } from "./effects-compiler.ts";
 
 async function execute(source) {
   const javascript = compileExperimentalEffects(source, "experimental.toss");
-  const result = await new Deno.Command(Deno.execPath(), {
-    args: ["eval", javascript],
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
+  const shared = compileExperimentalEffects(source, "experimental.toss", {
+    sharedDispatchTables: true,
+  });
+  const run = (code) =>
+    new Deno.Command(Deno.execPath(), {
+      args: ["eval", code],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+  const [result, sharedResult] = await Promise.all([
+    run(javascript),
+    run(shared),
+  ]);
   const decoder = new TextDecoder();
+  const relevant = (stderr) =>
+    decoder.decode(stderr).split("\n")
+      .filter((line) => !/^\s+at /.test(line)).join("\n");
+  assert.equal(sharedResult.success, result.success, source);
+  assert.equal(
+    decoder.decode(sharedResult.stdout),
+    decoder.decode(result.stdout),
+    source,
+  );
+  assert.equal(relevant(sharedResult.stderr), relevant(result.stderr), source);
   return {
     success: result.success,
     stdout: decoder.decode(result.stdout),

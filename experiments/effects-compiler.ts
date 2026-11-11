@@ -38,7 +38,10 @@ const directNumberMessages = new Set([
   "greaterThanOrEqual:",
 ]);
 
-type EffectCompilerOptions = { readonly directNumberSends?: boolean };
+type EffectCompilerOptions = {
+  readonly directNumberSends?: boolean;
+  readonly sharedDispatchTables?: boolean;
+};
 
 function createEffectEmitter(
   evaluators: ReadonlyMap<Expression, number>,
@@ -258,7 +261,7 @@ export function compileExperimentalEffects(
     "((javascriptEvaluators, javascriptImportNames) => {",
     ...runtimePreludeLines(),
     ...fileRootSetupLines(),
-    experimentalEffectRuntime,
+    experimentalEffectRuntime(options.sharedDispatchTables),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = effectBoundary;",
     "registerEffectSymbolRoot(symbolRoot);",
@@ -306,7 +309,7 @@ export function compileExperimentalEffectsSources(
     ...emitJavaScriptImportStatements(imports, importAliases),
     "((javascriptEvaluators, javascriptImportNames) => {",
     ...runtimePreludeLines(),
-    experimentalEffectRuntime,
+    experimentalEffectRuntime(options.sharedDispatchTables),
     experimentalEffectModuleRuntime,
     ...initializers,
     `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw error; }`,

@@ -1,19 +1,31 @@
 import assert from "node:assert/strict";
 import { compileExperimentalEffects } from "./effects-compiler.ts";
 
-async function execute(source) {
-  const javascript = compileExperimentalEffects(source, "async-boundary.toss");
+async function execute(source, shared = false) {
+  const javascript = compileExperimentalEffects(source, "async-boundary.toss", {
+    sharedDispatchTables: shared,
+  });
   const result = await new Deno.Command(Deno.execPath(), {
     args: ["eval", javascript],
     stdout: "piped",
     stderr: "piped",
   }).output();
   const decoder = new TextDecoder();
-  return {
+  const outcome = {
     success: result.success,
     stdout: decoder.decode(result.stdout),
     stderr: decoder.decode(result.stderr),
   };
+  if (!shared) {
+    const alternate = await execute(source, true);
+    const relevant = (stderr) =>
+      stderr.split("\n")
+        .filter((line) => !/^\s+at /.test(line)).join("\n");
+    assert.equal(alternate.success, outcome.success, source);
+    assert.equal(alternate.stdout, outcome.stdout, source);
+    assert.equal(relevant(alternate.stderr), relevant(outcome.stderr), source);
+  }
+  return outcome;
 }
 const order = await execute(
   "#work bind: %async({ 'before' print. %await(%js(Promise.resolve(1))). 'after' print. 7 }). $work value. 'outside' print.",

@@ -4,8 +4,10 @@ import {
   compileExperimentalEffectsSources,
 } from "./effects-compiler.ts";
 
-async function run(source, observeCause = false) {
-  const generated = compileExperimentalEffects(source, "js-boundary.toss");
+async function run(source, observeCause = false, shared = false) {
+  const generated = compileExperimentalEffects(source, "js-boundary.toss", {
+    sharedDispatchTables: shared,
+  });
   const prefix = generated.match(/^(?:import \* as [^\n]+\n)*/)?.[0] ?? "";
   const javascript = observeCause
     ? `${prefix}try { ${
@@ -18,11 +20,21 @@ async function run(source, observeCause = false) {
     stderr: "piped",
   }).output();
   const decoder = new TextDecoder();
-  return {
+  const outcome = {
     success: result.success,
     stdout: decoder.decode(result.stdout),
     stderr: decoder.decode(result.stderr),
   };
+  if (!shared) {
+    const alternate = await run(source, observeCause, true);
+    const relevant = (stderr) =>
+      stderr.split("\n")
+        .filter((line) => !/^\s+at /.test(line)).join("\n");
+    assert.equal(alternate.success, outcome.success, source);
+    assert.equal(alternate.stdout, outcome.stdout, source);
+    assert.equal(relevant(alternate.stderr), relevant(outcome.stderr), source);
+  }
+  return outcome;
 }
 const ordinary = await run("#x bind: 2. (%js(x = $x; x + 1)) print.");
 assert.equal(ordinary.success, true, ordinary.stderr);

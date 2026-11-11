@@ -1267,3 +1267,31 @@ observed timing differences there are measurement noise, not an optimization.
 The handled-effect workload likewise emitted identical code. This candidate
 therefore reduces a narrow part of the overhead but does not resolve the cost
 of cooperative Block calls or dynamic dispatch. It remains off by default.
+
+### Shared dispatch allowlist
+
+The cooperative dispatcher previously constructed the same allowlist of
+supported primitive messages on every fallback send. An opt-in experimental
+runtime variant constructs it once per artifact instead. It retains the same
+generator calls, dynamic slot lookup, callback invocation and boundary logic; it
+does not infer whether a Block or method is effect-free. The allowlist is
+private to the artifact and is not exposed through Toss or its JS evaluators.
+
+The benchmark now includes a dynamically selected method and an effect raised
+through a dynamic method inside `map:`. In one Deno 2.9.7 / V8 15.0.245.2 macOS
+arm64 run, the shared-table variant reduced the ordinary `map:` workload from
+9.25 ms to 6.83 ms and dynamic method workload from 10.18 ms to 7.93 ms; the
+normal compiler took 1.81 ms and 3.10 ms respectively. The effectful `map:`
+workload measured 5.61 ms versus 5.14 ms; a direct resumption workload showed
+little improvement. A second run while other tests were running measured the
+effectful `map:` workload at 5.02 ms versus 5.44 ms, so it does not support a
+reliable improvement for that case. These are local microbenchmarks with fixed
+variant order and do not establish a general speedup or effect-request cost.
+
+The experimental suite compares both variants on ordinary programs, synchronous
+handler cases including 10,000 resumptions, and JS and async boundary cases. It
+also combines this option with direct numeric sends in a virtual-module effect
+test. The options remain disabled by default. The remaining overhead includes
+generator delegation, per-invocation boundary wrappers and dynamic dispatch;
+removing boundary work without proving behavior under re-entry and async
+suspension would risk changing semantics.
