@@ -1209,6 +1209,12 @@ not cleanup added by the outer module. This validates that pair of cache
 snapshots; it does not establish correctness for arbitrary host re-entry or
 concurrent failure propagation.
 
+During `ensure:` cleanup, a JS callback may re-enter a failed module and restore
+its cached metadata on the same Error object. The experimental runtime now saves
+the outer failure's metadata before running cleanup and restores it afterwards,
+before recording any new cleanup failure. A regression probe covers this case;
+it does not prove isolation for every re-entrant or concurrent error occurrence.
+
 The JS and async boundary probes additionally pass `undefined` and a Proxy whose
 property/prototype access throws as the original JS throw or Promise rejection.
 The experimental boundary preserves the original value as `cause` without

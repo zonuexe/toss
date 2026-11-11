@@ -97,10 +97,17 @@ function* effectEnsure(receiver, cleanup, context) {
   try { return yield* effectInvoke(body, [], context); }
   catch (error) { failed = true; primary = error; throw error; }
   finally {
+    const savedFailure = failed ? snapshotEffectFailure(primary) : undefined;
+    let cleanupFailed = false;
+    let cleanupError;
     effectCleanupDepth++;
     try { yield* effectInvoke(finalizer, [], context); }
-    catch (error) { if (failed) recordCleanupFailure(primary, error); else throw error; }
+    catch (error) { cleanupFailed = true; cleanupError = error; }
     finally { effectCleanupDepth--; }
+    if (failed) {
+      restoreEffectFailure(primary, savedFailure);
+      if (cleanupFailed) recordCleanupFailure(primary, cleanupError);
+    } else if (cleanupFailed) throw cleanupError;
   }
 }
 function* effectHandle(block, handler, context) {

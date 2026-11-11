@@ -260,6 +260,31 @@ assert.ok(!secondFailure.includes('Unbound name "cleanupA"'), repeatedText);
 console.log(
   "PASS: reused module error keeps cleanup information per invocation",
 );
+const reentrantFailure = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#b bind: { %import('./lib.toss') } asJSCallback. #a bind: { { { %import('./lib.toss') } ensure: { $innerCleanup } } ensure: { %js(f = $b; (() => { try { f(); } catch (e) {} })()) } } asJSCallback. %js(f = $a; (() => { try { f(); } catch (e) { console.log(e.stack); } })()).",
+    ],
+    ["lib.toss", "%export($missing)."],
+  ]),
+);
+const reentrantResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", reentrantFailure],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const reentrantText = new TextDecoder().decode(reentrantResult.stdout);
+assert.equal(
+  reentrantResult.success,
+  true,
+  new TextDecoder().decode(reentrantResult.stderr),
+);
+assert.match(reentrantText, /Unbound name "innerCleanup"/);
+console.log(
+  "PASS: reentrant cached failure preserves the outer cleanup failure",
+);
 const cachedFailureWithCleanup = compileExperimentalEffectsSources(
   "main.toss",
   new Map([
