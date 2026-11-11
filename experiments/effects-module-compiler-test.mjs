@@ -372,3 +372,41 @@ assert.equal(
 );
 assert.equal(hostileStackText, "SAME true TossRuntimeError\n");
 console.log("PASS: hostile stack access cannot replace the cached error");
+// Expose an experimental internal inspection function only in this test artifact.
+const inspectionSource = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
+    ],
+    ["lib.toss", "%export({ $missing } ensure: { $moduleCleanup })."],
+  ]),
+);
+const rootEntry =
+  'try { runEffectProgram(effectInitialize(0, {file: "<entry>", line: 1, column: 1}));';
+assert.equal(inspectionSource.split(rootEntry).length - 1, 1);
+const inspected = inspectionSource.replace(
+  rootEntry,
+  `globalThis.effectProbe = getEffectFailureDetails;\n${rootEntry}`,
+);
+const inspectionResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", inspected],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const inspectionText = new TextDecoder().decode(inspectionResult.stdout);
+assert.equal(
+  inspectionResult.success,
+  true,
+  new TextDecoder().decode(inspectionResult.stderr),
+);
+assert.match(inspectionText, /SAME true/);
+assert.match(
+  inspectionText,
+  /CLEANUP .*Unbound name "moduleCleanup".*Unbound name "cleanupB"/,
+);
+assert.doesNotMatch(inspectionText, /Unbound name "cleanupA"/);
+console.log(
+  "PASS: non-mutating failure details retain frozen error identity and current cleanup",
+);

@@ -1186,3 +1186,12 @@ records, and re-entrant/concurrent reuse needs further study. If a host makes
 its internal records but cannot reliably rewrite that host-visible stack; the
 stack may be stale or omit associated failures. A non-mutating diagnostics
 interface is required before claiming general error-reporting guarantees.
+
+The experimental runtime now has an internal non-mutating failure-details
+operation that returns the original error, a fresh list of associated cleanup
+errors in execution order, and a fresh list of handler contexts. A test exposes
+it only in a generated test artifact and verifies that a read-only frozen stack
+still permits the current module and caller cleanup details to be inspected
+without changing error identity. This is not a public Toss or JS API; lifetime,
+concurrent access and presentation need further design. Normal stack formatting
+remains best-effort when the host prevents reading or writing `stack`.
