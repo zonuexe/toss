@@ -66,6 +66,7 @@ function recordHandlerContext(error, request) {
 }
 function validateZeroArgumentBlock(value, context) {
   const block = blockArgument(value, context);
+  if (asyncBlockFunctions.has(block)) throw new TossRuntimeError("Async Blocks are not supported here.", context.location);
   if (block.length !== 0) throw new TossRuntimeError("Block expects " + block.length + " argument(s), received 0.", context.location);
   return block;
 }
@@ -84,6 +85,7 @@ function* effectEnsure(receiver, cleanup, context) {
   }
 }
 function* effectHandle(block, handler, context) {
+  if (asyncBlockFunctions.has(block)) throw new TossRuntimeError("Async Blocks are not supported here.", context.location);
   if (handler === null || typeof handler !== "object" || Array.isArray(handler) || isJavaScriptReference(handler))
     throw new TossRuntimeError("Handler must be an Object.", context.location);
   const iterator = effectInvoke(block, [], context);
@@ -303,7 +305,7 @@ function* effectSend(receiver, message, context) {
 function runEffectProgram(iterator, boundary) {
   const step = iterator.next();
   if (!step.done) {
-    const reason = boundary === "JavaScript" ? "Effect cannot cross the JavaScript boundary: " : "Unhandled effect ";
+    const reason = boundary === "JavaScript" ? "Effect cannot cross the JavaScript boundary: " : boundary === "Async" ? "Effect cannot cross the async boundary: " : "Unhandled effect ";
     const error = new TossRuntimeError(reason + keyDescription(step.value.effect) + ".", step.value.location);
     error.effect = step.value.effect;
     error.payload = step.value.payload;

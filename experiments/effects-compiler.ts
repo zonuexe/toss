@@ -12,6 +12,7 @@ import {
   resolveVirtualSourceId,
 } from "../src/module_graph.ts";
 import { experimentalEffectModuleRuntime } from "./effects-module-runtime.ts";
+import { containsDirectAwait } from "../src/codegen_analysis.ts";
 import {
   collectJavaScriptExpressions,
   emitJavaScriptEvaluators,
@@ -22,10 +23,16 @@ import {
 } from "../src/codegen_prelude.ts";
 
 function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
-  function emit(expression: Expression, scope = "environment"): string {
+  function emit(
+    expression: Expression,
+    scope = "environment",
+    asynchronous = false,
+  ): string {
     const context = `{location: ${
       JSON.stringify(expression.location)
     }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary}`;
+    const call = (code: string): string =>
+      asynchronous ? `runEffectProgram(${code}, "Async")` : `(yield* ${code})`;
     switch (expression.kind) {
       case "string":
         return JSON.stringify(expression.value);
@@ -39,14 +46,10 @@ function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
         return `fetchBinding(${JSON.stringify(expression.name)}, ${context})`;
       case "array":
         return `[${
-          expression.elements.map((item) => emit(item, scope)).join(", ")
+          expression.elements.map((item) => emit(item, scope, asynchronous))
+            .join(", ")
         }]`;
       case "block": {
-        if (expression.asynchronous === true) {
-          throw new Error(
-            "Experimental effects compiler does not support async Blocks.",
-          );
-        }
         const parameters = expression.parameters.map((_, index) =>
           `arg${index}`
         );
@@ -57,19 +60,23 @@ function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
             JSON.stringify(locations[index])
           }).bindings.set(Symbol.for(${JSON.stringify(name)}), arg${index});`
         );
-        const body = expression.body.map((item, index) =>
-          `${index === expression.body.length - 1 ? "return " : ""}${
-            emit(item, "localScope")
-          };`
-        );
-        return `((captured) => markEffectBlock(function*(${
-          parameters.join(", ")
-        }) {
-const invocation = this;
+        const blockAsync = expression.asynchronous === true;
+        const body = expression.body.map((item, index) => {
+          const last = index === expression.body.length - 1;
+          const value = emit(item, "localScope", blockAsync);
+          return last && blockAsync
+            ? `return {value: ${value}};`
+            : `${last ? "return " : ""}${value};`;
+        });
+        const scopeSetup = `
 const {carrier: localScope} = blockEnvironment(captured, ${
           JSON.stringify(expression.location)
         }, ${JSON.stringify(locations)});
-localScope.effectBoundary = invocation?.effectBoundary ?? captured.effectBoundary ?? effectBoundary;
+localScope.effectBoundary = ${
+          blockAsync
+            ? "asyncBoundary"
+            : "invocation?.effectBoundary ?? captured.effectBoundary ?? effectBoundary"
+        };
 if (invocation?.kind === "tossInvocation") {
   localScope.superContext = invocation.context;
   lexicalEnvironment(localScope, ${
@@ -77,57 +84,109 @@ if (invocation?.kind === "tossInvocation") {
         }).bindings.set(Symbol.for("self"), invocation.context.receiver);
 }
 ${bindings.join("\n")}
-${body.length === 0 ? "return null;" : body.join("\n")}
+${
+          body.length === 0
+            ? (blockAsync ? "return {value: null};" : "return null;")
+            : body.join("\n")
+        }`;
+        if (blockAsync) {
+          return `((captured) => markAsyncBlock(async function(${
+            parameters.join(", ")
+          }) {
+const invocation = this;
+const asyncBoundary = Object.freeze({});
+try {${scopeSetup}
+} catch (error) { reportEffectFailures(error); throw error; }
+}))(${scope})`;
+        }
+        return `((captured) => markEffectBlock(function*(${
+          parameters.join(", ")
+        }) {
+const invocation = this;${scopeSetup}
 }))(${scope})`;
       }
       case "send":
-        return `(yield* effectSend(${
-          emit(expression.receiver, scope)
-        }, {name: ${JSON.stringify(expression.name)}, arguments: [${
-          expression.arguments.map((item) => emit(item, scope)).join(", ")
-        }]}, ${context}))`;
-      case "pipeline":
-        return `(yield* effectPipeline(${emit(expression.input, scope)}, ${
-          emit(expression.receiver, scope)
-        }, {name: ${JSON.stringify(expression.name)}, arguments: [${
-          expression.arguments.map((item) => emit(item, scope)).join(", ")
-        }]}, ${context}))`;
-      case "super":
-        return `(yield* effectParent([${
-          expression.arguments.map((item) => emit(item, scope)).join(", ")
-        }], ${context}, ${scope}))`;
-      case "extend": {
-        const entries = expression.entries.map((entry) =>
-          `yield* effectSend(extendTarget, {name: "at:put:", arguments: [${
-            emit(entry.key, scope)
-          }, ${emit(entry.value, scope)}]}, {location: ${
-            JSON.stringify(entry.location)
-          }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary});`
+        return call(
+          `effectSend(${
+            emit(expression.receiver, scope, asynchronous)
+          }, {name: ${JSON.stringify(expression.name)}, arguments: [${
+            expression.arguments.map((item) => emit(item, scope, asynchronous))
+              .join(", ")
+          }]}, ${context})`,
         );
-        return `(yield* (function*(extendTarget) {
-if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget) || isJavaScriptReference(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);
-${entries.join("\n")}
-return extendTarget;
-})(${emit(expression.input, scope)}))`;
+      case "pipeline":
+        return call(
+          `effectPipeline(${emit(expression.input, scope, asynchronous)}, ${
+            emit(expression.receiver, scope, asynchronous)
+          }, {name: ${JSON.stringify(expression.name)}, arguments: [${
+            expression.arguments.map((item) => emit(item, scope, asynchronous))
+              .join(", ")
+          }]}, ${context})`,
+        );
+      case "super":
+        return call(
+          `effectParent([${
+            expression.arguments.map((item) => emit(item, scope, asynchronous))
+              .join(", ")
+          }], ${context}, ${scope})`,
+        );
+      case "extend": {
+        const entries = expression.entries.map((entry) => {
+          const operation =
+            `effectSend(extendTarget, {name: "at:put:", arguments: [${
+              emit(entry.key, scope, asynchronous)
+            }, ${emit(entry.value, scope, asynchronous)}]}, {location: ${
+              JSON.stringify(entry.location)
+            }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary})`;
+          return `${call(operation)};`;
+        });
+        const validator =
+          `if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget) || isJavaScriptReference(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);`;
+        const input = emit(expression.input, scope, asynchronous);
+        const innerAwait = asynchronous &&
+          expression.entries.some((entry) =>
+            containsDirectAwait(entry.key) || containsDirectAwait(entry.value)
+          );
+        if (innerAwait) {
+          return `(await (async function(extendTarget) { ${validator} ${
+            entries.join("\n")
+          } return {value: extendTarget}; })(${input})).value`;
+        }
+        if (asynchronous) {
+          return `(function(extendTarget) { ${validator} ${
+            entries.join("\n")
+          } return extendTarget; })(${input})`;
+        }
+        return `(yield* (function*(extendTarget) { ${validator} ${
+          entries.join("\n")
+        } return extendTarget; })(${input}))`;
       }
       case "import":
-        return `(yield* effectInitialize(moduleImports.get(${
-          JSON.stringify(expression.path)
-        }), ${context}.location))`;
+        return call(
+          `effectInitialize(moduleImports.get(${
+            JSON.stringify(expression.path)
+          }), ${context}.location)`,
+        );
       case "export":
-        return `(moduleExport = ${emit(expression.value, scope)})`;
+        return `(moduleExport = ${
+          emit(expression.value, scope, asynchronous)
+        })`;
       case "javascript": {
         const index = evaluators.get(expression);
         if (index === undefined) {
           throw new TypeError("Missing JavaScript evaluator.");
         }
         return `evaluateEffectJavaScript(javascriptEvaluators[${index}], [${
-          expression.bindings.map((binding) => emit(binding.value, scope)).join(
-            ", ",
-          )
+          expression.bindings.map((binding) =>
+            emit(binding.value, scope, asynchronous)
+          ).join(", ")
         }], ${context})`;
       }
       case "await":
+        if (!asynchronous) throw new TypeError("Await outside an async Block.");
+        return `(await awaitToss(${
+          emit(expression.expression, scope, asynchronous)
+        }, ${context})).value`;
       case "javascriptImport":
       case "quotation":
         throw new Error(

@@ -353,12 +353,8 @@ assert.ok(
     unhandledInner < unhandledOuter,
   unhandledNestedCleanup.stderr,
 );
-assert.throws(
-  () => compileExperimentalEffects("%async({ 1 }).", "experimental.toss"),
-  /does not support async/,
-);
 console.log(
-  `PASS: ${cases.length} experimental AST compiler scenarios, unhandled effect and async rejection`,
+  `PASS: ${cases.length} experimental AST compiler scenarios and unhandled effect`,
 );
 const manyResumptions = await execute(
   "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: $Nil }. { 10000 times: { $Effect raise: #A with: $Nil } } handleWith: $h. 'done' print.",

@@ -1034,13 +1034,13 @@ invalid resume lifetimes, source position, evaluation order and unhandled
 effects.
 
 This is a vertical slice, not the complete agreed design. It deliberately
-rejects JS module imports, async Blocks, await, and other unsupported AST forms.
-It permits only a small set of Prelude messages; unsupported messages fail
-rather than silently invoking a callback without propagating suspension. Cleanup
-failures are recorded experimentally using a WeakMap keyed by Error, which
-cannot correctly distinguish independent failures that reuse the same Error and
-does not handle arbitrary thrown values. Its diagnostic formatting is
-provisional. It does not implement JS/async boundaries, REPL integration,
+rejects JS module imports and other unsupported AST forms. It permits only a
+small set of Prelude messages; unsupported messages fail rather than silently
+invoking a callback without propagating suspension. Cleanup failures are
+recorded experimentally using a WeakMap keyed by Error, which cannot correctly
+distinguish independent failures that reuse the same Error and does not handle
+arbitrary thrown values. Its diagnostic formatting is provisional. JS and async
+boundary behavior is experimental; it does not yet implement REPL integration,
 separate runtimes, tree-shaking, or a full set of diagnostics. The `Effect`
 binding and syntax are experimental and must not be treated as released
 behavior. These limits are deliberate until the runtime protocol and failure
@@ -1054,7 +1054,7 @@ nested cleanup failures. This does not establish bounded stack use for deeply
 nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
 error metadata, module, interop or unsupported syntax limitations above.
 
-`experiments/effects-compiler-conformance.mjs` compares 29 supported programs
+`experiments/effects-compiler-conformance.mjs` compares 31 supported programs
 without effect requests against the production compiler, including lexical
 bindings, evaluation order, collection snapshots, inherited methods, `%super`,
 extension, and selected runtime failures with their source locations. It checks
@@ -1080,13 +1080,12 @@ cycles. It instruments generated test artifacts to confirm cached identity for
 handler failure and unhandled effects, and interruption metadata after a cleanup
 failure; there is not yet a language-level catch to observe those cases.
 
-The slice explicitly rejects macro-library imports, JS module imports, async
-forms and unsupported messages. It does not implement filesystem module
-resolution, REPL module loading, JS module output, an external runtime,
-source-map support, or production compilation. Error metadata is still
-Error-keyed and experimental. Static dependency collection and validation reuse
-existing modules, but the prototype does not claim parity across every loader
-edge case.
+The slice explicitly rejects macro-library imports, JS module imports and
+unsupported messages. It does not implement filesystem module resolution, REPL
+module loading, JS module output, an external runtime, source-map support, or
+production compilation. Error metadata is still Error-keyed and experimental.
+Static dependency collection and validation reuse existing modules, but the
+prototype does not claim parity across every loader edge case.
 
 The AST slice now registers the actual built-in `generateUnique` method for each
 module root rather than treating it as an unsupported native method. Tests cover
@@ -1136,7 +1135,27 @@ callback contract under ADR-38.
 The experimental compiler now passes the execution boundary through Block
 invocation context as well as through the synchronous host-entry guard.
 Generator steps restore their caller's boundary after each delegation. This
-prepares for async suspension, where a single mutable global cannot identify the
-invocation after another task runs; the async implementation and concurrency
-guarantees are not yet present. The existing JS boundary, nested resume,
-ordinary-program and module probes continue to pass.
+supports the experimental async boundary described below, where a single mutable
+global cannot identify the invocation after another task runs. General
+concurrency guarantees remain unverified. The existing JS boundary, nested
+resume, ordinary-program and module probes continue to pass.
+
+## Experimental async boundary
+
+The AST slice emits async Blocks as ordinary async functions, using the existing
+async-result envelope and `awaitToss` conversion. Synchronous effect operations
+inside those Blocks run under a fresh async boundary. A handler installed wholly
+within the async Block can handle its own requests; requests and resume
+capabilities cannot cross from the async Block to an outer synchronous handler,
+even before the first await. Async Blocks are rejected as synchronous handlers,
+`handleWith:` bodies, and `ensure:` bodies or cleanups. Synchronous Blocks may
+return async results without implicitly waiting, as specified above.
+
+`experiments/effects-async-boundary-test.mjs` covers startup and wait ordering,
+handlers before and after await, simultaneous async invocations,
+non-assimilation of Toss Objects with a `then` slot, promise identity and
+rejection causes, cleanup timing, and boundary errors with cleanup details.
+Async generator compilation was rejected in this experiment because delegation
+can assimilate a Toss Object's `then` slot. The implementation still lacks JS
+module imports, full host/re-entrant concurrency validation, async effect
+handlers, cancellation, REPL integration and production runtime integration.

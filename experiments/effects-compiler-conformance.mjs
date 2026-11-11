@@ -96,6 +96,14 @@ const cases = [
     "JS callback conversion error",
     "#cb bind: { x -> $x } asJSCallback. %js(f = $cb; f()).",
   ],
+  [
+    "async wait order",
+    "#f bind: %async({ 'before' print. %await(1). 'after' print }). $f value. 'outside' print.",
+  ],
+  [
+    "async JS callback",
+    "#f bind: %async({ %await(%js(Promise.resolve(5))) }) asJSCallback. %js(f = $f; f().then(v => console.log(v))).",
+  ],
   ["invalid Block arity", "{ x -> $x } value."],
   ["invalid filter result", "[1] filter: { x -> 1 }."],
   ["invalid conditional branch", "$True ifTrue: { 'never' print } ifFalse: 1."],
