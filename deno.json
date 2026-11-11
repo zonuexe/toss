@@ -30,6 +30,8 @@
     "effects:benchmark": "deno run experiments/effects-benchmark.mjs",
     "effects:benchmark-boundary": "deno run experiments/effects-boundary-benchmark.mjs",
     "effects:benchmark-delegate": "deno run experiments/effects-boundary-benchmark.mjs delegate",
+    "effects:benchmark-engines": "deno run --allow-run=node,bun experiments/effects-cross-engine-benchmark.mjs",
+    "effects:probe-engines": "deno run --allow-run=node,bun experiments/effects-cross-engine-test.mjs",
     "effects:demo": "deno run --allow-read=experiments/effects-demo.toss --allow-run=deno experiments/run-effects-demo.ts",
     "check": "deno fmt --check && deno lint && deno check src/cli.ts src/runtime_cli.ts src/repl_cli.ts tests/*.ts"
   },

@@ -1348,3 +1348,23 @@ handler, failed-module re-entry, JS boundaries and concurrent async calls. They
 do not prove all host re-entry patterns or establish performance on other JS
 engines. This candidate merits further investigation before any default or
 production decision.
+
+### Cross-engine checks for the shared delegate
+
+`deno task effects:probe-engines` compiles the same four scenarios with both
+delegates and executes each artifact in Node and Bun: nested JS callback
+re-entry followed by outer resumption, concurrent async handlers, abandonment
+cleanup, and cached-module failure re-entry with cleanup details. It checks the
+expected output independently for each variant and host. It requires both
+executables on PATH; it is separate from the Deno-only probe suite.
+
+`deno task effects:benchmark-engines` compiles identical artifacts once and
+runs them under both hosts. It uses eight warmups, 30 alternating paired samples
+and the same three workloads as the Deno delegate benchmark. On macOS arm64,
+two runs on Node 26.13.0 / V8 14.6 gave candidate/baseline ratios of 0.80 and
+0.75 for map, 0.72 and 0.72 for dynamic methods, and 0.73 and 1.07 for
+effectful callbacks. Bun 1.3.14 / JavaScriptCore gave 0.86 and 0.85, 0.85 and
+0.83, and 0.82 and 0.89 respectively. Bun reports a compatibility V8 version;
+the benchmark records its WebKit revision instead of treating that as its
+engine. These results support further study across engines but are still local
+microbenchmarks; the fluctuating Node effectful result is inconclusive.
