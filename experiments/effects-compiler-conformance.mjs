@@ -108,6 +108,14 @@ const cases = [
     "static JavaScript module",
     "#path bind: %jsImport('node:path'). (%js(p = $path; p.basename('/a/b'))) print.",
   ],
+  [
+    "async awaited JS binding",
+    "#f bind: %async({ %js(x = %await(%js(Promise.resolve(4))); x + 1) }) asJSCallback. %js(f = $f; f().then(v => console.log(v))).",
+  ],
+  [
+    "async collection callback",
+    "#f bind: %async({ [1, 2] map: { x -> $x add: 1 } }) asJSCallback. %js(f = $f; f().then(v => console.log(v.join(',')))).",
+  ],
   ["invalid Block arity", "{ x -> $x } value."],
   ["invalid filter result", "[1] filter: { x -> 1 }."],
   ["invalid conditional branch", "$True ifTrue: { 'never' print } ifFalse: 1."],
