@@ -3,11 +3,12 @@ export const experimentalEffectRuntime = `
 const effectBlocks = new WeakSet();
 const effectJavaScriptCallbacks = new WeakMap();
 let effectBoundary = Object.freeze({});
-function withEffectBoundary(body) {
+function withEffectBoundaryValue(boundary, body) {
   const previous = effectBoundary;
-  effectBoundary = Object.freeze({});
+  effectBoundary = boundary;
   try { return body(); } finally { effectBoundary = previous; }
 }
+function withEffectBoundary(body) { return withEffectBoundaryValue(Object.freeze({}), body); }
 function evaluateEffectJavaScript(evaluator, values, context) {
   return withEffectBoundary(() => evaluateCompiledJavaScript(evaluator, values, context));
 }
@@ -20,7 +21,7 @@ function effectJavaScriptCallback(receiver, context) {
       if (hostArguments.length < receiver.length)
         throw new TossRuntimeError("JavaScript callback expects " + receiver.length + " argument(s), received " + hostArguments.length + ".", context.location);
       const args = hostArguments.slice(0, receiver.length).map((value) => fromJavaScript(value, context));
-      const lexicalContext = {location: context.location, environment: context.environment};
+      const lexicalContext = {location: context.location, environment: context.environment, boundary: effectBoundary};
       return toJavaScript(runEffectProgram(effectInvoke(receiver, args, lexicalContext), "JavaScript"), context);
     }); } catch (error) { reportEffectFailures(error); throw error; }
   };
@@ -37,8 +38,19 @@ let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
 function* effectInvoke(block, args, context) {
-  const result = invokeBlock(block, args, context);
-  return effectBlocks.has(block) ? yield* result : result;
+  const boundary = context.boundary ?? effectBoundary;
+  const methodReceiver = context.methodReceiver === undefined
+    ? {kind: "effectInvocation", effectBoundary: boundary}
+    : {...context.methodReceiver, effectBoundary: boundary};
+  const result = withEffectBoundaryValue(boundary, () => invokeBlock(block, args, {...context, methodReceiver}));
+  if (!effectBlocks.has(block)) return result;
+  const delegate = {
+    [Symbol.iterator]() { return this; },
+    next(value) { return withEffectBoundaryValue(boundary, () => result.next(value)); },
+    throw(error) { return withEffectBoundaryValue(boundary, () => result.throw(error)); },
+    return(value) { return withEffectBoundaryValue(boundary, () => result.return(value)); },
+  };
+  return yield* delegate;
 }
 function recordCleanupFailure(primary, secondary) {
   if (!(primary instanceof Error)) throw secondary;
@@ -149,7 +161,7 @@ function* effectHandle(block, handler, context) {
       const selected = Reflect.get(owner, request.effect, handler);
       if (typeof selected !== "function" || !effectBlocks.has(selected))
         throw new TossRuntimeError("Handler case must be a synchronous Block.", request.location);
-      const state = {active: true, suspended: false, used: false, boundary: effectBoundary, request};
+      const state = {active: true, suspended: false, used: false, boundary: context.boundary ?? effectBoundary, request};
       const resume = markEffectBlock(function*(value) {
         if (!state.active || state.suspended || state.used || state.boundary !== effectBoundary) throw new TossRuntimeError("Invalid resume.", request.location);
         state.used = true;
@@ -212,7 +224,7 @@ function* effectSend(receiver, message, context) {
   if (typeof receiver === "function" && name === "handleWith:") return yield* effectHandle(receiver, args[0], context);
   if (typeof receiver === "function" && /^(?:value|(?:value:)+)$/.test(name)) {
     const state = effectResumeStates.get(receiver);
-    if (state !== undefined && (!state.active || state.suspended || state.used || state.boundary !== effectBoundary))
+    if (state !== undefined && (!state.active || state.suspended || state.used || state.boundary !== (context.boundary ?? effectBoundary)))
       throw new TossRuntimeError("Invalid resume.", context.location);
     return yield* effectInvoke(receiver, args, context);
   }

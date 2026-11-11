@@ -82,9 +82,14 @@ const handlerFailureSource = compileExperimentalEffectsSources(
   ]),
 );
 const observer = "reportEffectFailures(error); throw error;";
-assert.equal(handlerFailureSource.split(observer).length - 1, 1);
-const observed = handlerFailureSource.replace(
-  observer,
+function instrumentRoot(source, replacement) {
+  const index = source.lastIndexOf(observer);
+  assert.ok(index >= 0, "root error reporter not found");
+  return source.slice(0, index) + replacement +
+    source.slice(index + observer.length);
+}
+const observed = instrumentRoot(
+  handlerFailureSource,
   'console.error("cached-same", effectModuleStates.get(1)?.error === error); reportEffectFailures(error); throw error;',
 );
 const cacheCheck = await new Deno.Command(Deno.execPath(), {
@@ -108,8 +113,8 @@ const unhandledSource = compileExperimentalEffectsSources(
     ],
   ]),
 );
-const unhandledObserved = unhandledSource.replace(
-  observer,
+const unhandledObserved = instrumentRoot(
+  unhandledSource,
   'console.error("cached-same", effectModuleStates.get(1)?.error === error); reportEffectFailures(error); throw error;',
 );
 const unhandledCheck = await new Deno.Command(Deno.execPath(), {
@@ -139,8 +144,8 @@ const handlerCleanupSource = compileExperimentalEffectsSources(
     ],
   ]),
 );
-const handlerCleanupObserved = handlerCleanupSource.replace(
-  observer,
+const handlerCleanupObserved = instrumentRoot(
+  handlerCleanupSource,
   'console.error("cached-same", effectModuleStates.get(1)?.error === error); reportEffectFailures(error); throw error;',
 );
 const handlerCleanupCheck = await new Deno.Command(Deno.execPath(), {
@@ -179,8 +184,8 @@ const abandonedCleanupSource = compileExperimentalEffectsSources(
     ],
   ]),
 );
-const abandonedCleanupObserved = abandonedCleanupSource.replace(
-  observer,
+const abandonedCleanupObserved = instrumentRoot(
+  abandonedCleanupSource,
   'const cached = effectModuleStates.get(1)?.error; console.error("cached-interrupted", cached?.message.includes("interrupted"), effectCleanupFailures.get(cached)?.[0] === error); reportEffectFailures(error); throw error;',
 );
 const abandonedCleanupCheck = await new Deno.Command(Deno.execPath(), {

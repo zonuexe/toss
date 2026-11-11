@@ -25,7 +25,7 @@ function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
   function emit(expression: Expression, scope = "environment"): string {
     const context = `{location: ${
       JSON.stringify(expression.location)
-    }, environment: ${scope}}`;
+    }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary}`;
     switch (expression.kind) {
       case "string":
         return JSON.stringify(expression.value);
@@ -69,6 +69,7 @@ const invocation = this;
 const {carrier: localScope} = blockEnvironment(captured, ${
           JSON.stringify(expression.location)
         }, ${JSON.stringify(locations)});
+localScope.effectBoundary = invocation?.effectBoundary ?? captured.effectBoundary ?? effectBoundary;
 if (invocation?.kind === "tossInvocation") {
   localScope.superContext = invocation.context;
   lexicalEnvironment(localScope, ${
@@ -101,7 +102,7 @@ ${body.length === 0 ? "return null;" : body.join("\n")}
             emit(entry.key, scope)
           }, ${emit(entry.value, scope)}]}, {location: ${
             JSON.stringify(entry.location)
-          }, environment: ${scope}});`
+          }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary});`
         );
         return `(yield* (function*(extendTarget) {
 if (extendTarget === null || typeof extendTarget !== "object" || Array.isArray(extendTarget) || isJavaScriptReference(extendTarget)) throw new TossRuntimeError("%extend target must be an Object.", ${context}.location);
@@ -168,6 +169,7 @@ export function compileExperimentalEffects(
     ...fileRootSetupLines(),
     experimentalEffectRuntime,
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
+    "environment.effectBoundary = effectBoundary;",
     "registerEffectSymbolRoot(symbolRoot);",
     `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
     `})(${javascriptState.source});`,
@@ -251,7 +253,7 @@ export function compileExperimentalEffectsSources(
       fileRootSetupLines(module.imports.map(({ path, id }) =>
         `[${JSON.stringify(path)}, ${id}]`
       )).join("\n")
-    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
+    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = effectBoundary;\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
   });
   return [
     "((javascriptEvaluators) => {",

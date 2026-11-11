@@ -1132,3 +1132,11 @@ re-entry, asynchronous callbacks, JS module imports and public runtime
 integration remain unverified. `%js` still executes arbitrary host JavaScript,
 and passing nested Toss Blocks through object properties has no supported
 callback contract under ADR-38.
+
+The experimental compiler now passes the execution boundary through Block
+invocation context as well as through the synchronous host-entry guard.
+Generator steps restore their caller's boundary after each delegation. This
+prepares for async suspension, where a single mutable global cannot identify the
+invocation after another task runs; the async implementation and concurrency
+guarantees are not yet present. The existing JS boundary, nested resume,
+ordinary-program and module probes continue to pass.
