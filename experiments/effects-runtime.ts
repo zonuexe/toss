@@ -5,7 +5,7 @@ export function experimentalEffectRuntime(
   sharedBoundaryDelegate = false,
 ): string {
   const allowedMessages =
-    `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);`;
+    `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "toString", "inspect", "not"]);`;
   return `
 const effectBlocks = new WeakSet();
 ${sharedDispatchTables ? allowedMessages : ""}
@@ -292,6 +292,20 @@ function* effectParent(args, context, scope) {
 function* effectPipeline(input, receiver, message, context) {
   return yield* effectSend(receiver, {name: message.name, arguments: [...message.arguments, input]}, context);
 }
+function* effectInspectArray(receiver, context) {
+  if (activeArrayInspections.has(receiver)) return "[...]";
+  activeArrayInspections.add(receiver);
+  try {
+    const values = receiver.slice();
+    const parts = [];
+    for (const value of values) {
+      const inspected = yield* effectSend(value, {name: "inspect", arguments: []}, context);
+      if (typeof inspected !== "string") throw new TossRuntimeError("inspect must return a string.", context.location);
+      parts.push(inspected);
+    }
+    return "[" + parts.join(", ") + "]";
+  } finally { activeArrayInspections.delete(receiver); }
+}
 function* effectSend(receiver, message, context) {
   const {name, arguments: args} = message;
   if (receiver === effectRoot && name === "raise:with:") {
@@ -346,6 +360,8 @@ function* effectSend(receiver, message, context) {
     for (const value of receiver.slice()) result.push(yield* effectInvoke(block, [value], context));
     return result;
   }
+  if (Array.isArray(receiver) && (name === "inspect" || name === "toString"))
+    return yield* effectInspectArray(receiver, context);
   if (receiver !== null && typeof receiver === "object" && !Array.isArray(receiver) && !isJavaScriptReference(receiver)) {
     const owner = slotOwner(receiver, name);
     if (owner !== null) {
@@ -375,8 +391,15 @@ function* effectSend(receiver, message, context) {
     }
   }
   if (typeof name === "symbol") return send(receiver, message, context);
+  if (name === "print" || name === "dump") {
+    const conversion = name === "print" ? "toString" : "inspect";
+    const text = yield* effectSend(receiver, {name: conversion, arguments: []}, context);
+    if (typeof text !== "string") throw new TossRuntimeError(conversion + " must return a string.", context.location);
+    console.log(text);
+    return receiver;
+  }
   ${sharedDispatchTables ? "" : allowedMessages}
-  if (!effectAllowedMessages.has(name) || (name === "print" && typeof receiver === "object" && receiver !== null))
+  if (!effectAllowedMessages.has(name))
     throw new TossRuntimeError("Unsupported message in experimental effects compiler: " + name, context.location);
   return send(receiver, message, context);
 }
