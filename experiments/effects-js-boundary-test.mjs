@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
-import { compileExperimentalEffects } from "./effects-compiler.ts";
+import {
+  compileExperimentalEffects,
+  compileExperimentalEffectsSources,
+} from "./effects-compiler.ts";
 
 async function run(source, observeCause = false) {
   const generated = compileExperimentalEffects(source, "js-boundary.toss");
+  const prefix = generated.match(/^(?:import \* as [^\n]+\n)*/)?.[0] ?? "";
   const javascript = observeCause
-    ? `try { ${generated} } catch (error) { console.log("outer", error.message); console.log("cause", error.cause?.message); }`
+    ? `${prefix}try { ${
+      generated.slice(prefix.length)
+    } } catch (error) { console.log("outer", error.message); console.log("cause", error.cause?.message); }`
     : generated;
   const result = await new Deno.Command(Deno.execPath(), {
     args: ["eval", javascript],
@@ -121,3 +127,67 @@ assert.equal(causeDecoder.decode(causeCheck.stdout), "true\n");
 console.log(
   "PASS: JavaScript callback arity and original thrown-value identity",
 );
+const specifier = "data:text/javascript," +
+  encodeURIComponent('console.log("host first"); export const value = 7;');
+const lazyJavaScriptImport = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#unused bind: { %import('./unused.toss') }. 'entry second' print.",
+    ],
+    ["unused.toss", `%jsImport('${specifier}'). 'never' print. %export(0).`],
+  ]),
+);
+const eagerHost = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", lazyJavaScriptImport],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+const decoder = new TextDecoder();
+assert.equal(eagerHost.success, true, decoder.decode(eagerHost.stderr));
+assert.equal(decoder.decode(eagerHost.stdout), "host first\nentry second\n");
+const missingImport = await run(
+  "'never' print. #unused bind: { %jsImport('node:toss_missing_module') }.",
+);
+assert.equal(missingImport.success, false);
+assert.equal(missingImport.stdout, "");
+assert.match(missingImport.stderr, /toss_missing_module/);
+const namespaces = compileExperimentalEffectsSources(
+  "main.toss",
+  new Map([
+    [
+      "main.toss",
+      "#a bind: %jsImport('node:path'). #b bind: %import('./lib.toss'). %js(xs = [$a, $b]; xs[0] === xs[1]) print.",
+    ],
+    ["lib.toss", "%export(%jsImport('node:path'))."],
+  ]),
+);
+const namespaceResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", namespaces],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  namespaceResult.success,
+  true,
+  decoder.decode(namespaceResult.stderr),
+);
+assert.equal(decoder.decode(namespaceResult.stdout), "true\n");
+assert.throws(
+  () => compileExperimentalEffects("%jsImport('./relative.js').", "bad.toss"),
+  /relative|specifier/i,
+);
+console.log("PASS: static JS import ordering, errors and namespace identity");
+const hostCallSpecifier = "data:text/javascript," +
+  encodeURIComponent("export function call(f) { return f(); }");
+const hostCrossing = await run(
+  `#host bind: %jsImport('${hostCallSpecifier}'). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. #cb bind: { $Effect raise: #A with: $Nil } asJSCallback. { %js(host = $host, f = $cb; host.call(f)) } handleWith: $h.`,
+  true,
+);
+assert.equal(hostCrossing.success, true, hostCrossing.stderr);
+assert.match(
+  hostCrossing.stdout,
+  /cause .*Effect cannot cross the JavaScript boundary: #A/,
+);
+console.log("PASS: imported JS callback cannot use an outer Toss handler");

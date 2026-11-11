@@ -16,7 +16,13 @@ import { containsDirectAwait } from "../src/codegen_analysis.ts";
 import {
   collectJavaScriptExpressions,
   emitJavaScriptEvaluators,
+  javascriptImportAliases,
 } from "../src/codegen_javascript.ts";
+import { collectJavaScriptImports } from "../src/javascript_import_analysis.ts";
+import {
+  emitJavaScriptImportStatements,
+  javascriptImportMapExpression,
+} from "../src/javascript_import_codegen.ts";
 import {
   fileRootSetupLines,
   runtimePreludeLines,
@@ -188,6 +194,9 @@ const invocation = this;${scopeSetup}
           emit(expression.expression, scope, asynchronous)
         }, ${context})).value`;
       case "javascriptImport":
+        return `fromJavaScript(javascriptImportNames.get(${
+          JSON.stringify(expression.specifier)
+        }), ${context})`;
       case "quotation":
         throw new Error(
           `Experimental effects compiler does not support ${expression.kind}.`,
@@ -214,6 +223,8 @@ export function compileExperimentalEffects(
   }
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
+  const imports = collectJavaScriptImports(expressions);
+  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
   const emit = createEffectEmitter(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
@@ -223,7 +234,8 @@ export function compileExperimentalEffects(
     "\n",
   );
   return [
-    "((javascriptEvaluators) => {",
+    ...emitJavaScriptImportStatements(imports, importAliases),
+    "((javascriptEvaluators, javascriptImportNames) => {",
     ...runtimePreludeLines(),
     ...fileRootSetupLines(),
     experimentalEffectRuntime,
@@ -231,7 +243,9 @@ export function compileExperimentalEffects(
     "environment.effectBoundary = effectBoundary;",
     "registerEffectSymbolRoot(symbolRoot);",
     `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
-    `})(${javascriptState.source});`,
+    `})(${javascriptState.source}, ${
+      javascriptImportMapExpression(imports, importAliases)
+    });`,
   ].join("\n");
 }
 
@@ -300,6 +314,10 @@ export function compileExperimentalEffectsSources(
     graph.flatMap((module) => module.expressions),
   );
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
+  const imports = collectJavaScriptImports(
+    graph.flatMap((module) => module.expressions),
+  );
+  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
   const emit = createEffectEmitter(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
@@ -315,12 +333,15 @@ export function compileExperimentalEffectsSources(
     }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = effectBoundary;\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
   });
   return [
-    "((javascriptEvaluators) => {",
+    ...emitJavaScriptImportStatements(imports, importAliases),
+    "((javascriptEvaluators, javascriptImportNames) => {",
     ...runtimePreludeLines(),
     experimentalEffectRuntime,
     experimentalEffectModuleRuntime,
     ...initializers,
     `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw error; }`,
-    `})(${javascriptState.source});`,
+    `})(${javascriptState.source}, ${
+      javascriptImportMapExpression(imports, importAliases)
+    });`,
   ].join("\n");
 }

@@ -104,6 +104,10 @@ const cases = [
     "async JS callback",
     "#f bind: %async({ %await(%js(Promise.resolve(5))) }) asJSCallback. %js(f = $f; f().then(v => console.log(v))).",
   ],
+  [
+    "static JavaScript module",
+    "#path bind: %jsImport('node:path'). (%js(p = $path; p.basename('/a/b'))) print.",
+  ],
   ["invalid Block arity", "{ x -> $x } value."],
   ["invalid filter result", "[1] filter: { x -> 1 }."],
   ["invalid conditional branch", "$True ifTrue: { 'never' print } ifFalse: 1."],

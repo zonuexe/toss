@@ -1034,10 +1034,10 @@ invalid resume lifetimes, source position, evaluation order and unhandled
 effects.
 
 This is a vertical slice, not the complete agreed design. It deliberately
-rejects JS module imports and other unsupported AST forms. It permits only a
-small set of Prelude messages; unsupported messages fail rather than silently
-invoking a callback without propagating suspension. Cleanup failures are
-recorded experimentally using a WeakMap keyed by Error, which cannot correctly
+rejects quotation at runtime and unsupported AST forms. It permits only a small
+set of Prelude messages; unsupported messages fail rather than silently invoking
+a callback without propagating suspension. Cleanup failures are recorded
+experimentally using a WeakMap keyed by Error, which cannot correctly
 distinguish independent failures that reuse the same Error and does not handle
 arbitrary thrown values. Its diagnostic formatting is provisional. JS and async
 boundary behavior is experimental; it does not yet implement REPL integration,
@@ -1054,7 +1054,7 @@ nested cleanup failures. This does not establish bounded stack use for deeply
 nested Blocks or nested `handleWith:` scopes, nor does it solve the weakly keyed
 error metadata, module, interop or unsupported syntax limitations above.
 
-`experiments/effects-compiler-conformance.mjs` compares 31 supported programs
+`experiments/effects-compiler-conformance.mjs` compares 32 supported programs
 without effect requests against the production compiler, including lexical
 bindings, evaluation order, collection snapshots, inherited methods, `%super`,
 extension, and selected runtime failures with their source locations. It checks
@@ -1080,12 +1080,12 @@ cycles. It instruments generated test artifacts to confirm cached identity for
 handler failure and unhandled effects, and interruption metadata after a cleanup
 failure; there is not yet a language-level catch to observe those cases.
 
-The slice explicitly rejects macro-library imports, JS module imports and
-unsupported messages. It does not implement filesystem module resolution, REPL
-module loading, JS module output, an external runtime, source-map support, or
-production compilation. Error metadata is still Error-keyed and experimental.
-Static dependency collection and validation reuse existing modules, but the
-prototype does not claim parity across every loader edge case.
+The slice explicitly rejects macro-library imports and unsupported messages. It
+does not implement filesystem module resolution, REPL module loading, JS module
+output, an external runtime, source-map support, or production compilation.
+Error metadata is still Error-keyed and experimental. Static dependency
+collection and validation reuse existing modules, but the prototype does not
+claim parity across every loader edge case.
 
 The AST slice now registers the actual built-in `generateUnique` method for each
 module root rather than treating it as an unsupported native method. Tests cover
@@ -1127,10 +1127,10 @@ and argument conversion, errors during cleanup, and preservation of a JS thrown
 value as `cause`. Callback errors are formatted before being passed into JS so
 that cleanup information is retained if the existing JS-expression wrapper adds
 a cause. The underlying error records are still Error-keyed; arbitrary host
-re-entry, asynchronous callbacks, JS module imports and public runtime
-integration remain unverified. `%js` still executes arbitrary host JavaScript,
-and passing nested Toss Blocks through object properties has no supported
-callback contract under ADR-38.
+re-entry, broader async host behavior and public runtime integration remain
+unverified. `%js` still executes arbitrary host JavaScript, and passing nested
+Toss Blocks through object properties has no supported callback contract under
+ADR-38.
 
 The experimental compiler now passes the execution boundary through Block
 invocation context as well as through the synchronous host-entry guard.
@@ -1159,3 +1159,11 @@ Async generator compilation was rejected in this experiment because delegation
 can assimilate a Toss Object's `then` slot. The implementation still lacks JS
 module imports, full host/re-entrant concurrency validation, async effect
 handlers, cancellation, REPL integration and production runtime integration.
+
+The experimental compiler also emits static `%jsImport` namespace imports using
+the standard compiler's collection and alias logic. Tests cover eager
+initialization from an otherwise unused Toss module, failure before Toss side
+effects, shared namespace identity, an imported JavaScript function calling back
+into Toss, and ordinary behavior against the standard compiler. Relative JS
+specifiers remain rejected according to the existing parser rules. Static host
+initialization is outside the synchronous Toss handler scope.
