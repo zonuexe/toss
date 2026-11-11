@@ -139,6 +139,7 @@ for (const [name, source] of cases) {
   const shared = await execute(
     compileExperimentalEffects(source, "conformance.toss", {
       sharedDispatchTables: true,
+      sharedBoundaryDelegate: true,
     }),
   );
   assert.equal(shared.success, experimental.success, name);
@@ -174,5 +175,5 @@ for (const [name, source] of cases) {
   }
 }
 console.log(
-  `PASS: ${cases.length} ordinary programs match with direct numeric sends and shared dispatch tables`,
+  `PASS: ${cases.length} ordinary programs match with numeric sends and shared delegate variants`,
 );

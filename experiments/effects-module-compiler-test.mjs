@@ -288,7 +288,7 @@ const reentrantDirect = await new Deno.Command(Deno.execPath(), {
     "eval",
     compileExperimentalEffectsSources("main.toss", reentrantSources, {
       sharedDispatchTables: true,
-      directBoundarySteps: true,
+        sharedBoundaryDelegate: true,
     }),
   ],
   stdout: "piped",

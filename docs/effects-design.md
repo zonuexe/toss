@@ -1321,3 +1321,30 @@ The differential suite also exercises the variant on synchronous handler and
 cleanup scenarios, re-entry into a cached failed module, JS boundary checks and
 concurrent async callbacks. These cases do not prove arbitrary re-entry or solve
 the pre-existing error-occurrence isolation limitations.
+
+### Shared generator delegate methods
+
+Another opt-in variant uses one delegate class per artifact. Each invocation
+still creates its own delegate containing its iterator and boundary, but the
+`next`, `throw`, `return` and iterator methods are shared on the prototype.
+Each method installs that delegate's boundary and restores the previous one in
+`finally`, including when nested host callbacks re-enter Toss. The native
+`yield*` protocol is retained so that interruption and cleanup continue to
+drive the underlying iterator. This is separate from the direct-step helper
+above and remains disabled by default.
+
+`deno task effects:benchmark-delegate` compares this variant with the original
+delegate, with shared dispatch tables enabled in both. On Deno 2.9.7 / V8
+15.0.245.2 on macOS arm64, three runs with alternating order and 30 paired
+samples gave candidate/baseline median ratios of 0.87, 0.82 and 0.83 for the
+ordinary map workload and 0.76, 0.76 and 0.76 for dynamic method calls. The
+effectful callback workload varied from 0.68 to 1.07, so it does not establish
+a reliable improvement there. These are local microbenchmarks with complete
+artifact initialization, not representative application or memory measurements.
+
+The differential tests cover synchronous requests, resume, abandonment and
+cleanup, a callback that re-enters a local handler before resuming its outer
+handler, failed-module re-entry, JS boundaries and concurrent async calls. They
+do not prove all host re-entry patterns or establish performance on other JS
+engines. This candidate merits further investigation before any default or
+production decision.

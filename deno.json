@@ -29,6 +29,7 @@
     "effects:probe": "deno run --allow-run=deno experiments/run-effects.mjs",
     "effects:benchmark": "deno run experiments/effects-benchmark.mjs",
     "effects:benchmark-boundary": "deno run experiments/effects-boundary-benchmark.mjs",
+    "effects:benchmark-delegate": "deno run experiments/effects-boundary-benchmark.mjs delegate",
     "effects:demo": "deno run --allow-read=experiments/effects-demo.toss --allow-run=deno experiments/run-effects-demo.ts",
     "check": "deno fmt --check && deno lint && deno check src/cli.ts src/runtime_cli.ts src/repl_cli.ts tests/*.ts"
   },

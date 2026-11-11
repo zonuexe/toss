@@ -7,7 +7,7 @@ import {
 async function run(source, observeCause = false, shared = false) {
   const generated = compileExperimentalEffects(source, "js-boundary.toss", {
     sharedDispatchTables: shared,
-    directBoundarySteps: shared,
+    sharedBoundaryDelegate: shared,
   });
   const prefix = generated.match(/^(?:import \* as [^\n]+\n)*/)?.[0] ?? "";
   const javascript = observeCause
@@ -52,6 +52,12 @@ const localHandler = await run(
 );
 assert.equal(localHandler.success, true, localHandler.stderr);
 assert.equal(localHandler.stdout, "7\n");
+
+const reentrantHandler = await run(
+  "#cb bind: { #h bind: $Object clone. $h at: #Inner put: { p, k -> $k value: 7 }. { $Effect raise: #Inner with: $Nil } handleWith: $h } asJSCallback. #outer bind: $Object clone. $outer at: #Outer put: { p, k -> #v bind: %js(f = $cb; f()). $k value: $v }. ({ $Effect raise: #Outer with: $Nil } handleWith: $outer) print.",
+);
+assert.equal(reentrantHandler.success, true, reentrantHandler.stderr);
+assert.equal(reentrantHandler.stdout, "7\n");
 
 const crossEffect = await run(
   "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. #cb bind: { $Effect raise: #A with: $Nil } asJSCallback. { %js(f = $cb; f()) } handleWith: $h.",

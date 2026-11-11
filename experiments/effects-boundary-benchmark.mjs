@@ -1,5 +1,13 @@
 import { compileExperimentalEffects } from "./effects-compiler.ts";
 
+const candidate = Deno.args[0] === "delegate"
+  ? { sharedBoundaryDelegate: true }
+  : { directBoundarySteps: true };
+console.log(
+  Deno.args[0] === "delegate"
+    ? "Candidate: shared delegate"
+    : "Candidate: direct boundary steps",
+);
 const workloads = [
   [
     "dynamic map callbacks",
@@ -38,7 +46,7 @@ for (const [name, source] of workloads) {
   const direct = new Function(
     compileExperimentalEffects(source, "boundary-bench.toss", {
       sharedDispatchTables: true,
-      directBoundarySteps: true,
+      ...candidate,
     }),
   );
   for (let i = 0; i < 8; i++) {
@@ -64,7 +72,7 @@ for (const [name, source] of workloads) {
   }
   console.log(name, {
     baselineMs: median(baselineTimes),
-    directMs: median(directTimes),
+    candidateMs: median(directTimes),
     pairedRatio: median(ratios),
   });
 }

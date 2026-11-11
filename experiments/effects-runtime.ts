@@ -2,6 +2,7 @@
 export function experimentalEffectRuntime(
   sharedDispatchTables = false,
   directBoundarySteps = false,
+  sharedBoundaryDelegate = false,
 ): string {
   const allowedMessages =
     `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);`;
@@ -45,6 +46,26 @@ let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
 ${
+    sharedBoundaryDelegate
+      ? `class EffectBoundaryDelegate {
+  constructor(iterator, boundary) { this.iterator = iterator; this.boundary = boundary; }
+  [Symbol.iterator]() { return this; }
+  next(value) {
+    const previous = effectBoundary; effectBoundary = this.boundary;
+    try { return this.iterator.next(value); } finally { effectBoundary = previous; }
+  }
+  throw(error) {
+    const previous = effectBoundary; effectBoundary = this.boundary;
+    try { return this.iterator.throw(error); } finally { effectBoundary = previous; }
+  }
+  return(value) {
+    const previous = effectBoundary; effectBoundary = this.boundary;
+    try { return this.iterator.return(value); } finally { effectBoundary = previous; }
+  }
+}`
+      : ""
+  }
+${
     directBoundarySteps
       ? `function effectIteratorStep(boundary, iterator, method, value) {
   const previous = effectBoundary;
@@ -60,23 +81,25 @@ function* effectInvoke(block, args, context) {
     : {...context.methodReceiver, effectBoundary: boundary};
   const result = withEffectBoundaryValue(boundary, () => invokeBlock(block, args, {...context, methodReceiver}));
   if (!effectBlocks.has(block)) return result;
-  const delegate = {
+  const delegate = ${
+    sharedBoundaryDelegate ? "new EffectBoundaryDelegate(result, boundary)" : `{
     [Symbol.iterator]() { return this; },
     next(value) { return ${
-    directBoundarySteps
-      ? 'effectIteratorStep(boundary, result, "next", value)'
-      : "withEffectBoundaryValue(boundary, () => result.next(value))"
-  }; },
+      directBoundarySteps
+        ? 'effectIteratorStep(boundary, result, "next", value)'
+        : "withEffectBoundaryValue(boundary, () => result.next(value))"
+    }; },
     throw(error) { return ${
-    directBoundarySteps
-      ? 'effectIteratorStep(boundary, result, "throw", error)'
-      : "withEffectBoundaryValue(boundary, () => result.throw(error))"
-  }; },
+      directBoundarySteps
+        ? 'effectIteratorStep(boundary, result, "throw", error)'
+        : "withEffectBoundaryValue(boundary, () => result.throw(error))"
+    }; },
     return(value) { return ${
-    directBoundarySteps
-      ? 'effectIteratorStep(boundary, result, "return", value)'
-      : "withEffectBoundaryValue(boundary, () => result.return(value))"
-  }; },
+      directBoundarySteps
+        ? 'effectIteratorStep(boundary, result, "return", value)'
+        : "withEffectBoundaryValue(boundary, () => result.return(value))"
+    }; },
+  }`
   };
   return yield* delegate;
 }

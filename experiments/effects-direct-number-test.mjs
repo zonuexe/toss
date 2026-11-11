@@ -48,7 +48,7 @@ for (const [index, source] of cases.entries()) {
     await execute(compileExperimentalEffects(source, "direct.toss", {
       sharedDispatchTables: true,
       directNumberSends: true,
-      directBoundarySteps: true,
+      sharedBoundaryDelegate: true,
     })),
     expected,
     source,
@@ -83,7 +83,7 @@ assert.deepEqual(
   await execute(compileExperimentalEffectsSources("main.toss", sources, {
     sharedDispatchTables: true,
     directNumberSends: true,
-    directBoundarySteps: true,
+      sharedBoundaryDelegate: true,
   })),
   moduleResult,
 );

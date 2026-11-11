@@ -4,7 +4,7 @@ import { compileExperimentalEffects } from "./effects-compiler.ts";
 async function execute(source, shared = false) {
   const javascript = compileExperimentalEffects(source, "async-boundary.toss", {
     sharedDispatchTables: shared,
-    directBoundarySteps: shared,
+    sharedBoundaryDelegate: shared,
   });
   const result = await new Deno.Command(Deno.execPath(), {
     args: ["eval", javascript],

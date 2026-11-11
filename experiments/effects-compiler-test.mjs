@@ -5,6 +5,10 @@ async function execute(source) {
   const javascript = compileExperimentalEffects(source, "experimental.toss");
   const shared = compileExperimentalEffects(source, "experimental.toss", {
     sharedDispatchTables: true,
+    sharedBoundaryDelegate: true,
+  });
+  const direct = compileExperimentalEffects(source, "experimental.toss", {
+    sharedDispatchTables: true,
     directBoundarySteps: true,
   });
   const run = (code) =>
@@ -13,9 +17,10 @@ async function execute(source) {
       stdout: "piped",
       stderr: "piped",
     }).output();
-  const [result, sharedResult] = await Promise.all([
+  const [result, sharedResult, directResult] = await Promise.all([
     run(javascript),
     run(shared),
+    run(direct),
   ]);
   const decoder = new TextDecoder();
   const relevant = (stderr) =>
@@ -28,6 +33,13 @@ async function execute(source) {
     source,
   );
   assert.equal(relevant(sharedResult.stderr), relevant(result.stderr), source);
+  assert.equal(directResult.success, result.success, source);
+  assert.equal(
+    decoder.decode(directResult.stdout),
+    decoder.decode(result.stdout),
+    source,
+  );
+  assert.equal(relevant(directResult.stderr), relevant(result.stderr), source);
   return {
     success: result.success,
     stdout: decoder.decode(result.stdout),

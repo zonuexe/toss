@@ -42,6 +42,7 @@ type EffectCompilerOptions = {
   readonly directNumberSends?: boolean;
   readonly sharedDispatchTables?: boolean;
   readonly directBoundarySteps?: boolean;
+  readonly sharedBoundaryDelegate?: boolean;
 };
 
 function createEffectEmitter(
@@ -265,6 +266,7 @@ export function compileExperimentalEffects(
     experimentalEffectRuntime(
       options.sharedDispatchTables,
       options.directBoundarySteps,
+      options.sharedBoundaryDelegate,
     ),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = effectBoundary;",
@@ -316,6 +318,7 @@ export function compileExperimentalEffectsSources(
     experimentalEffectRuntime(
       options.sharedDispatchTables,
       options.directBoundarySteps,
+      options.sharedBoundaryDelegate,
     ),
     experimentalEffectModuleRuntime,
     ...initializers,
