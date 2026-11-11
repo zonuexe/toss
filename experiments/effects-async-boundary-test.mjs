@@ -141,3 +141,14 @@ assert.equal(caseAsyncResult.stdout, "work-start\ncleanup\nwork-end\n7\n");
 console.log(
   "PASS: synchronous handler returns an async result without extending its scope",
 );
+const hostileRejection = await execute(
+  "%js((globalThis.bad = new Proxy({}, {getPrototypeOf() { throw 99; }, get() { throw 98; }}), 1)). #work bind: %async({ %await(%js(Promise.reject(globalThis.bad))) }) asJSCallback. %js(f = $work; f().catch(e => console.log(e.cause === globalThis.bad))).",
+);
+assert.equal(hostileRejection.success, true, hostileRejection.stderr);
+assert.equal(hostileRejection.stdout, "true\n");
+const undefinedRejection = await execute(
+  "#work bind: %async({ %await(%js(Promise.reject(undefined))) }) asJSCallback. %js(f = $work; f().catch(e => console.log('cause' in e && e.cause === undefined))).",
+);
+assert.equal(undefinedRejection.success, true, undefinedRejection.stderr);
+assert.equal(undefinedRejection.stdout, "true\n");
+console.log("PASS: async rejection keeps primitive and hostile Proxy causes");

@@ -191,3 +191,34 @@ assert.match(
   /cause .*Effect cannot cross the JavaScript boundary: #A/,
 );
 console.log("PASS: imported JS callback cannot use an outer Toss handler");
+for (
+  const [label, javascript, expected] of [
+    [
+      "undefined cause",
+      "(() => { throw undefined; })()",
+      "'cause' in error && error.cause === undefined",
+    ],
+    [
+      "hostile proxy cause",
+      "(() => { globalThis.bad = new Proxy({}, {getPrototypeOf() { throw 99; }, get() { throw 98; }}); throw globalThis.bad; })()",
+      "error.cause === globalThis.bad",
+    ],
+  ]
+) {
+  const source = `%js(${javascript}).`;
+  const program = compileExperimentalEffects(source, "hostile-js.toss");
+  const result = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "eval",
+      `try { ${program} } catch (error) { console.log(${expected}); }`,
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const text = new TextDecoder();
+  assert.equal(result.success, true, `${label}: ${text.decode(result.stderr)}`);
+  assert.equal(text.decode(result.stdout), "true\n", label);
+}
+console.log(
+  "PASS: primitive and hostile Proxy JavaScript causes retain identity",
+);

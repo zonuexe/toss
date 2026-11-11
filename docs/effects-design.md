@@ -1208,3 +1208,9 @@ Error object: re-importing the inner module retains its own cleanup record but
 not cleanup added by the outer module. This validates that pair of cache
 snapshots; it does not establish correctness for arbitrary host re-entry or
 concurrent failure propagation.
+
+The JS and async boundary probes additionally pass `undefined` and a Proxy whose
+property/prototype access throws as the original JS throw or Promise rejection.
+The experimental boundary preserves the original value as `cause` without
+inspecting the Proxy. This covers these paths only; the internal cleanup records
+still do not constitute a general arbitrary-value failure model.
