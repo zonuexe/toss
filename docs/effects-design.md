@@ -1220,3 +1220,26 @@ property/prototype access throws as the original JS throw or Promise rejection.
 The experimental boundary preserves the original value as `cause` without
 inspecting the Proxy. This covers these paths only; the internal cleanup records
 still do not constitute a general arbitrary-value failure model.
+
+## Preliminary generator cost measurement
+
+`deno task effects:benchmark` compares complete embedded artifacts from the
+normal and experimental compilers on ordinary message dispatch and Array `map:`
+callbacks. It also measures handled requests in the experimental compiler.
+Every run checks its result. Compilation is excluded; each timed invocation
+includes artifact runtime initialization. The script reports three warmups and
+the median of seven samples in one Deno process.
+
+An initial run on Deno 2.9.7 / V8 15.0.245.2, macOS arm64, measured the
+experimental artifact at about 1.8 times the size and about five times the
+execution time of the standard artifact for each ordinary workload. These are
+small, local microbenchmarks, not a production performance guarantee. They do
+not measure cold process startup, external runtime output, memory, other engines,
+or representative applications. Repeated and broader measurements are needed.
+
+The result makes unconditional generator conversion a poor default to adopt
+without further evidence. Before production integration, compare approaches
+that retain ordinary execution where possible while preserving propagation
+through dynamic method calls and callback-taking Prelude methods. The existing
+probes demonstrate why converting only visibly effectful Blocks is not enough;
+no optimization or public compiler mode is selected by this measurement.
