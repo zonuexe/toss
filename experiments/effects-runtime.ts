@@ -118,7 +118,9 @@ function* effectInvoke(block, args, context) {
 function recordCleanupFailure(primary, secondary) {
   if (!(primary instanceof Error)) throw secondary;
   const failures = effectCleanupFailures.get(primary) ?? [];
-  failures.push(secondary);
+  const object = (typeof secondary === "object" && secondary !== null) || typeof secondary === "function";
+  const nested = object ? [...(effectCleanupFailures.get(secondary) ?? [])] : [];
+  failures.push(Object.freeze({error: secondary, cleanup: Object.freeze(nested)}));
   effectCleanupFailures.set(primary, failures);
 }
 function setEffectErrorStack(error, value) {
@@ -433,13 +435,13 @@ function runEffectProgram(iterator, boundary) {
 }
 function getEffectFailureDetails(error) {
   const cleanup = [];
-  const seen = new Set([error]);
-  function collect(failure) {
-    cleanup.push(failure);
-    if ((typeof failure !== "object" || failure === null) && typeof failure !== "function") return;
-    if (seen.has(failure)) return;
-    seen.add(failure);
-    for (const nested of effectCleanupFailures.get(failure) ?? []) collect(nested);
+  const active = new Set();
+  function collect(record) {
+    cleanup.push(record.error);
+    if (active.has(record)) return;
+    active.add(record);
+    for (const nested of record.cleanup) collect(nested);
+    active.delete(record);
   }
   const hasMetadata = (typeof error === "object" && error !== null) || typeof error === "function";
   if (hasMetadata) for (const failure of effectCleanupFailures.get(error) ?? []) collect(failure);

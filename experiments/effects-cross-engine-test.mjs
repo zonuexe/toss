@@ -36,6 +36,21 @@ const cases = [
     ]),
     stdout: "true\n",
   },
+  {
+    name: "nested cached failure excludes later caller cleanup",
+    sources: new Map([
+      [
+        "main.toss",
+        "#a bind: { %import('./outer.toss') } asJSCallback. #b bind: { { %import('./inner.toss') } ensure: { $callerCleanup } } asJSCallback. %js(a = $a, b = $b; (() => { try { a(); } catch (e) {} try { b(); } catch (e) {} try { a(); } catch (e) { console.log(e.stack.includes('outerMissing'), e.stack.includes('innerMissing'), e.stack.includes('callerCleanup')); } })()).",
+      ],
+      [
+        "outer.toss",
+        "%export({ $outerMissing } ensure: { %import('./inner.toss') }).",
+      ],
+      ["inner.toss", "%export($innerMissing)."],
+    ]),
+    stdout: "true true false\n",
+  },
 ];
 const decoder = new TextDecoder();
 const directory = await Deno.makeTempDir({ prefix: "toss-effects-runtime-" });

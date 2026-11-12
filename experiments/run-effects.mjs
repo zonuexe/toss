@@ -2,6 +2,7 @@
 import "./effects-external-runtime-test.mjs";
 import "./effects-display-test.mjs";
 import "./effects-repl-test.mjs";
+import "./effects-occurrence-gap-test.mjs";
 await import("./effects-one-shot.mjs");
 await import("./effects-cleanup-errors.mjs");
 await import("./effects-boundaries.mjs");

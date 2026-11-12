@@ -186,7 +186,7 @@ const abandonedCleanupSource = compileExperimentalEffectsSources(
 );
 const abandonedCleanupObserved = instrumentRoot(
   abandonedCleanupSource,
-  'const cached = effectModuleStates.get(1)?.error; console.error("cached-interrupted", cached?.message.includes("interrupted"), effectCleanupFailures.get(cached)?.[0] === error); reportEffectFailures(error); throw error;',
+  'const cached = effectModuleStates.get(1)?.error; console.error("cached-interrupted", cached?.message.includes("interrupted"), effectCleanupFailures.get(cached)?.[0]?.error === error); reportEffectFailures(error); throw error;',
 );
 const abandonedCleanupCheck = await new Deno.Command(Deno.execPath(), {
   args: ["eval", abandonedCleanupObserved],

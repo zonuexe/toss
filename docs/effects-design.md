@@ -1449,3 +1449,39 @@ observation boundaries, and independently overlapping occurrences of the same
 Error can still interfere before observation. A per-occurrence carrier and its
 interaction with JS identity, cached module errors and async propagation still
 need to be established before production integration.
+
+The standalone occurrence experiment now extends the earlier envelope model
+with failed-module cache templates, host-boundary unwrapping, re-entry while an
+outer cleanup is running, and two overlapping async failures. Each reuse of a
+cached template gets a distinct carrier and copied cleanup graph, while the
+host receives the identical original thrown value. Captured carrier snapshots
+retain their own structure when a later carrier is modified. A private WeakSet
+marks carriers without inspecting a foreign thrown value; the probe checks an
+`undefined` throw and a Proxy that throws on property or prototype access.
+
+This remains a standalone JavaScript model, not the generated Toss module,
+handler, REPL, or async runtime. In particular it does not yet establish how
+carriers travel through every generated call, where async and JS boundaries
+unwrap them, how real module interruption is represented, or how cycles and
+arbitrary overlapping cleanup graphs are handled. Error values inside a
+snapshot are identity-preserving references, not deep-frozen host objects. The
+experiment therefore narrows the integration questions; it does not complete
+occurrence isolation in Toss.
+
+An actual Toss module regression exposed a narrower leak: an outer module's
+cleanup recorded an inner module's cached Error, and a later unrelated caller
+added cleanup information to that inner Error. Re-importing the outer module
+then incorrectly displayed the later caller's cleanup. The experimental runtime
+now records an immutable snapshot of a cleanup Error's associated cleanup
+records when associating it with the primary failure. It still retains the
+original Error objects. Traversal follows occurrence records rather than
+deduplicating by Error identity, so two appearances of the same Error can keep
+different nested cleanup records. Embedded and external runtime modes and both
+delegate variants exercise the regression, along with Node and Bun.
+
+This fixes that nested-association leak, not the complete occurrence model.
+Top-level handler and cleanup metadata are still stored in WeakMaps keyed by
+Error, and an overlapping reuse can interfere before a nested record is
+captured. The standalone carrier model above is not integrated into generated
+Toss code; JS boundaries, arbitrary throws and module/async lifetime still need
+a unified implementation and tests before claiming general isolation.
