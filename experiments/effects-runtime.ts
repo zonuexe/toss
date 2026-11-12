@@ -426,23 +426,23 @@ function getEffectFailureDetails(error) {
     seen.add(failure);
     for (const nested of effectCleanupFailures.get(failure) ?? []) collect(nested);
   }
-  if ((typeof error === "object" && error !== null) || typeof error === "function") {
-    for (const failure of effectCleanupFailures.get(error) ?? []) collect(failure);
-    return Object.freeze({error, cleanup: Object.freeze(cleanup), contexts: Object.freeze([...(effectHandlerContexts.get(error) ?? [])])});
-  }
-  return Object.freeze({error, cleanup: Object.freeze(cleanup), contexts: Object.freeze([])});
+  const hasMetadata = (typeof error === "object" && error !== null) || typeof error === "function";
+  if (hasMetadata) for (const failure of effectCleanupFailures.get(error) ?? []) collect(failure);
+  const contexts = hasMetadata ? [...(effectHandlerContexts.get(error) ?? [])] : [];
+  const cleanupDescriptions = cleanup.map((failure) => {
+    try { return String(failure instanceof Error ? failure.message : failure); }
+    catch (_failure) { return "<unavailable error>"; }
+  });
+  const handlerDescriptions = contexts.map((request) =>
+    "while handling " + keyDescription(request.effect) + " at " + request.location.file + ":" + request.location.line + ":" + request.location.column);
+  return Object.freeze({error, cleanup: Object.freeze(cleanup), contexts: Object.freeze(contexts), cleanupDescriptions: Object.freeze(cleanupDescriptions), handlerDescriptions: Object.freeze(handlerDescriptions)});
 }
 function reportEffectFailures(error) {
   if ((typeof error !== "object" || error === null) && typeof error !== "function") return;
   const details = getEffectFailureDetails(error);
   if (details.cleanup.length === 0 && details.contexts.length === 0) return;
-  const lines = details.contexts.map((request) => "\\n  while handling " + keyDescription(request.effect) + " at " + request.location.file + ":" + request.location.line + ":" + request.location.column);
-  for (const failure of details.cleanup) {
-    let description;
-    try { description = failure instanceof Error ? failure.message : String(failure); }
-    catch (_failure) { description = "<unavailable error>"; }
-    lines.push("\\n  cleanup failure: " + description);
-  }
+  const lines = details.handlerDescriptions.map((description) => "\\n  " + description);
+  for (const description of details.cleanupDescriptions) lines.push("\\n  cleanup failure: " + description);
   if (!effectOriginalErrorStacks.has(error)) {
     try { effectOriginalErrorStacks.set(error, error.stack); }
     catch (_failure) { return; }

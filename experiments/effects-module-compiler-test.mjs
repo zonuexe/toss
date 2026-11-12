@@ -424,7 +424,7 @@ const inspectionSource = compileExperimentalEffectsSources(
   new Map([
     [
       "main.toss",
-      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first, saved; try { a(); } catch (e) { first = e; saved = globalThis.effectProbe(e); Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first && saved.error === first); console.log('SAVED', saved.cleanup.map(x => x.message).join('|')); console.log('FROZEN', Object.isFrozen(saved), Object.isFrozen(saved.cleanup), Object.isFrozen(saved.contexts)); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first, saved; try { a(); } catch (e) { first = e; saved = globalThis.effectProbe(e); Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first && saved.error === first); console.log('SAVED', saved.cleanup.map(x => x.message).join('|')); console.log('FROZEN', Object.isFrozen(saved), Object.isFrozen(saved.cleanup), Object.isFrozen(saved.contexts)); saved.cleanup[1].message = 'changed'; console.log('CAPTURED', saved.cleanupDescriptions.join('|')); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
     ],
     ["lib.toss", "%export({ $missing } ensure: { $moduleCleanup })."],
   ]),
@@ -451,6 +451,7 @@ assert.match(inspectionText, /SAME true/);
 assert.match(inspectionText, /FROZEN true true true/);
 const [savedInspection, currentInspection] = inspectionText.split("CLEANUP ");
 assert.match(savedInspection, /Unbound name "cleanupA"/);
+assert.match(savedInspection, /CAPTURED .*Unbound name "cleanupA"/);
 assert.doesNotMatch(savedInspection, /Unbound name "cleanupB"/);
 assert.match(
   currentInspection,
