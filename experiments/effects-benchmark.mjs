@@ -93,4 +93,19 @@ for (const workload of workloads) {
       sharedDispatchTables: true,
     })),
   );
+  console.log(
+    "  shared delegate",
+    measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
+      sharedDispatchTables: true,
+      sharedBoundaryDelegate: true,
+    })),
+  );
+  console.log(
+    "  failure carriers",
+    measure(compileExperimentalEffects(workload.source, "benchmark.toss", {
+      sharedDispatchTables: true,
+      sharedBoundaryDelegate: true,
+      failureCarriers: true,
+    })),
+  );
 }

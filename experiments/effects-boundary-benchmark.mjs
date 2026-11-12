@@ -1,10 +1,19 @@
 import { compileExperimentalEffects } from "./effects-compiler.ts";
 
-const candidate = Deno.args[0] === "delegate"
+const carrier = Deno.args[0] === "carrier";
+const candidate = carrier
+  ? { failureCarriers: true }
+  : Deno.args[0] === "delegate"
   ? { sharedBoundaryDelegate: true }
   : { directBoundarySteps: true };
+const baselineOptions = {
+  sharedDispatchTables: true,
+  ...(carrier ? { sharedBoundaryDelegate: true } : {}),
+};
 console.log(
-  Deno.args[0] === "delegate"
+  carrier
+    ? "Candidate: failure carriers"
+    : Deno.args[0] === "delegate"
     ? "Candidate: shared delegate"
     : "Candidate: direct boundary steps",
 );
@@ -40,12 +49,12 @@ console.log(
 for (const [name, source] of workloads) {
   const baseline = new Function(
     compileExperimentalEffects(source, "boundary-bench.toss", {
-      sharedDispatchTables: true,
+      ...baselineOptions,
     }),
   );
   const direct = new Function(
     compileExperimentalEffects(source, "boundary-bench.toss", {
-      sharedDispatchTables: true,
+      ...baselineOptions,
       ...candidate,
     }),
   );

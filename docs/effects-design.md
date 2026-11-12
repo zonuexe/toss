@@ -1485,3 +1485,50 @@ Error, and an overlapping reuse can interfere before a nested record is
 captured. The standalone carrier model above is not integrated into generated
 Toss code; JS boundaries, arbitrary throws and module/async lifetime still need
 a unified implementation and tests before claiming general isolation.
+
+### Experimental carrier through generated code and boundaries
+
+An opt-in `failureCarriers` variant now carries a privately branded failure
+occurrence through the experimental generator runtime. A carrier keeps the
+original thrown value, cleanup occurrences and handler contexts; branding uses
+a WeakSet without inspecting a foreign value. The generated invocation and
+handler paths preserve an existing carrier rather than wrapping it again. A
+failed module caches a copy of its carrier and returns another copy for each
+subsequent import, while all copies retain the same original Error identity.
+Module interruption retains its own failure record and cleanup.
+
+JS callback, top-level and experimental REPL boundaries expose the original
+value rather than the carrier. An async Block keeps its carrier on the internal
+Toss Promise so another Toss `%await` can retain its metadata. A separate host
+Promise rejects with the original value, including for an unobserved rejection;
+when Toss awaits the internal result, the host-side rejection is observed to
+avoid a spurious unhandled-rejection event. This adds a Promise and associated
+bookkeeping per async result in this variant. This behavior needs further
+review for host scheduling, late observation, cancellation and performance.
+
+Tests compare the variant with the existing runtime on synchronous handler and
+cleanup scenarios, JS and async boundaries, including hostile foreign values.
+The carrier-specific probe exercises cached-error identity, re-entry during
+cleanup, module interruption, REPL diagnostics, an async-to-async await chain,
+and two concurrent async uses of one cached module Error with different cleanup
+records. Test-only instrumentation observes the separate internal occurrences;
+it is not a public diagnostics interface. Embedded and external runtime forms
+are covered. Node and Bun additionally run the cross-engine boundary probes,
+including unhandled async rejection exposing an Error rather than a carrier.
+
+The original Error's writable `stack` is still shared when identity is shared:
+later reports can replace its displayed details. A snapshot taken at the
+boundary retains its own descriptions, but there is no public host API for
+retrieving the correct snapshot of an arbitrary occurrence. Frozen or hostile
+stack properties remain best-effort. More generally this experimental variant
+has not established all mixed host re-entry, primitive throw, module and async
+interleavings or exception paths; it is disabled by default and does not alter
+the ordinary Toss compiler or runtime. `deno task effects:benchmark-carrier`
+offers a paired microbenchmark, not a release performance guarantee.
+
+Two local runs of that benchmark on Deno 2.9.7 / V8 15.0.245.2, macOS arm64,
+gave carrier/baseline paired median ratios of 0.99 and 1.19 for ordinary map,
+1.07 and 1.00 for dynamic methods, and 1.12 and 1.49 for the effectful callback
+workload. The variation and small workloads prevent a general conclusion;
+the potential cost in the effectful case warrants investigation. These runs
+do not measure the additional async Promise or failure-heavy workloads.
