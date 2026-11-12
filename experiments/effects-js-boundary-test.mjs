@@ -8,6 +8,7 @@ async function run(source, observeCause = false, shared = false) {
   const generated = compileExperimentalEffects(source, "js-boundary.toss", {
     sharedDispatchTables: shared,
     sharedBoundaryDelegate: shared,
+    failureCarriers: shared,
   });
   const prefix = generated.match(/^(?:import \* as [^\n]+\n)*/)?.[0] ?? "";
   const javascript = observeCause

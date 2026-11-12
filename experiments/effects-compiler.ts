@@ -46,6 +46,7 @@ type EffectCompilerOptions = {
   readonly directBoundarySteps?: boolean;
   readonly sharedBoundaryDelegate?: boolean;
   readonly runtimeImport?: string;
+  readonly failureCarriers?: boolean;
 };
 
 function createEffectEmitter(
@@ -125,7 +126,7 @@ ${
 const invocation = this;
 const asyncBoundary = Object.freeze({});
 try {${scopeSetup}
-} catch (error) { reportEffectFailures(error); throw error; }
+} catch (error) { throwAsyncEffectFailure(error); }
 }))(${scope})`;
         }
         return `((captured) => markEffectBlock(function*(${
@@ -310,7 +311,7 @@ export function compileExperimentalEffects(
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = getEffectBoundary();",
     "registerEffectSymbolRoot(symbolRoot);",
-    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
+    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw effectFailureValue(error); }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
     }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
@@ -373,7 +374,7 @@ export function compileExperimentalEffectsSources(
       ]
       : []),
     ...initializers,
-    `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw error; }`,
+    `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw effectFailureValue(error); }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
     }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,

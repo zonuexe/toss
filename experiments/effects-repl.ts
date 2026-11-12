@@ -6,7 +6,10 @@ import {
 import { compileExperimentalEffectsCell } from "./effects-compiler.ts";
 import { experimentalEffectRuntime } from "./effects-runtime.ts";
 
-export function createExperimentalEffectsRepl(output: (text: string) => void): {
+export function createExperimentalEffectsRepl(
+  output: (text: string) => void,
+  options: { readonly failureCarriers?: boolean } = {},
+): {
   readonly evaluate: (source: string, file: string) => unknown;
 } {
   const code = [
@@ -17,10 +20,11 @@ export function createExperimentalEffectsRepl(output: (text: string) => void): {
       sharedDispatchTables: true,
       sharedBoundaryDelegate: true,
       outputHook: "replOutput",
+      ...options,
     }),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = getEffectBoundary(); registerEffectSymbolRoot(symbolRoot);",
-    "return Object.freeze({ evaluate(generated, javascriptEvaluators) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { reportEffectFailures(error); return {kind: 'error', error, details: getEffectFailureDetails(error)}; } } });",
+    "return Object.freeze({ evaluate(generated, javascriptEvaluators) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { reportEffectFailures(error); return {kind: 'error', error: effectFailureValue(error), details: getEffectFailureDetails(error)}; } } });",
   ].join("\n");
   const bridge: unknown = Reflect.apply(
     Function("outputHandler", code),

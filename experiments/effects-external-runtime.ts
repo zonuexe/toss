@@ -10,8 +10,10 @@ type ExternalRuntimeOptions = Omit<ExperimentalRuntimeOptions, "outputHook">;
 const bridge = [
   "TossRuntimeError",
   "awaitToss",
+  "asEffectFailure",
   "blockEnvironment",
   "effectInitialize",
+  "effectFailureValue",
   "effectModuleInitializers",
   "effectParent",
   "effectPipeline",
@@ -29,6 +31,7 @@ const bridge = [
   "reportEffectFailures",
   "runEffectProgram",
   "send",
+  "throwAsyncEffectFailure",
 ] as const;
 
 function factory(options: ExternalRuntimeOptions): string {

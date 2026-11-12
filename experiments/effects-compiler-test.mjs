@@ -6,6 +6,7 @@ async function execute(source) {
   const shared = compileExperimentalEffects(source, "experimental.toss", {
     sharedDispatchTables: true,
     sharedBoundaryDelegate: true,
+    failureCarriers: true,
   });
   const direct = compileExperimentalEffects(source, "experimental.toss", {
     sharedDispatchTables: true,

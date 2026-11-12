@@ -20,10 +20,22 @@ const cases = [
     stdout: "1,2\n",
   },
   {
+    name: "nested async failure preserves cleanup",
+    source:
+      "#inner bind: %async({ { $missing } ensure: { $cleanup } }). #outer bind: %async({ %await($inner value) }) asJSCallback. %js(f = $outer; f().catch(e => console.log('HOST', e instanceof Error, e.stack.includes('cleanup')))).",
+    stdout: "HOST true true\n",
+  },
+  {
     name: "abandonment cleanup",
     source:
       "#h bind: $Object clone. $h at: #A put: { p, k -> 42 }. ({ { $Effect raise: #A with: $Nil. 'never' print } ensure: { 'cleanup' print } } handleWith: $h) print.",
     stdout: "cleanup\n42\n",
+  },
+  {
+    name: "unhandled async failure exposes original Error",
+    source:
+      "%js((process.on('unhandledRejection', e => console.log('UNHANDLED', e instanceof Error, e.message.includes('missing'))), 0)). #f bind: %async({ $missing }). $f value.",
+    stdout: "UNHANDLED true true\n",
   },
   {
     name: "reentrant cached failure preserves cleanup",
@@ -54,24 +66,37 @@ const cases = [
 ];
 const decoder = new TextDecoder();
 const directory = await Deno.makeTempDir({ prefix: "toss-effects-runtime-" });
+const variants = [
+  {
+    sharedDispatchTables: true,
+    sharedBoundaryDelegate: false,
+    failureCarriers: false,
+  },
+  {
+    sharedDispatchTables: true,
+    sharedBoundaryDelegate: true,
+    failureCarriers: false,
+  },
+  {
+    sharedDispatchTables: true,
+    sharedBoundaryDelegate: true,
+    failureCarriers: true,
+  },
+];
 try {
-  for (const sharedBoundaryDelegate of [false, true]) {
-    const path = `${directory}/runtime-${sharedBoundaryDelegate}.mjs`;
+  for (const [index, variant] of variants.entries()) {
+    const path = `${directory}/runtime-${index}.mjs`;
     await Deno.writeTextFile(
       path,
-      generateExperimentalEffectsRuntime({
-        sharedDispatchTables: true,
-        sharedBoundaryDelegate,
-      }),
+      generateExperimentalEffectsRuntime(variant),
     );
   }
   for (const engine of ["node", "bun"]) {
     for (const scenario of cases) {
-      for (const sharedBoundaryDelegate of [false, true]) {
-        const base = { sharedDispatchTables: true, sharedBoundaryDelegate };
+      for (const [index, base] of variants.entries()) {
         for (const external of [false, true]) {
           const runtimeImport =
-            pathToFileURL(`${directory}/runtime-${sharedBoundaryDelegate}.mjs`)
+            pathToFileURL(`${directory}/runtime-${index}.mjs`)
               .href;
           const options = external ? { ...base, runtimeImport } : base;
           const javascript = scenario.sources
@@ -91,7 +116,7 @@ try {
             stderr: "piped",
           }).output();
           const label =
-            `${engine}: ${scenario.name}, delegate=${sharedBoundaryDelegate}, external=${external}`;
+            `${engine}: ${scenario.name}, variant=${index}, external=${external}`;
           assert.equal(
             result.success,
             true,
