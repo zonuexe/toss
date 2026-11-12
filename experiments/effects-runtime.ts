@@ -1,9 +1,20 @@
 // Experimental runtime source; not the production Toss runtime.
+export type ExperimentalRuntimeOptions = {
+  readonly sharedDispatchTables?: boolean;
+  readonly directBoundarySteps?: boolean;
+  readonly sharedBoundaryDelegate?: boolean;
+  readonly outputHook?: string;
+};
+
 export function experimentalEffectRuntime(
-  sharedDispatchTables = false,
-  directBoundarySteps = false,
-  sharedBoundaryDelegate = false,
+  options: ExperimentalRuntimeOptions = {},
 ): string {
+  const {
+    sharedDispatchTables = false,
+    directBoundarySteps = false,
+    sharedBoundaryDelegate = false,
+    outputHook,
+  } = options;
   const allowedMessages =
     `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "toString", "inspect", "not"]);`;
   return `
@@ -395,7 +406,11 @@ function* effectSend(receiver, message, context) {
     const conversion = name === "print" ? "toString" : "inspect";
     const text = yield* effectSend(receiver, {name: conversion, arguments: []}, context);
     if (typeof text !== "string") throw new TossRuntimeError(conversion + " must return a string.", context.location);
-    console.log(text);
+    ${
+    outputHook === undefined
+      ? "console.log(text);"
+      : `${outputHook}(text, context.location);`
+  }
     return receiver;
   }
   ${sharedDispatchTables ? "" : allowedMessages}

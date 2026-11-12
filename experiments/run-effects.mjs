@@ -1,6 +1,7 @@
 // Keep the exploratory probes separate from the production test suite.
 import "./effects-external-runtime-test.mjs";
 import "./effects-display-test.mjs";
+import "./effects-repl-test.mjs";
 await import("./effects-one-shot.mjs");
 await import("./effects-cleanup-errors.mjs");
 await import("./effects-boundaries.mjs");

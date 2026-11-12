@@ -1426,3 +1426,26 @@ the lists remain references, and internal metadata is still keyed by Error.
 It is not a general occurrence-based error model or a public diagnostics API;
 arbitrary re-entry, nested mutable records and concurrent propagation still
 need a design before production integration.
+
+### Experimental REPL output and occurrence snapshots
+
+An isolated effect REPL probe now retains a lexical environment across cells
+and uses the same output-hook convention as the ordinary REPL for cooperative
+`print` and `dump`. It wraps output-handler failures in a Toss runtime error
+with the original cause and preserves cleanup details. It also tests async
+output, resumed custom inspection, and the isolation of compiled `%js`
+evaluators from the runtime closure. It is not the public REPL: imports,
+exports, persistent macro declarations, REPL module loading, interactive
+control and the full existing session protocol are not implemented here.
+
+Failure-details snapshots additionally capture frozen cleanup and handler
+description strings at observation time. A later mutation of a referenced
+Error or request location does not rewrite those captured descriptions, while
+the original Error references and JS causes remain available. Separate REPL
+failures wrapping the same host Error are tested with different cleanup errors.
+This improves a diagnostic snapshot, not the underlying failure-occurrence
+model: records are still keyed by Error, snapshots are taken at explicit
+observation boundaries, and independently overlapping occurrences of the same
+Error can still interfere before observation. A per-occurrence carrier and its
+interaction with JS identity, cached module errors and async propagation still
+need to be established before production integration.

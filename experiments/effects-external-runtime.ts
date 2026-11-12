@@ -1,13 +1,11 @@
 import { runtimePreludeLines } from "../src/codegen_prelude.ts";
 import { fingerprintRuntimeSource } from "../src/runtime_module.ts";
-import { experimentalEffectRuntime } from "./effects-runtime.ts";
+import {
+  experimentalEffectRuntime,
+  type ExperimentalRuntimeOptions,
+} from "./effects-runtime.ts";
 import { experimentalEffectModuleRuntime } from "./effects-module-runtime.ts";
-
-export type ExperimentalRuntimeOptions = {
-  readonly sharedDispatchTables?: boolean;
-  readonly directBoundarySteps?: boolean;
-  readonly sharedBoundaryDelegate?: boolean;
-};
+type ExternalRuntimeOptions = Omit<ExperimentalRuntimeOptions, "outputHook">;
 
 const bridge = [
   "TossRuntimeError",
@@ -33,15 +31,11 @@ const bridge = [
   "send",
 ] as const;
 
-function factory(options: ExperimentalRuntimeOptions): string {
+function factory(options: ExternalRuntimeOptions): string {
   return [
     "export function createEffectRuntime() {",
     ...runtimePreludeLines(),
-    experimentalEffectRuntime(
-      options.sharedDispatchTables,
-      options.directBoundarySteps,
-      options.sharedBoundaryDelegate,
-    ),
+    experimentalEffectRuntime(options),
     experimentalEffectModuleRuntime,
     `return {${bridge.join(", ")}};`,
     "}",
@@ -49,7 +43,7 @@ function factory(options: ExperimentalRuntimeOptions): string {
 }
 
 export function generateExperimentalEffectsRuntime(
-  options: ExperimentalRuntimeOptions = {},
+  options: ExternalRuntimeOptions = {},
 ): string {
   const source = factory(options);
   return `export const runtimeFingerprint = ${
@@ -58,7 +52,7 @@ export function generateExperimentalEffectsRuntime(
 }
 
 export function experimentalRuntimeSetup(
-  options: ExperimentalRuntimeOptions,
+  options: ExternalRuntimeOptions,
   namespace: string,
 ): string[] {
   const expected = fingerprintRuntimeSource(factory(options));

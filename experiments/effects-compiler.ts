@@ -236,6 +236,34 @@ const invocation = this;${scopeSetup}
   return emit;
 }
 
+export function compileExperimentalEffectsCell(source: string, file: string): {
+  readonly body: string;
+  readonly evaluators: string;
+} {
+  const expressions = expandProgram(source, { file });
+  const analysis = analyzeModule(expressions, file, false);
+  if (
+    analysis.imports.length > 0 || analysis.exported !== undefined ||
+    collectJavaScriptImports(expressions).length > 0
+  ) {
+    throw new TypeError(
+      "Experimental effect REPL cells do not support imports or exports.",
+    );
+  }
+  const javascript = collectJavaScriptExpressions(expressions);
+  const emit = createEffectEmitter(
+    new Map(javascript.map((expression, index) => [expression, index])),
+    {},
+  );
+  const body = expressions.map((expression, index) =>
+    `${index === expressions.length - 1 ? "return " : ""}${emit(expression)};`
+  ).join("\n");
+  return {
+    body: `runEffectProgram((function*() { ${body || "return null;"} })())`,
+    evaluators: emitJavaScriptEvaluators(javascript).source,
+  };
+}
+
 export function compileExperimentalEffects(
   source: string,
   file: string,
@@ -278,13 +306,7 @@ export function compileExperimentalEffects(
       ? runtimePreludeLines()
       : experimentalRuntimeSetup(options, "runtimeNamespace")),
     ...fileRootSetupLines(),
-    ...(runtimeAlias === undefined
-      ? [experimentalEffectRuntime(
-        options.sharedDispatchTables,
-        options.directBoundarySteps,
-        options.sharedBoundaryDelegate,
-      )]
-      : []),
+    ...(runtimeAlias === undefined ? [experimentalEffectRuntime(options)] : []),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = getEffectBoundary();",
     "registerEffectSymbolRoot(symbolRoot);",
@@ -346,11 +368,7 @@ export function compileExperimentalEffectsSources(
       : experimentalRuntimeSetup(options, "runtimeNamespace")),
     ...(runtimeAlias === undefined
       ? [
-        experimentalEffectRuntime(
-          options.sharedDispatchTables,
-          options.directBoundarySteps,
-          options.sharedBoundaryDelegate,
-        ),
+        experimentalEffectRuntime(options),
         experimentalEffectModuleRuntime,
       ]
       : []),
