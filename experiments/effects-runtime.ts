@@ -79,23 +79,34 @@ const effectBaseAsyncResult = asyncResult;
 const effectBaseAwaitToss = awaitToss;
 if (useEffectCarriers) asyncResult = function(promise) {
   const value = effectBaseAsyncResult(promise);
+  const state = {observed: false, publicResult: undefined};
   const publicResult = promise.then(
     (result) => result,
-    (error) => { reportEffectFailures(error); throw effectFailureValue(error); },
+    (error) => { if (state.observed) return; reportEffectFailures(error); throw effectFailureValue(error); },
   );
-  effectAsyncPublicResults.set(value, publicResult);
+  state.publicResult = publicResult;
+  effectAsyncPublicResults.set(value, state);
   return value;
 };
+function observeEffectAsyncResult(value) {
+  const state = effectAsyncPublicResults.get(value);
+  if (state === undefined) return;
+  state.observed = true;
+  state.publicResult.catch(() => {});
+}
 if (useEffectCarriers) awaitToss = function(value, context) {
-  const publicResult = effectAsyncPublicResults.get(value);
-  if (publicResult !== undefined) publicResult.catch(() => {});
+  observeEffectAsyncResult(value);
   return effectBaseAwaitToss(value, context);
 };
 if (useEffectCarriers) toJavaScript = function(value, context) {
   if (!asyncResults.has(value)) return effectBaseToJavaScript(value, context);
   const previous = asyncHostPromises.get(value);
   if (previous !== undefined) return previous;
-  const promise = effectAsyncPublicResults.get(value).then((result) => toJavaScript(result.value, context));
+  observeEffectAsyncResult(value);
+  const promise = asyncResults.get(value).then(
+    (result) => toJavaScript(result.value, context),
+    (error) => { reportEffectFailures(error); throw effectFailureValue(error); },
+  );
   asyncHostPromises.set(value, promise);
   hostValues.set(value, promise);
   hostReferences.set(promise, value);

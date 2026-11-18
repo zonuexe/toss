@@ -1532,3 +1532,23 @@ gave carrier/baseline paired median ratios of 0.99 and 1.19 for ordinary map,
 workload. The variation and small workloads prevent a general conclusion;
 the potential cost in the effectful case warrants investigation. These runs
 do not measure the additional async Promise or failure-heavy workloads.
+
+### Async host observation timing
+
+The original carrier prototype converted the public Promise by chaining from a
+separate observation Promise. An ordinary fulfilled async callback then ran one
+microtask later than the existing runtime in a differential test. The prototype
+now attaches the host-facing conversion directly to the internal Promise and
+marks the separate unhandled-rejection observer as observed. Toss `%await` also
+marks that observer as observed while continuing to await the internal carrier.
+If neither path observes the result, the observer still exposes the original
+error to the host's unhandled-rejection mechanism.
+
+Differential probes now compare callback ordering for fulfillment, rejection,
+and nested Toss `%await` in Deno, Node and Bun, for embedded and external
+runtime forms. Additional Deno cases check repeated awaits of the same result,
+JS Promise identity, shared rejection identity, late observation, and absence
+of an extra unhandled rejection when Toss consumes the failure. This covers
+those event sequences, not every host scheduling interleaving. The separate
+observer Promise and mutable Error stack limitations remain, and this remains
+an off-by-default experiment rather than production integration.

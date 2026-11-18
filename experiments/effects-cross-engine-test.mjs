@@ -8,6 +8,21 @@ import { generateExperimentalEffectsRuntime } from "./effects-external-runtime.t
 
 const cases = [
   {
+    name: "fulfilled Promise callback ordering",
+    source:
+      "#f bind: %async({ 1 }) asJSCallback. %js(f = $f; (f().then(() => console.log('result')), Promise.resolve().then(() => console.log('tick1')).then(() => console.log('tick2')).then(() => console.log('tick3')), 0)).",
+  },
+  {
+    name: "rejected Promise callback ordering",
+    source:
+      "#f bind: %async({ $missing }) asJSCallback. %js(f = $f; (f().catch(() => console.log('rejected')), Promise.resolve().then(() => console.log('tick1')).then(() => console.log('tick2')).then(() => console.log('tick3')), 0)).",
+  },
+  {
+    name: "nested async await ordering",
+    source:
+      "#inner bind: %async({ 1 }). #outer bind: %async({ %await($inner value). 'inner' print }) asJSCallback. %js(f = $outer; (f().then(() => console.log('result')), Promise.resolve().then(() => console.log('tick1')).then(() => console.log('tick2')).then(() => console.log('tick3')), 0)).",
+  },
+  {
     name: "reentrant callback resumes outer handler",
     source:
       "#cb bind: { #h bind: $Object clone. $h at: #Inner put: { p, k -> $k value: 7 }. { $Effect raise: #Inner with: $Nil } handleWith: $h } asJSCallback. #outer bind: $Object clone. $outer at: #Outer put: { p, k -> #v bind: %js(f = $cb; f()). $k value: $v }. ({ $Effect raise: #Outer with: $Nil } handleWith: $outer) print.",
@@ -93,6 +108,7 @@ try {
   }
   for (const engine of ["node", "bun"]) {
     for (const scenario of cases) {
+      let expected = scenario.stdout;
       for (const [index, base] of variants.entries()) {
         for (const external of [false, true]) {
           const runtimeImport =
@@ -122,7 +138,9 @@ try {
             true,
             `${label}: ${decoder.decode(result.stderr)}`,
           );
-          assert.equal(decoder.decode(result.stdout), scenario.stdout, label);
+          const stdout = decoder.decode(result.stdout);
+          if (expected === undefined) expected = stdout;
+          assert.equal(stdout, expected, label);
         }
       }
     }
