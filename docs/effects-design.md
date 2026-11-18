@@ -1762,3 +1762,28 @@ any later rejection to prevent an unhandled rejection and leaves the parent
 diagnostic unchanged. Code holding the original Promise can still observe
 its eventual settlement. A deadline for host settlement never bounds Toss
 cleanup Blocks.
+
+### Optional observer for late host failures
+
+In the experimental cancellation mode, the module configured by
+`failureObserverImport` may also export `onLateHostOperationFailure`.
+It still provides `onEffectFailure`, which can be a no-op when the host
+only needs late failures. The experimental compiler exports the
+`ExperimentalEffectDiagnosticHost` and `LateHostOperationFailure` types.
+The function receives a frozen record with the original rejection value
+(`cause`), the signal's reason (`abortReason`), the budget in milliseconds
+(`abortWaitMs`), and the registration's frozen `location` with file, line,
+and column. The original values retain their identity. The hook fires once
+per timed-out Promise in the owning task if it eventually rejects. A
+fulfillment or a rejection that wins the race against the timer does not
+notify this hook. Without the export, late rejections remain observed
+without a notification.
+
+The hook runs when the late rejection is observed, in a fresh JS effect
+boundary. It can run during child cleanup or after the parent has reported.
+The runtime does not await the hook, and discards its throws or rejected
+return values without calling `onEffectObserverError`. The parent diagnostic
+still fires once after child cleanup and includes the deadline failure
+alongside any cleanup failures. It holds the original primary failure and
+is independent of the late rejection. The embedded and external experimental
+runtimes accept the same observer export.

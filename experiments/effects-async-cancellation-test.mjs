@@ -3,16 +3,28 @@ import { compileExperimentalEffects } from "./effects-compiler.ts";
 import { generateExperimentalEffectsRuntime } from "./effects-external-runtime.ts";
 
 const moduleUrl = (source) => `data:text/javascript;base64,${btoa(source)}`;
+const failureObserver = `
+  export function onEffectFailure(diagnostic) {
+    globalThis.reports.push(diagnostic);
+    globalThis.events.push("diagnostic:" + diagnostic.boundary);
+  }
+`;
 const options = {
   failureCarriers: true,
   asyncCancellation: true,
-  failureObserverImport: moduleUrl(`
-    export function onEffectFailure(diagnostic) {
-      globalThis.reports.push(diagnostic);
-      globalThis.events.push("diagnostic:" + diagnostic.boundary);
-    }
-  `),
+  failureObserverImport: moduleUrl(failureObserver),
 };
+const lateObserverImport = moduleUrl(`${failureObserver}
+  export function onLateHostOperationFailure(failure) {
+    lateReports.push(failure);
+    events.push("late:" + failure.abortWaitMs);
+    if (failure.cause === earlyReason) throw new Error("late hook threw");
+    return Promise.reject(new Error("late hook rejected"));
+  }
+  export function onEffectObserverError() {
+    events.push("unexpected observer error hook");
+  }
+`);
 const runtimeImport = moduleUrl(generateExperimentalEffectsRuntime(options));
 const source = `
 %js((globalThis.events = [], globalThis.reports = [],
@@ -323,9 +335,13 @@ for (const explicitAwait of [false, true]) {
 function boundedHostWait(cancel) {
   return `
 %js((globalThis.events = [], globalThis.reports = [],
+  globalThis.lateReports = [],
+  globalThis.earlyReason = Symbol("late during cleanup"),
+  globalThis.laterReason = new Error("late after diagnostic"),
   globalThis.reason = new Error("explicit cancellation"),
   globalThis.late = Promise.withResolvers(),
   globalThis.later = Promise.withResolvers(),
+  globalThis.lateSuccess = Promise.withResolvers(),
   globalThis.cleanupStarted = Promise.withResolvers(),
   globalThis.cleanupGate = Promise.withResolvers(),
   globalThis.bodyGate = Promise.withResolvers(), 0)).
@@ -348,6 +364,7 @@ function boundedHostWait(cancel) {
   }) abortWaitMs: 0.
   $Effect hostOperation: %js(_ => later.promise) abortWaitMs: 1.
   $Effect hostOperation: %js(_ => later.promise) abortWaitMs: 0.
+  $Effect hostOperation: %js(_ => lateSuccess.promise) abortWaitMs: 0.
   $Effect hostOperation: %js(signal => new Promise((_, reject) => {
     signal.addEventListener("abort", () => reject(new Error("host cleanup")), {once: true});
   })) abortWaitMs: 0.
@@ -365,22 +382,36 @@ function boundedHostWait(cancel) {
   await cleanupStarted.promise;
   const turn = () => new Promise(resolve => setTimeout(resolve, 0));
   await turn();
-  late.reject(new Error("late during cleanup"));
+  late.reject(earlyReason);
   await turn();
   console.log("during cleanup", reports.length, events.join("|"));
   cleanupGate.resolve();
   await failed;
-  later.reject(new Error("late after diagnostic"));
+  later.reject(laterReason);
+  lateSuccess.resolve(42);
   await turn();
   console.log(events.join("|"));
   console.log("reports", reports.length, reports[0].cleanupDescriptions.map(s =>
     ["cleanupFailure", "did not settle within 0 ms", "did not settle within 1 ms", "host cleanup"].find(x => s.includes(x))
   ).join("|"));
+  console.log("late reports", lateReports.length, lateReports.every((failure, index) =>
+    failure.cause === [earlyReason, laterReason][index] &&
+    failure.abortReason === abortReason &&
+    failure.abortWaitMs === index &&
+    failure.location.file === "bounded-host-wait.toss" &&
+    failure.location.line > 0 && failure.location.column > 0 &&
+    Object.isFrozen(failure) && Object.isFrozen(failure.location)));
 })()).
 `;
 }
 for (const cancel of [false, true]) {
-  for (const config of [options, { ...options, runtimeImport }]) {
+  for (const config of [
+    options,
+    { ...options, runtimeImport },
+    { ...options, failureObserverImport: lateObserverImport },
+    { ...options, runtimeImport, failureObserverImport: lateObserverImport },
+  ]) {
+    const observing = config.failureObserverImport === lateObserverImport;
     const result = await new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -391,10 +422,11 @@ for (const cancel of [false, true]) {
     }).output();
     assert.equal(result.success, true, decoder.decode(result.stderr));
     assert.equal(decoder.decode(result.stdout), [
-      "during cleanup 0 abort|cleanup start",
+      `during cleanup 0 abort|cleanup start${observing ? "|late:0" : ""}`,
       "primary true true",
-      "abort|cleanup start|cleanup end|diagnostic:promise|catch",
-      "reports 1 cleanupFailure|did not settle within 0 ms|did not settle within 1 ms|host cleanup",
+      `abort|cleanup start${observing ? "|late:0" : ""}|cleanup end|diagnostic:promise|catch${observing ? "|late:1" : ""}`,
+      "reports 1 cleanupFailure|did not settle within 0 ms|did not settle within 1 ms|did not settle within 0 ms|host cleanup",
+      `late reports ${observing ? 2 : 0} true`,
       "",
     ].join("\n"));
   }

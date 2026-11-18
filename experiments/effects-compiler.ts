@@ -24,6 +24,11 @@ import {
   runtimePreludeLines,
 } from "../src/codegen_prelude.ts";
 
+export type {
+  ExperimentalEffectDiagnosticHost,
+  LateHostOperationFailure,
+} from "./effects-async-cancellation.ts";
+
 const directNumberMessages = new Set([
   "toString",
   "inspect",

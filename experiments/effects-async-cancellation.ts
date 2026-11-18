@@ -1,8 +1,30 @@
+import type { SourceLocation } from "../src/diagnostic.ts";
+import type { EffectDiagnosticHost } from "../src/effect_diagnostics.ts";
+
+/** A rejection of a host Promise after the runtime stopped waiting for it. */
+export interface LateHostOperationFailure {
+  readonly cause: unknown;
+  readonly abortReason: unknown;
+  readonly abortWaitMs: number;
+  readonly location: Pick<SourceLocation, "file" | "line" | "column">;
+}
+
+export interface ExperimentalEffectDiagnosticHost extends EffectDiagnosticHost {
+  /** Called in a fresh JS boundary. The runtime discards hook failures. */
+  readonly onLateHostOperationFailure?: (
+    failure: LateHostOperationFailure,
+  ) => void | PromiseLike<void>;
+}
+
 // Emitted inside the experimental effect runtime.
 export const effectAsyncCancellationRuntime = `
 const effectTasksByResult = new WeakMap();
 const effectTasksByBoundary = new WeakMap();
 const ownedHostFailureOrigins = new WeakMap();
+const onLateHostOperationFailure = effectDiagnosticHost?.onLateHostOperationFailure;
+if (onLateHostOperationFailure !== undefined && typeof onLateHostOperationFailure !== "function") {
+  throw new TypeError("Expected onLateHostOperationFailure to be a function.");
+}
 
 function createEffectAsyncTask() {
   return {
@@ -159,24 +181,48 @@ async function joinEffectOwnedWork(task) {
   }
   await waitEffectTask(Promise.all(waiting), task);
 }
-async function observeStoppedHostOperation(operation, registration, abortTime) {
+async function observeLateHostOperationFailure(operation, registration, abortReason) {
+  const {location: {file, line, column}, abortWaitMs} = registration;
+  const location = Object.freeze({file, line, column});
+  let cause;
+  try {
+    await operation;
+    return;
+  } catch (error) {
+    cause = error;
+  }
+  try {
+    const failure = Object.freeze({cause, abortReason, abortWaitMs, location});
+    await withEffectBoundary(() => Promise.resolve(onLateHostOperationFailure(failure)));
+  } catch {
+    // An observer error must not affect task failure or create another notification.
+  }
+}
+async function observeStoppedHostOperation(operation, registration, abortTime, abortReason) {
   const {location, abortWaitMs} = registration;
   let timer;
+  let deadlineError;
   try {
     if (abortWaitMs === undefined) {
       await operation;
     } else {
       const remaining = Math.max(0, Math.ceil(abortWaitMs - (performance.now() - abortTime)));
       const deadline = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new TossRuntimeError(
-          "JavaScript host operation did not settle within " + abortWaitMs + " ms after abort.", location,
-        )), remaining);
+        timer = setTimeout(() => {
+          deadlineError = new TossRuntimeError(
+            "JavaScript host operation did not settle within " + abortWaitMs + " ms after abort.", location,
+          );
+          reject(deadlineError);
+        }, remaining);
       });
       // The race keeps observing the operation if it rejects after the timer wins.
       await Promise.race([operation, deadline]);
     }
     return undefined;
   } catch (error) {
+    if (onLateHostOperationFailure !== undefined && deadlineError !== undefined && error === deadlineError) {
+      void observeLateHostOperationFailure(operation, registration, abortReason);
+    }
     return {error};
   } finally {
     if (timer !== undefined) clearTimeout(timer);
@@ -189,8 +235,9 @@ async function settleEffectTaskFailure(task, error, location) {
   const primary = cancelled ? task.cancellation : copyEffectFailure(asEffectFailure(error));
   const reason = cancelled ? primary.value.cause : primary.value;
   if (!cancelled) stopEffectTasks([...task.children.values()], reason, {location}, task);
+  const abortReason = task.controller?.signal.reason;
   const hostFailures = [...task.hostOperations].map(async ([operation, registration]) => ({
-    operation, failure: await observeStoppedHostOperation(operation, registration, task.hostAbortTime),
+    operation, failure: await observeStoppedHostOperation(operation, registration, task.hostAbortTime, abortReason),
   }));
   for (const [result, child] of task.children) {
     try {

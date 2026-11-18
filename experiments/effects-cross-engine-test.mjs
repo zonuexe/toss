@@ -107,6 +107,9 @@ try {
       console.log(report.boundary, report.cleanupDescriptions[0].includes('cleanup'));
       globalThis.observedError = report.error;
     }
+    export function onLateHostOperationFailure(report) {
+      console.log('late', report.cause.message, report.abortReason, report.abortWaitMs);
+    }
   `,
   );
   for (const [index, variant] of variants.entries()) {
@@ -159,7 +162,7 @@ try {
     assert.equal(cancelled.success, true, decoder.decode(cancelled.stderr));
     assert.equal(
       decoder.decode(cancelled.stdout),
-      "abort reason stop\ntrue\ncleanup ran\npromise true\ntrue stop\n",
+      "abort reason stop\ntrue\ncleanup ran\npromise true\ntrue stop\nlate late failure stop 0\n",
       engine,
     );
     const diagnosticProgram = compileExperimentalEffects(
