@@ -39,7 +39,7 @@ const cancellationBridge = [
   "awaitEffectTask",
   "bindEffectAsyncTask",
   "checkEffectTask",
-  "finishEffectAsyncTask",
+  "finishExperimentalAsyncTask",
   "hasEffectOwnedWork",
   "joinEffectOwnedWork",
   "settleEffectTaskFailure",

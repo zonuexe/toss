@@ -50,6 +50,7 @@ export function runtimePreludeLines(
   selectedSelectors?: ReadonlySet<string>,
   outputHook?: string,
   includeDiagnostics = false,
+  includeOwnedTasks = false,
 ): string[] {
   return [
     '"use strict";',
@@ -95,12 +96,15 @@ export function runtimePreludeLines(
       outputPrint,
       outputDump,
     ], selectedSelectors),
-    runtimeJavaScript(outputHook, includeDiagnostics),
+    runtimeJavaScript(outputHook, includeDiagnostics, includeOwnedTasks),
     ...(includeDynamicJavaScript ? [runtimeJavaScriptDynamic] : []),
   ];
 }
 
-export function fileRootSetupLines(imports: readonly string[] = []): string[] {
+export function fileRootSetupLines(
+  imports: readonly string[] = [],
+  includeOwnedTasks = false,
+): string[] {
   return [
     "const environment = {bindings: new Map(), parent: null, root: null, scopes: new Map(), superContext: undefined};",
     "environment.root = environment; environment.scopes.set(0, environment);",
@@ -114,5 +118,8 @@ export function fileRootSetupLines(imports: readonly string[] = []): string[] {
     'environment.bindings.set(Symbol.for("Nil"), null);',
     'environment.bindings.set(Symbol.for("True"), true);',
     'environment.bindings.set(Symbol.for("False"), false);',
+    ...(includeOwnedTasks
+      ? ['environment.bindings.set(Symbol.for("Effect"), ownedEffectRoot);']
+      : []),
   ];
 }

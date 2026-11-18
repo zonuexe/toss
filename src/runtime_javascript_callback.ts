@@ -1,4 +1,7 @@
-export function runtimeJavaScriptCallback(includeDiagnostics: boolean): string {
+export function runtimeJavaScriptCallback(
+  includeDiagnostics: boolean,
+  includeOwnedTasks: boolean,
+): string {
   return `function createJavaScriptCallback(receiver, context) {
   const previous = javascriptCallbacks.get(receiver);
   if (previous !== undefined) return fromJavaScript(previous, context);
@@ -12,7 +15,9 @@ export function runtimeJavaScriptCallback(includeDiagnostics: boolean): string {
     const argumentsList = hostArguments.slice(0, expected).map((value) =>
       fromJavaScript(value, context)
     );
-    const lexicalContext = {location: context.location, environment: context.environment};
+    const lexicalContext = {location: context.location${
+    includeOwnedTasks ? "" : ", environment: context.environment"
+  }};
     return toJavaScript(invokeBlock(receiver, argumentsList, lexicalContext), context);
     ${
     includeDiagnostics

@@ -1,3 +1,5 @@
+import type { SourceLocation } from "./diagnostic.ts";
+
 /** A snapshot delivered when a Toss failure reaches a host boundary. */
 export interface EffectFailureDiagnostic {
   readonly boundary:
@@ -19,6 +21,14 @@ export interface EffectObserverError {
   readonly kind: "throw" | "rejection";
 }
 
+/** A rejection of a host Promise after the runtime stopped waiting for it. */
+export interface LateHostOperationFailure {
+  readonly cause: unknown;
+  readonly abortReason: unknown;
+  readonly abortWaitMs: number;
+  readonly location: Pick<SourceLocation, "file" | "line" | "column">;
+}
+
 /** Host module exports used by the failureObserverImport compile option. */
 export interface EffectDiagnosticHost {
   /** Called before the failure is exposed. The runtime does not await the return value. */
@@ -28,6 +38,10 @@ export interface EffectDiagnosticHost {
   /** Receives observer errors. Failures of this hook are discarded without retry. */
   readonly onEffectObserverError?: (
     failure: EffectObserverError,
+  ) => void | PromiseLike<void>;
+  /** Called at late rejection. The runtime discards failures of this hook. */
+  readonly onLateHostOperationFailure?: (
+    failure: LateHostOperationFailure,
   ) => void | PromiseLike<void>;
 }
 

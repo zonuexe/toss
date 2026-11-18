@@ -55,7 +55,7 @@ export function generateModuleInitializer(
   const statements = module.expressions.map((expression) =>
     `${emit(expression)};`
   );
-  return `() => {\n${fileRootSetupLines(imports).join("\n")}\n${
+  return `() => {\n${fileRootSetupLines(imports, true).join("\n")}\n${
     statements.join("\n")
   }\nreturn moduleExport;\n}`;
 }
@@ -111,6 +111,7 @@ export function generateBundle(
       treeShakePrelude ? collectPreludeSelectors(expressions) : undefined,
       undefined,
       observerAlias !== undefined,
+      true,
     )
     : runtimeCompatibilitySetupLines(
       "runtimeNamespace",

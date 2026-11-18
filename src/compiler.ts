@@ -6,6 +6,7 @@ export type {
   EffectDiagnosticHost,
   EffectFailureDiagnostic,
   EffectObserverError,
+  LateHostOperationFailure,
 } from "./effect_diagnostics.ts";
 
 export { compileFile };

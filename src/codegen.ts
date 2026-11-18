@@ -63,6 +63,7 @@ export function generate(
       treeShakePrelude ? collectPreludeSelectors(expressions) : undefined,
       undefined,
       observerAlias !== undefined,
+      true,
     )
     : runtimeCompatibilitySetupLines(
       "runtimeNamespace",
@@ -81,7 +82,7 @@ export function generate(
       observerAlias === undefined ? "" : ", effectDiagnosticHost"
     }${runtimeImport === undefined ? "" : ", runtimeNamespace"}) => {`,
     ...runtimeSetup,
-    ...fileRootSetupLines(),
+    ...fileRootSetupLines([], true),
   ];
   if (observerAlias !== undefined) lines.push("try {");
   for (const expression of expressions) lines.push(emit(expression) + ";");

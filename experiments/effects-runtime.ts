@@ -1,6 +1,6 @@
 // Experimental runtime source; not the production Toss runtime.
 import { effectDiagnosticRuntime } from "../src/effect_diagnostics.ts";
-import { effectAsyncCancellationRuntime } from "./effects-async-cancellation.ts";
+import { runtimeAsyncOwnership } from "../src/runtime_async_ownership.ts";
 
 export type ExperimentalRuntimeOptions = {
   readonly sharedDispatchTables?: boolean;
@@ -34,7 +34,28 @@ ${sharedDispatchTables ? allowedMessages : ""}
 const effectJavaScriptCallbacks = new WeakMap();
 let effectBoundary = Object.freeze({});
 function getEffectBoundary() { return effectBoundary; }
-${asyncCancellation ? effectAsyncCancellationRuntime : ""}
+${asyncCancellation ? `${runtimeAsyncOwnership("effectDiagnosticHost")}
+const effectTasksByBoundary = new WeakMap();
+function bindEffectAsyncTask(task, boundary) {
+  if (task !== undefined) effectTasksByBoundary.set(boundary, task);
+}
+function finishExperimentalAsyncTask(task, boundary) {
+  finishEffectAsyncTask(task);
+  effectTasksByBoundary.delete(boundary);
+}
+function taskForContext(context) { return effectTasksByBoundary.get(context.boundary); }
+function awaitOwnedValue(value, context) { return awaitToss(value, context); }
+function* spawnOwnedEffectTask(value, context) {
+  const parent = activeEffectTask(context, "spawn:");
+  const result = yield* effectInvoke(ownedAsyncBlock(value, context), [], context);
+  return registerOwnedEffectChild(parent, result, context);
+}
+function invokeOwnedCancellationCleanup(block, context) {
+  return withEffectBoundary(() =>
+    runEffectProgram(effectInvoke(block, [], {...context, boundary: getEffectBoundary()}), "Async")
+  );
+}
+` : ""}
 function withEffectBoundaryValue(boundary, body) {
   const previous = effectBoundary;
   effectBoundary = boundary;

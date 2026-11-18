@@ -2,10 +2,13 @@ import { runtimeAsyncJavaScript } from "./runtime_async.ts";
 import { runtimeJavaScriptAot } from "./runtime_javascript_aot.ts";
 import { runtimeJavaScriptCallback } from "./runtime_javascript_callback.ts";
 import { effectDiagnosticRuntime } from "./effect_diagnostics.ts";
+import { runtimeAsyncInvocation } from "./runtime_async_invocation.ts";
+import { runtimeAsyncOwnership } from "./runtime_async_ownership.ts";
 
 export function runtimeJavaScript(
   outputHook?: string,
   includeDiagnostics = false,
+  includeOwnedTasks = false,
 ): string {
   const outputCall = outputHook === undefined
     ? "console.log(text);"
@@ -36,23 +39,45 @@ const javascriptReferenceMessages = new Map([
   ["print", function(receiver, context) { return writeOutput(receiver, "toString", context); }],
   ["dump", function(receiver, context) { return writeOutput(receiver, "inspect", context); }],
 ]);
-${runtimeAsyncJavaScript}
-${runtimeJavaScriptCallback(includeDiagnostics)}
+${runtimeAsyncJavaScript(includeOwnedTasks)}
+${runtimeJavaScriptCallback(includeDiagnostics, includeOwnedTasks)}
 ${runtimeJavaScriptAot}
 ${
-    includeDiagnostics
+    includeOwnedTasks
+      ? runtimeAsyncOwnership(
+        includeDiagnostics ? "effectDiagnosticHost" : "undefined",
+      ) + runtimeAsyncInvocation
+      : ""
+  }
+${
+    includeDiagnostics || includeOwnedTasks
       ? `
 function withEffectBoundary(body) { return body(); }
-${effectDiagnosticRuntime}
+${includeDiagnostics ? effectDiagnosticRuntime : ""}
 const noEffectDescriptions = Object.freeze([]);
 function reportHostFailure(error, boundary) {
+  ${
+        includeOwnedTasks
+          ? "const exposed = effectFailureValue(error);"
+          : "const exposed = error;"
+      }
+  ${
+        includeDiagnostics
+          ? `
   if (onEffectFailure !== undefined) {
     notifyEffectFailure(Object.freeze({
-      boundary, error, cleanupDescriptions: noEffectDescriptions,
+      boundary, error: exposed, cleanupDescriptions: ${
+            includeOwnedTasks
+              ? "ownedCleanupDescriptions(error)"
+              : "noEffectDescriptions"
+          },
       handlerDescriptions: noEffectDescriptions,
     }));
   }
-  return error;
+  `
+          : ""
+      }
+  return exposed;
 }
 `
       : ""
@@ -79,6 +104,7 @@ function toJavaScript(value, context) {
   if (asyncResults.has(value)) {
     const previous = asyncHostPromises.get(value);
     if (previous !== undefined) return previous;
+    ${includeOwnedTasks ? "observeEffectAsyncResult(value);" : ""}
     const promise = asyncResults.get(value).then((result) => {
       ${
     includeDiagnostics
@@ -86,7 +112,9 @@ function toJavaScript(value, context) {
       : "return toJavaScript(result.value, context);"
   }
     }${
-    includeDiagnostics
+    includeOwnedTasks
+      ? ", (error) => { throw exposeOwnedAsyncFailure(value, error, 'promise'); }"
+      : includeDiagnostics
       ? ", (error) => { throw reportHostFailure(error, 'promise'); }"
       : ""
   });
@@ -140,6 +168,23 @@ function invokeSlot(receiver, key, owner, args, context) {
 }
 
 function send(receiver, message, context) {
+  ${
+    includeOwnedTasks
+      ? `
+  if (receiver === ownedEffectRoot) {
+    switch (message.name) {
+      case "spawn:": return spawnOwnedEffectTask(message.arguments[0], context);
+      case "onCancel:": return registerEffectCancellationCleanup(message.arguments[0], context);
+      case "hostOperation:": return startOwnedHostOperation(message.arguments[0], context);
+      case "hostOperation:abortWaitMs:": return startOwnedHostOperation(message.arguments[0], context, message.arguments[1]);
+    }
+  }
+  if (message.name === "cancel:" && asyncResults.has(receiver)) {
+    return cancelEffectAsyncTask(receiver, message.arguments[0], context);
+  }
+  `
+      : ""
+  }
   if (isJavaScriptReference(receiver)) {
     const implementation = javascriptReferenceMessages.get(message.name);
     if (implementation === undefined) throw new TossRuntimeError("Unknown message " + keyDescription(message.name) + " for JS reference.", context.location);
@@ -257,8 +302,19 @@ function invokeBlock(receiver, args, context) {
   if (receiver.length !== args.length) {
     throw new TossRuntimeError("Block expects " + receiver.length + " argument(s), received " + args.length + ".", context.location);
   }
+  ${
+    includeOwnedTasks
+      ? `
+  if (asyncBlockFunctions.has(receiver)) return invokeOwnedAsyncBlock(receiver, args, context);
+  const task = taskForContext(context);
+  const invocation = task === undefined ? context.methodReceiver : {...context.methodReceiver, asyncTask: task};
+  return Reflect.apply(receiver, invocation, args);
+  `
+      : `
   const result = Reflect.apply(receiver, context.methodReceiver, args);
   return asyncBlockFunctions.has(receiver) ? asyncResult(result) : result;
+  `
+  }
 }
 
 function writeOutput(receiver, conversion, context) {

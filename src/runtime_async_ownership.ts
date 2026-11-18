@@ -1,27 +1,8 @@
-import type { SourceLocation } from "../src/diagnostic.ts";
-import type { EffectDiagnosticHost } from "../src/effect_diagnostics.ts";
-
-/** A rejection of a host Promise after the runtime stopped waiting for it. */
-export interface LateHostOperationFailure {
-  readonly cause: unknown;
-  readonly abortReason: unknown;
-  readonly abortWaitMs: number;
-  readonly location: Pick<SourceLocation, "file" | "line" | "column">;
-}
-
-export interface ExperimentalEffectDiagnosticHost extends EffectDiagnosticHost {
-  /** Called in a fresh JS boundary. The runtime discards hook failures. */
-  readonly onLateHostOperationFailure?: (
-    failure: LateHostOperationFailure,
-  ) => void | PromiseLike<void>;
-}
-
-// Emitted inside the experimental effect runtime.
-export const effectAsyncCancellationRuntime = `
+// Shared by the ordinary and experimental runtimes.
+export const runtimeAsyncOwnership = (diagnosticHost: string): string => `
 const effectTasksByResult = new WeakMap();
-const effectTasksByBoundary = new WeakMap();
 const ownedHostFailureOrigins = new WeakMap();
-const onLateHostOperationFailure = effectDiagnosticHost?.onLateHostOperationFailure;
+const onLateHostOperationFailure = ${diagnosticHost}?.onLateHostOperationFailure;
 if (onLateHostOperationFailure !== undefined && typeof onLateHostOperationFailure !== "function") {
   throw new TypeError("Expected onLateHostOperationFailure to be a function.");
 }
@@ -33,17 +14,13 @@ function createEffectAsyncTask() {
     hostAbortTime: undefined,
   };
 }
-function bindEffectAsyncTask(task, boundary) {
-  if (task !== undefined) effectTasksByBoundary.set(boundary, task);
-}
-function finishEffectAsyncTask(task, boundary) {
+function finishEffectAsyncTask(task) {
   if (task === undefined) return;
   task.closed = true;
   task.wake = undefined;
   task.cleanups.length = 0;
   task.children.clear();
   task.hostOperations.clear();
-  effectTasksByBoundary.delete(boundary);
 }
 function cancelEffectAsyncTask(result, reason, context) {
   const task = effectTasksByResult.get(result);
@@ -79,19 +56,20 @@ function abortOwnedHostOperations(task, cause) {
   task.controller.abort(cause);
 }
 function activeEffectTask(context, operation) {
-  const task = effectTasksByBoundary.get(context.boundary);
+  const task = taskForContext(context);
   if (task === undefined || task.closed || task.cancellation !== undefined) {
     throw new TossRuntimeError(operation + " requires an active async Block.", context.location);
   }
   return task;
 }
-function* spawnOwnedEffectTask(value, context) {
-  const parent = activeEffectTask(context, "spawn:");
+function ownedAsyncBlock(value, context) {
   const block = blockArgument(value, context);
   if (!asyncBlockFunctions.has(block) || block.length !== 0) {
     throw new TossRuntimeError("spawn: requires a zero-argument async Block.", context.location);
   }
-  const result = yield* effectInvoke(block, [], context);
+  return block;
+}
+function registerOwnedEffectChild(parent, result, context) {
   const child = effectTasksByResult.get(result);
   parent.children.set(result, child);
   observeEffectAsyncResult(result);
@@ -142,8 +120,8 @@ function registerEffectCancellationCleanup(value, context) {
 }
 async function awaitEffectTask(value, context, task) {
   const operation = hostValues.get(value);
-  const owned = task?.hostOperations.has(operation);
-  const waiting = awaitToss(value, context);
+  const owned = !asyncResults.has(value) && task?.hostOperations.has(operation);
+  const waiting = awaitOwnedValue(value, context);
   if (!owned) return await waitEffectTask(waiting, task);
   const tracked = waiting.catch((error) => {
     ownedHostFailureOrigins.set(error, operation);
@@ -158,7 +136,7 @@ async function waitEffectTask(waiting, task) {
     if (task.cancellation !== undefined) reject(task.cancellation);
   });
   try {
-    return await Promise.race([waiting, interrupted]);
+    return checkEffectTask(await Promise.race([waiting, interrupted]), task);
   } finally {
     task.wake = undefined;
   }
@@ -261,10 +239,8 @@ async function settleEffectTaskFailure(task, error, location) {
   while (cancelled && task.cleanups.length > 0) {
     const {block, context} = task.cleanups.pop();
     try {
-      const result = withEffectBoundary(() =>
-        runEffectProgram(effectInvoke(block, [], {...context, boundary: getEffectBoundary()}), "Async")
-      );
-      if (asyncResults.has(result)) await awaitToss(result, context);
+      const result = invokeOwnedCancellationCleanup(block, context);
+      if (asyncResults.has(result)) await awaitOwnedValue(result, context);
     } catch (error) {
       recordCleanupFailure(primary, error);
     }

@@ -25,9 +25,9 @@ import {
 } from "../src/codegen_prelude.ts";
 
 export type {
-  ExperimentalEffectDiagnosticHost,
+  EffectDiagnosticHost as ExperimentalEffectDiagnosticHost,
   LateHostOperationFailure,
-} from "./effects-async-cancellation.ts";
+} from "../src/effect_diagnostics.ts";
 
 const directNumberMessages = new Set([
   "toString",
@@ -165,7 +165,7 @@ try {${scopeSetup}
               : ""
           }throwAsyncEffectFailure(error); }${
             options.asyncCancellation
-              ? " finally { finishEffectAsyncTask(asyncTask, asyncBoundary); }"
+              ? " finally { finishExperimentalAsyncTask(asyncTask, asyncBoundary); }"
               : ""
           }
 }))(${scope})`;

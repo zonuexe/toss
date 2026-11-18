@@ -1,4 +1,4 @@
-export const runtimeAsyncJavaScript =
+export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
   `const asyncBlockFunctions = new WeakSet();
 const asyncResults = new WeakMap();
 const asyncHostPromises = new WeakMap();
@@ -16,6 +16,7 @@ function asyncResult(promise) {
 
 async function awaitToss(value, context) {
   if (asyncResults.has(value)) {
+    ${includeOwnedTasks ? "observeEffectAsyncResult(value);" : ""}
     return await asyncResults.get(value);
   }
   if (!hostValues.has(value)) return {value};

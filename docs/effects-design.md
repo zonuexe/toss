@@ -1618,11 +1618,10 @@ also available as the CLI's `--failure-observer-import`. The module is resolved
 with the artifact's other static imports. Both embedded and external runtimes
 use the existing host observer contract. The ordinary compiler reports entry
 failures, synchronous JavaScript callback failures and rejections of Toss
-async results converted to host Promises. Ordinary diagnostics have empty
-handler and cleanup description arrays. A failure that crosses several host
-boundaries can produce several diagnostics. A dropped async result continues
-to rely on the host's existing unhandled rejection mechanism. The external
-runtime fingerprint changes with this runtime interface.
+async results converted to host Promises. Before task ownership, ordinary
+diagnostics carried empty handler and cleanup description arrays. A failure
+that crosses several host boundaries can produce several diagnostics.
+The external runtime fingerprint changes with this runtime interface.
 
 The cancellation probe uses an explicit `AbortSignal` for a single wait.
 Aborting that wait leaves other subscribers and the shared operation running.
@@ -1787,3 +1786,26 @@ still fires once after child cleanup and includes the deadline failure
 alongside any cleanup failures. It holds the original primary failure and
 is independent of the late rejection. The embedded and external experimental
 runtimes accept the same observer export.
+
+### Ordinary compiler and runtime integration
+
+The ordinary compiler, bundled modules, and REPL now expose the same
+task ownership messages on `$Effect` and `cancel:` on async results.
+An async Block owns only the children started by `$Effect spawn:` and the
+Promises registered with `$Effect hostOperation:` in its invocation.
+Synchronous Toss helpers use the caller's task, including across bundled
+modules. Ordinary async calls and reentrant JavaScript callbacks do not
+inherit that ownership. Successful scope exit waits for owned work.
+Failure or cancellation aborts the remaining work, subject to each
+host operation's optional `abortWaitMs:`, and waits for Toss cleanup.
+
+The ordinary compiler's `failureObserverImport` option and the CLI's
+`--failure-observer-import` accept the same optional
+`onLateHostOperationFailure` export. The compiler package exports
+`EffectDiagnosticHost` and `LateHostOperationFailure` for host modules.
+The runtime keeps cleanup and deadline failures with their occurrence
+until reporting the original error at the JS boundary. A parent's async
+result reports once after its children finish cleanup. Waiting for a
+child internally does not publish a separate child diagnostic. The late
+hook can fire independently, including during child cleanup.
+Regenerate external runtime modules with the matching compiler.
