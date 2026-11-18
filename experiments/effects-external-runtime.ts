@@ -40,7 +40,9 @@ const cancellationBridge = [
   "bindEffectAsyncTask",
   "checkEffectTask",
   "finishEffectAsyncTask",
-  "unwindEffectCancellation",
+  "hasEffectOwnedWork",
+  "joinEffectOwnedWork",
+  "settleEffectTaskFailure",
 ] as const;
 
 function bridgeNames(options: ExternalRuntimeOptions): readonly string[] {

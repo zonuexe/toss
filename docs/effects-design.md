@@ -1698,8 +1698,6 @@ from an operation still tracked during cancellation is associated with the
 parent failure. The parent publishes its terminal diagnostic after all joins
 and cleanup, with the original reason as `cause`.
 
-Ownership applies to cancellation of a live parent. This experiment does not
-implicitly join or cancel children on successful return or ordinary failure.
 Callers can use `%await` to wait for a child's result. A child explicitly
 exposed to JS retains its own Promise reporting boundary. Native host work
 can ignore the signal. If the operation never settles, parent cancellation
@@ -1711,3 +1709,32 @@ re-enters Toss from an abort listener, holds cleanup open, and checks the
 order and contents of the eventual diagnostic. Deno exercises embedded and
 external runtime forms. Node and Bun exercise the external runtime with an
 owned child and an abort-aware host operation.
+
+### Scope exit with owned work
+
+A successful async Block body now waits for all owned children and host
+operations before returning its value. An ordinary Block invocation creates
+no ownership. A child or host failure is retained for the scope-exit join
+even if it settled before the body returned. During that join the first
+observed failure stops the remaining owned work regardless of spawn order.
+Earlier child failures do not preempt a still-running parent body.
+
+When the body already failed, its failure remains primary. An implicit join
+that fails uses the child failure or a host operation error with the original
+JS rejection as its cause. Remaining children receive cancellation, and
+registered host operations receive the primary error as their abort reason.
+The parent waits for their settlement before publishing the failure. A child's
+cancellation cleanup errors become associated failures in the parent
+diagnostic. The parent runs its own `onCancel:` registrations only when the
+parent itself was cancelled. For ordinary failures, the runtime copies the
+failure carrier before adding associations, so a separately observed child
+does not acquire the parent's additional failures.
+
+An operation that ignores its `AbortSignal` keeps the scope open until it
+settles. There is no implicit timeout or detachment. The probes hold such
+an operation open beyond the child's failed cleanup and verify that there
+is no parent diagnostic or rejection yet. Releasing the operation lets the
+parent report the original failure along with the associated cleanup failure
+and then reject. Separate tests verify that a normal return
+stays pending until both the owned child and host operation finish. These
+semantics apply to the experimental cancellation mode.

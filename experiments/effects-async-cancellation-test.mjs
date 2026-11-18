@@ -219,6 +219,107 @@ for (const config of [options, { ...options, runtimeImport }]) {
     ].join("\n"),
   );
 }
+function scopeExit(failInBody) {
+  const failure = failInBody
+    ? "%await(%js(failChild.promise)). $primaryFailure"
+    : "$Effect spawn: %async({ %await(%js(failChild.promise)). $primaryFailure }). 99";
+  return `
+%js((globalThis.events = [], globalThis.reports = [],
+  globalThis.childGate = Promise.withResolvers(),
+  globalThis.hostGate = Promise.withResolvers(),
+  globalThis.childCleaned = Promise.withResolvers(),
+  globalThis.ignoreAbort = Promise.withResolvers(),
+  globalThis.failChild = Promise.withResolvers(), 0)).
+#normal bind: (%async({
+  $Effect spawn: %async({ %await(%js(childGate.promise)). %js(events.push("child done")) }).
+  $Effect hostOperation: %js(_ => hostGate.promise.then(() => events.push("host done"))).
+  42
+}) value).
+#broken bind: (%async({
+  $Effect onCancel: { 'unexpected parent cancellation cleanup' print }.
+  $Effect spawn: %async({
+    $Effect onCancel: { %js((events.push("child cleanup"), childCleaned.resolve(), 0)). $cleanupFailure }.
+    %await(%js(new Promise(() => {})))
+  }).
+  $Effect hostOperation: %js(signal => {
+    signal.addEventListener("abort", () => events.push("abort:" + signal.reason.message.includes("primaryFailure")), {once: true});
+    return ignoreAbort.promise.then(() => events.push("ignored host done"));
+  }).
+  ${failure}
+}) value).
+%js(n = $normal, b = $broken; (async () => {
+  let normalDone = false;
+  const normal = n.then(v => { normalDone = true; events.push("return:" + v); });
+  const broken = b.catch(e => events.push("catch:" + (reports[0].error === e && e.message.includes("primaryFailure"))));
+  childGate.resolve();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  console.log("normal pending", normalDone, events.join("|"));
+  hostGate.resolve();
+  await normal;
+  failChild.resolve();
+  await childCleaned.promise;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  console.log("failure pending", reports.length, events.join("|"));
+  ignoreAbort.resolve();
+  await broken;
+  console.log(events.join("|"));
+  console.log("reports", reports.length, reports[0].cleanupDescriptions.length,
+    reports[0].cleanupDescriptions[0].includes("cleanupFailure"));
+})()).
+`;
+}
+for (const failInBody of [false, true]) {
+  for (const config of [options, { ...options, runtimeImport }]) {
+    const result = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        compileExperimentalEffects(
+          scopeExit(failInBody),
+          "owned-exit.toss",
+          config,
+        ),
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert.equal(result.success, true, decoder.decode(result.stderr));
+    assert.equal(
+      decoder.decode(result.stdout),
+      [
+        "normal pending false child done",
+        "failure pending 0 child done|host done|return:42|abort:true|child cleanup",
+        "child done|host done|return:42|abort:true|child cleanup|ignored host done|diagnostic:promise|catch:true",
+        "reports 1 1 true",
+        "",
+      ].join("\n"),
+    );
+  }
+}
+for (const explicitAwait of [false, true]) {
+  const result = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "eval",
+      compileExperimentalEffects(
+        `
+%js((globalThis.events = [], globalThis.reports = [],
+  globalThis.hostFailure = new Error("host failure"), 0)).
+#scope bind: (%async({
+  #operation bind: ($Effect hostOperation: %js(_ => Promise.reject(hostFailure))).
+  ${explicitAwait ? "%await($operation)" : "%await(%js(Promise.resolve())). 42"}
+}) value).
+%js(p = $scope; p.catch(e => console.log(e.cause === hostFailure,
+  reports[0].error === e, reports.length, reports[0].cleanupDescriptions.length))).
+`,
+        "owned-host-failure.toss",
+        options,
+      ),
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  assert.equal(result.success, true, decoder.decode(result.stderr));
+  assert.equal(decoder.decode(result.stdout), "true true 1 0\n");
+}
 console.log(
-  "PASS: async cancellation unwinds cleanup before exposing the original cause",
+  "PASS: async cancellation and owned work settle before the parent reports failure",
 );

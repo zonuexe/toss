@@ -110,11 +110,11 @@ function createEffectEmitter(
           const last = index === expression.body.length - 1;
           const value = emit(item, "localScope", blockAsync);
           return last && blockAsync
-            ? `return {value: ${
-              options.asyncCancellation
-                ? `checkEffectTask(${value}, asyncTask)`
-                : value
-            }};`
+            ? options.asyncCancellation
+              ? `const result = ${value};
+if (hasEffectOwnedWork(asyncTask)) await joinEffectOwnedWork(asyncTask);
+return {value: checkEffectTask(result, asyncTask)};`
+              : `return {value: ${value}};`
             : `${last ? "return " : ""}${value};`;
         });
         const scopeSetup = `
@@ -152,7 +152,11 @@ ${
 try {${scopeSetup}
 } catch (error) { ${
             options.asyncCancellation
-              ? "if (asyncTask?.cancellation !== undefined) throw await unwindEffectCancellation(asyncTask); "
+              ? `if (asyncTask?.cancellation !== undefined || hasEffectOwnedWork(asyncTask)) {
+  throw await settleEffectTaskFailure(asyncTask, error, ${
+                JSON.stringify(expression.location)
+              });
+} `
               : ""
           }throwAsyncEffectFailure(error); }${
             options.asyncCancellation
