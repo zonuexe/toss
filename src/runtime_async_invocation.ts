@@ -1,6 +1,5 @@
 export const runtimeAsyncInvocation = `
 const ownedFailureCarriers = new WeakSet();
-const ownedAsyncObservations = new WeakMap();
 const ownedEffectRoot = Object.freeze(Object.create(null));
 
 function asEffectFailure(value) {
@@ -40,9 +39,13 @@ function taskForContext(context) { return context.environment?.asyncTask; }
 const awaitOwnedValue = awaitToss;
 awaitToss = function(value, context) {
   const task = taskForContext(context);
-  if (task === undefined || (!asyncResults.has(value) && !hostValues.has(value))) {
-    return awaitOwnedValue(checkEffectTask(value, task), context);
+  if (task === undefined) return awaitOwnedValue(value, context);
+  const waiting = asyncResults.get(value);
+  if (waiting !== undefined) {
+    observeEffectAsyncResult(value);
+    return waitEffectTask(waiting, task);
   }
+  if (!hostValues.has(value)) return {value: checkEffectTask(value, task)};
   return awaitEffectTask(value, context, task);
 };
 function invokeOwnedCancellationCleanup(block, context) {
@@ -55,28 +58,35 @@ function spawnOwnedEffectTask(value, context) {
 }
 function invokeOwnedAsyncBlock(block, args, context) {
   const task = createEffectAsyncTask();
-  const promise = Reflect.apply(block, {...context.methodReceiver, asyncTask: task}, args);
+  task.observed = false;
+  task.notified = false;
+  const invocation = context.methodReceiver === undefined
+    ? {asyncTask: task} : {...context.methodReceiver, asyncTask: task};
+  const promise = Reflect.apply(block, invocation, args);
   const result = asyncResult(promise);
-  effectTasksByResult.set(result, task);
-  const observation = {observed: false, notified: false};
-  ownedAsyncObservations.set(result, observation);
-  promise.then(undefined, (error) => {
-    if (observation.observed) return;
-    const exposed = ownedFailureCarriers.has(error)
-      ? exposeOwnedAsyncFailure(result, error, "unobserved-async")
-      : error;
-    throw exposed;
-  });
+  if (!task.closed) {
+    task.promise = promise;
+    effectTasksByResult.set(result, task);
+  }
   return result;
 }
-function observeEffectAsyncResult(value) {
-  const observation = ownedAsyncObservations.get(value);
-  if (observation !== undefined) observation.observed = true;
+function preserveOwnedAsyncRejection(task, error) {
+  if (task.observed || !ownedFailureCarriers.has(error)) return error;
+  // A carrier reaches this point after a suspension, when the result Promise exists.
+  // Forward the underlying error only if nobody observes the Toss result.
+  task.promise.then(undefined, (failure) => {
+    if (!task.observed) throw exposeOwnedAsyncFailure(task, failure, "unobserved-async");
+  });
+  return error;
 }
-function exposeOwnedAsyncFailure(value, error, boundary) {
-  const observation = ownedAsyncObservations.get(value);
-  if (observation.notified) return effectFailureValue(error);
-  observation.notified = true;
+function observeEffectAsyncResult(value) {
+  const task = effectTasksByResult.get(value);
+  if (task !== undefined) task.observed = true;
+}
+function exposeOwnedAsyncFailure(task, error, boundary) {
+  if (task === undefined) return reportHostFailure(error, boundary);
+  if (task.notified) return effectFailureValue(error);
+  task.notified = true;
   return reportHostFailure(error, boundary);
 }
 `;

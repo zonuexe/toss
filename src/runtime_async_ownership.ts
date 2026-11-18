@@ -9,8 +9,8 @@ if (onLateHostOperationFailure !== undefined && typeof onLateHostOperationFailur
 
 function createEffectAsyncTask() {
   return {
-    closed: false, cancellation: undefined, wake: undefined, cleanups: [],
-    children: new Map(), hostOperations: new Map(), controller: undefined,
+    closed: false, cancellation: undefined, wake: undefined, cleanups: undefined,
+    children: undefined, hostOperations: undefined, controller: undefined,
     hostAbortTime: undefined,
   };
 }
@@ -18,9 +18,11 @@ function finishEffectAsyncTask(task) {
   if (task === undefined) return;
   task.closed = true;
   task.wake = undefined;
-  task.cleanups.length = 0;
-  task.children.clear();
-  task.hostOperations.clear();
+  task.cleanups = undefined;
+  task.children?.clear();
+  task.children = undefined;
+  task.hostOperations?.clear();
+  task.hostOperations = undefined;
 }
 function cancelEffectAsyncTask(result, reason, context) {
   const task = effectTasksByResult.get(result);
@@ -36,10 +38,10 @@ function stopEffectTasks(pending, cause, context, failedParent) {
   const cancelled = [];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (current.closed || current.cancellation !== undefined) continue;
+    if (current === undefined || current.closed || current.cancellation !== undefined) continue;
     current.cancellation = asEffectFailure(new TossRuntimeError("Async Block cancelled.", context.location, {cause}));
     cancelled.push(current);
-    for (const [result, child] of current.children) {
+    for (const [result, child] of current.children ?? []) {
       observeEffectAsyncResult(result);
       pending.push(child);
     }
@@ -71,13 +73,14 @@ function ownedAsyncBlock(value, context) {
 }
 function registerOwnedEffectChild(parent, result, context) {
   const child = effectTasksByResult.get(result);
-  parent.children.set(result, child);
+  const children = parent.children ??= new Map();
+  children.set(result, child);
   observeEffectAsyncResult(result);
   const forget = () => {
-    if (parent.cancellation === undefined) parent.children.delete(result);
+    if (parent.cancellation === undefined) children.delete(result);
   };
   asyncResults.get(result).then(forget, () => {});
-  if (parent.cancellation !== undefined) {
+  if (child !== undefined && parent.cancellation !== undefined) {
     requestEffectCancellation(child, parent.cancellation.value.cause, context);
   }
   return result;
@@ -99,7 +102,7 @@ function startOwnedHostOperation(value, context, abortWaitMs) {
   } catch (cause) {
     throw new TossRuntimeError("JavaScript host operation threw.", context.location, {cause});
   }
-  const operations = task.hostOperations;
+  const operations = task.hostOperations ??= new Map();
   const previous = operations.get(operation);
   // A shared Promise must satisfy the longest wait requested by its registrations.
   if (previous === undefined || abortWaitMs === undefined ||
@@ -115,28 +118,29 @@ function registerEffectCancellationCleanup(value, context) {
   if (block.length !== 0) {
     throw new TossRuntimeError("onCancel: requires a zero-argument Block.", context.location);
   }
-  task.cleanups.push({block, context});
+  (task.cleanups ??= []).push({block, context});
   return null;
 }
-async function awaitEffectTask(value, context, task) {
+function awaitEffectTask(value, context, task) {
   const operation = hostValues.get(value);
-  const owned = !asyncResults.has(value) && task?.hostOperations.has(operation);
+  const owned = !asyncResults.has(value) && task?.hostOperations?.has(operation);
   const waiting = awaitOwnedValue(value, context);
-  if (!owned) return await waitEffectTask(waiting, task);
+  if (!owned) return waitEffectTask(waiting, task);
   const tracked = waiting.catch((error) => {
     ownedHostFailureOrigins.set(error, operation);
     throw error;
   });
-  return await waitEffectTask(tracked, task);
+  return waitEffectTask(tracked, task);
 }
 async function waitEffectTask(waiting, task) {
   if (task === undefined) return await waiting;
-  const interrupted = new Promise((_, reject) => {
-    task.wake = reject;
-    if (task.cancellation !== undefined) reject(task.cancellation);
-  });
   try {
-    return checkEffectTask(await Promise.race([waiting, interrupted]), task);
+    const result = await new Promise((resolve, reject) => {
+      task.wake = reject;
+      waiting.then(resolve, reject);
+      if (task.cancellation !== undefined) reject(task.cancellation);
+    });
+    return checkEffectTask(result, task);
   } finally {
     task.wake = undefined;
   }
@@ -146,11 +150,11 @@ function checkEffectTask(value, task) {
   return value;
 }
 function hasEffectOwnedWork(task) {
-  return task !== undefined && (task.children.size > 0 || task.hostOperations.size > 0);
+  return (task?.children?.size ?? 0) > 0 || (task?.hostOperations?.size ?? 0) > 0;
 }
 async function joinEffectOwnedWork(task) {
-  const waiting = [...task.children.keys()].map((result) => asyncResults.get(result));
-  for (const [operation, {location}] of task.hostOperations) {
+  const waiting = [...(task.children?.keys() ?? [])].map((result) => asyncResults.get(result));
+  for (const [operation, {location}] of task.hostOperations ?? []) {
     waiting.push(operation.catch((cause) => {
       const error = new TossRuntimeError("JavaScript host operation rejected.", location, {cause});
       ownedHostFailureOrigins.set(error, operation);
@@ -212,17 +216,17 @@ async function settleEffectTaskFailure(task, error, location) {
   const cancelled = task.cancellation !== undefined;
   const primary = cancelled ? task.cancellation : copyEffectFailure(asEffectFailure(error));
   const reason = cancelled ? primary.value.cause : primary.value;
-  if (!cancelled) stopEffectTasks([...task.children.values()], reason, {location}, task);
+  if (!cancelled) stopEffectTasks([...(task.children?.values() ?? [])], reason, {location}, task);
   const abortReason = task.controller?.signal.reason;
-  const hostFailures = [...task.hostOperations].map(async ([operation, registration]) => ({
+  const hostFailures = [...(task.hostOperations ?? [])].map(async ([operation, registration]) => ({
     operation, failure: await observeStoppedHostOperation(operation, registration, task.hostAbortTime, abortReason),
   }));
-  for (const [result, child] of task.children) {
+  for (const [result, child] of task.children ?? []) {
     try {
       await asyncResults.get(result);
     } catch (childError) {
       if ((!cancelled && childError === error) || childError === primary) continue;
-      if (child.cancellation !== undefined && childError === child.cancellation) {
+      if (child?.cancellation !== undefined && childError === child.cancellation) {
         for (const failure of childError.cleanup) recordCleanupFailure(primary, failure);
       } else {
         recordCleanupFailure(primary, childError);
@@ -236,7 +240,7 @@ async function settleEffectTaskFailure(task, error, location) {
       recordCleanupFailure(primary, failure.error);
     }
   }
-  while (cancelled && task.cleanups.length > 0) {
+  while (cancelled && task.cleanups?.length > 0) {
     const {block, context} = task.cleanups.pop();
     try {
       const result = invokeOwnedCancellationCleanup(block, context);

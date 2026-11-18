@@ -1809,3 +1809,34 @@ result reports once after its children finish cleanup. Waiting for a
 child internally does not publish a separate child diagnostic. The late
 hook can fire independently, including during child cleanup.
 Regenerate external runtime modules with the matching compiler.
+
+### Cost of async Blocks without owned work
+
+The benchmark in `experiments/async-ownership-benchmark.mjs` compiles the
+same four async Blocks against each supplied checkout. It times sequential
+calls through a JS callback and reports the median of seven 50,000-call
+samples after warmup. The host Promise case reuses an already-fulfilled
+Promise. These measurements include the Toss-to-JS callback boundary.
+
+On Deno 2.9.7 on arm64 macOS, a comparison of `a52fd39` before integration,
+`19e8601` after integration, and the optimized runtime gave the following
+times in nanoseconds per call.
+
+| Runtime | Block body | Before integration | After integration | Optimized |
+| --- | --- | ---: | ---: | ---: |
+| Embedded | Return a value | 1194 | 1648 | 1190 |
+| Embedded | Await a plain value | 1114 | 2169 | 1526 |
+| Embedded | Await a JS Promise | 1273 | 2217 | 1622 |
+| Embedded | Await a Toss async result | 2008 | 4925 | 2583 |
+| External | Return a value | 1307 | 1766 | 1225 |
+| External | Await a plain value | 1299 | 1964 | 1624 |
+| External | Await a JS Promise | 1389 | 2548 | 2064 |
+| External | Await a Toss async result | 2193 | 4132 | 2570 |
+
+Ownership tables are allocated on first use. Synchronously completed
+results keep their Promise without registering a live task. The runtime
+only installs a rejection forwarder for an unobserved failure carrier.
+Waiting on a reference uses one cancellation latch, and awaiting another
+Toss async result uses its internal Promise directly. A plain value still
+suspends at the generated `await`. In this run a direct return was near the
+pre-integration time, while the await cases still cost 17–49% more.

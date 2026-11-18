@@ -21,6 +21,83 @@ const failureObserverImport = moduleUrl(`
   }
 `);
 
+Deno.test("a cancelled task first observed after rejection keeps its original diagnostic", async () => {
+  const javascript = compile(
+    `
+%export({
+  #task bind: (%async({
+    $Effect onCancel: { %js(events.push("cleanup")). $cleanupFailure }.
+    %await(%js(new Promise(() => {})))
+  }) value).
+  #cancel bind: { $task cancel: (%js(reason)) } asJSCallback.
+  #read bind: { %js(p = $task; p) } asJSCallback.
+  %js(cancel = $cancel, read = $read; ({cancel, read}))
+} asJSCallback).
+`,
+    "unobserved-cancellation.toss",
+    { format: "esm", failureObserverImport },
+  );
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
+    import assert from "node:assert/strict";
+    Object.assign(globalThis, {events: [], reports: [], reason: new Error("stop")});
+    const {cancel, read} = value();
+    const dropped = new Promise(resolve => {
+      addEventListener("unhandledrejection", event => {
+        event.preventDefault();
+        events.push("unhandled");
+        resolve(event.reason);
+      }, {once: true});
+    });
+    assert.equal(cancel(), true);
+    const error = await dropped;
+    assert.equal(error.cause, reason);
+    assert.equal(error, reports[0].error);
+    assert.match(reports[0].cleanupDescriptions[0], /cleanupFailure/);
+    assert.equal(await read().catch(error => error), error);
+    assert.deepEqual(events, ["cleanup", "diagnostic:unobserved-async", "unhandled"]);
+    assert.equal(reports.length, 1);
+  `,
+  );
+  assert.equal(result.success, true, text(result.stderr));
+  assert.equal(text(result.stderr), "");
+});
+
+Deno.test("a child that fails before suspending still fails the owning task's join", async () => {
+  const javascript = compile(
+    `
+%export(%async({
+  $Effect spawn: %async({ $immediateChildFailure }).
+  $Effect hostOperation: %js(signal => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => {
+      globalThis.abortedWith = signal.reason;
+      reject(signal.reason);
+    }, {once: true});
+  })).
+  42
+}) asJSCallback).
+`,
+    "immediate-child-failure.toss",
+    { format: "esm", failureObserverImport },
+  );
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
+    import assert from "node:assert/strict";
+    Object.assign(globalThis, {events: [], reports: []});
+    const error = await value().catch(error => error);
+    assert.match(error.message, /immediateChildFailure/);
+    assert.equal(error, abortedWith);
+    assert.equal(error, reports[0].error);
+    assert.deepEqual(reports[0].cleanupDescriptions, []);
+    assert.deepEqual(events, ["diagnostic:promise"]);
+  `,
+  );
+  assert.equal(result.success, true, text(result.stderr));
+  assert.equal(text(result.stderr), "");
+});
+
 for (const external of [false, true]) {
   const options = {
     format: "esm" as const,

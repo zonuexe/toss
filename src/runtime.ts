@@ -113,7 +113,7 @@ function toJavaScript(value, context) {
   }
     }${
     includeOwnedTasks
-      ? ", (error) => { throw exposeOwnedAsyncFailure(value, error, 'promise'); }"
+      ? ", (error) => { throw exposeOwnedAsyncFailure(effectTasksByResult.get(value), error, 'promise'); }"
       : includeDiagnostics
       ? ", (error) => { throw reportHostFailure(error, 'promise'); }"
       : ""

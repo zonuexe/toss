@@ -17,6 +17,7 @@ export const runtimeBridgeNames = [
   "ownedEffectRoot",
   "parentSend",
   "pipelineSend",
+  "preserveOwnedAsyncRejection",
   "reportHostFailure",
   "send",
   "settleEffectTaskFailure",

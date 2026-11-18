@@ -51,11 +51,11 @@ ${
     asynchronous
       ? `} catch (error) {
   if (asyncTask !== undefined && (asyncTask.cancellation !== undefined || hasEffectOwnedWork(asyncTask))) {
-    throw await settleEffectTaskFailure(asyncTask, error, ${
+    error = await settleEffectTaskFailure(asyncTask, error, ${
         JSON.stringify(expression.location)
       });
   }
-  throw error;
+  throw asyncTask === undefined ? error : preserveOwnedAsyncRejection(asyncTask, error);
 } finally {
   if (asyncTask !== undefined) finishEffectAsyncTask(asyncTask);
 }`
