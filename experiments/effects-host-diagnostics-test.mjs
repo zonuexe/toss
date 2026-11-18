@@ -10,9 +10,15 @@ const moduleUrl = (source) => `data:text/javascript;base64,${btoa(source)}`;
 const failureObserverImport = moduleUrl(`
   export function onEffectFailure(diagnostic) {
     globalThis.diagnostics.push(diagnostic);
+    if (globalThis.traceDiagnostics) console.log("notify", diagnostic.boundary);
     globalThis.reenter?.();
-    if (diagnostic.boundary === "promise") return Promise.reject(new Error("async observer failed"));
-    throw new Error("observer failed");
+    if (diagnostic.boundary === "promise") return Promise.reject(undefined);
+    throw 0;
+  }
+  export function onEffectObserverError(failure) {
+    globalThis.observerErrors?.push(failure);
+    if (failure.kind === "rejection") return Promise.reject(new Error("secondary rejection"));
+    throw new Error("secondary throw");
   }
 `);
 const base = { failureCarriers: true, failureObserverImport };
@@ -30,6 +36,7 @@ const sources = new Map([
     }) asJSCallback.
     %js(o = $outer, i = $inner, a = $async; (() => {
       globalThis.diagnostics = [];
+      globalThis.observerErrors = [];
       let innerError;
       globalThis.reenter = () => {
         delete globalThis.reenter;
@@ -49,6 +56,11 @@ const sources = new Map([
           callbacks: reports.slice(0, 2).map(d => d.boundary),
           promises: reports.slice(2).map(d => d.boundary),
           cleanup: reports.map(d => d.cleanupDescriptions.map(s => s.match(/"([A-Za-z]+)"/)?.[1])),
+          observerErrors: globalThis.observerErrors.map(f => [
+            f.kind, reports.indexOf(f.diagnostic),
+            f.cause === (f.kind === 'throw' ? 0 : undefined),
+            Object.isFrozen(f),
+          ]).sort((a, b) => a[1] - b[1]),
         }));
       });
     })()).
@@ -80,6 +92,12 @@ for (const options of [base, { ...base, runtimeImport }]) {
   assert.equal(report.stackUnchanged, true);
   assert.deepEqual(report.callbacks, ["callback", "callback"]);
   assert.deepEqual(report.promises, ["promise", "promise"]);
+  assert.deepEqual(report.observerErrors, [
+    ["throw", 0, true, true],
+    ["throw", 1, true, true],
+    ["rejection", 2, true, true],
+    ["rejection", 3, true, true],
+  ]);
   assert.deepEqual(report.cleanup.slice(0, 2), [
     ["moduleCleanup", "outerCleanup"],
     ["moduleCleanup", "innerCleanup"],
@@ -129,13 +147,94 @@ for (const options of [base, { ...base, runtimeImport }]) {
 
 const diagnostics = [];
 const repl = createExperimentalEffectsRepl(() => {}, {
-  onEffectFailure: (diagnostic) => diagnostics.push(diagnostic),
+  onEffectFailure: (diagnostic) => {
+    diagnostics.push(diagnostic);
+  },
 });
 const result = repl.evaluate("{ $missing } ensure: { $cleanup }.", "repl.toss");
 assert.equal(result.kind, "error");
 assert.equal(diagnostics[0].boundary, "repl");
 assert.equal(diagnostics[0].error, result.error);
 assert.match(diagnostics[0].cleanupDescriptions[0], /cleanup/);
+
+const invalidHost = moduleUrl(`
+  export function onEffectFailure() {}
+  export const onEffectObserverError = 123;
+`);
+for (const options of [base, { ...base, runtimeImport }]) {
+  const program = compileExperimentalEffects(
+    "'unexpected' print.",
+    "invalid-host.toss",
+    {
+      ...options,
+      failureObserverImport: invalidHost,
+    },
+  );
+  const imports = program.match(/^(?:import \* as [^\n]+\n)+/)?.[0] ?? "";
+  const observed = await execute(`
+    ${imports}
+    try { ${program.slice(imports.length)} }
+    catch (error) {
+      console.log((error.cause ?? error).message.includes("optional onEffectObserverError"));
+    }
+  `);
+  assert.equal(observed, "true\n");
+}
+
+const cancellation = new Map([
+  [
+    "main.toss",
+    `
+    %js((globalThis.diagnostics = [], globalThis.traceDiagnostics = true, 0)).
+    #h bind: $Object clone.
+    $h at: #Stop put: { p, k -> 'handler' print. 42 }.
+    ({ { $Effect raise: #Stop with: $Nil. 'unreachable' print } ensure: { 'clean success' print } } handleWith: $h) print.
+    #first bind: %async({ %await(%js(Promise.resolve())). { %import('./lib.toss') } handleWith: $h }) asJSCallback.
+    #retry bind: { %import('./lib.toss') } asJSCallback.
+    %js(f = $first, r = $retry; (() => {
+      return f().catch(error => {
+        const [report] = globalThis.diagnostics;
+        console.log(report.boundary, report.error === error, error.message.includes('innerFailure'), report.cleanupDescriptions[0].includes('outerFailure'));
+        try { r(); } catch (interrupted) {
+          const report = globalThis.diagnostics[1];
+          const [inner, outer] = report.cleanupDescriptions;
+          console.log(report.boundary, report.error === interrupted, interrupted.message.includes('interrupted'), inner.includes('innerFailure') && outer.includes('outerFailure'));
+        }
+      });
+    })()).
+  `,
+  ],
+  [
+    "lib.toss",
+    `%export(
+    { { $Effect raise: #Stop with: $Nil } ensure: { 'clean inner' print. $innerFailure } }
+    ensure: { 'clean outer' print. $outerFailure }
+  ).`,
+  ],
+]);
+for (const options of [base, { ...base, runtimeImport }]) {
+  const program = compileExperimentalEffectsSources(
+    "main.toss",
+    cancellation,
+    options,
+  );
+  assert.equal(
+    await execute(program),
+    [
+      "handler",
+      "clean success",
+      "42",
+      "handler",
+      "clean inner",
+      "clean outer",
+      "notify promise",
+      "promise true true true",
+      "notify callback",
+      "callback true true true",
+      "",
+    ].join("\n"),
+  );
+}
 console.log(
   "PASS: host diagnostics isolate re-entry, parallel and late async observations",
 );

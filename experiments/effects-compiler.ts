@@ -60,7 +60,7 @@ function emitFailureObserver(
     throw new TypeError("A failure observer requires failure carriers.");
   }
   const index = imports.lastIndexOf(options.failureObserverImport);
-  return `${aliases[index]}.onEffectFailure`;
+  return `${aliases[index]}`;
 }
 
 function createEffectEmitter(
@@ -321,15 +321,12 @@ export function compileExperimentalEffects(
         JSON.stringify(options.runtimeImport)
       };`,
     ]),
-    `((javascriptEvaluators, javascriptImportNames, onEffectFailure${
+    `((javascriptEvaluators, javascriptImportNames, effectDiagnosticHost${
       runtimeAlias === undefined ? "" : ", runtimeNamespace"
     }) => {`,
     ...(runtimeAlias === undefined
       ? runtimePreludeLines()
       : experimentalRuntimeSetup(options, "runtimeNamespace")),
-    ...(options.failureObserverImport === undefined ? [] : [
-      'if (typeof onEffectFailure !== "function") throw new TypeError("Expected onEffectFailure export.");',
-    ]),
     ...fileRootSetupLines(),
     ...(runtimeAlias === undefined ? [experimentalEffectRuntime(options)] : []),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
@@ -392,15 +389,12 @@ export function compileExperimentalEffectsSources(
         JSON.stringify(options.runtimeImport)
       };`,
     ]),
-    `((javascriptEvaluators, javascriptImportNames, onEffectFailure${
+    `((javascriptEvaluators, javascriptImportNames, effectDiagnosticHost${
       runtimeAlias === undefined ? "" : ", runtimeNamespace"
     }) => {`,
     ...(runtimeAlias === undefined
       ? runtimePreludeLines()
       : experimentalRuntimeSetup(options, "runtimeNamespace")),
-    ...(options.failureObserverImport === undefined ? [] : [
-      'if (typeof onEffectFailure !== "function") throw new TypeError("Expected onEffectFailure export.");',
-    ]),
     ...(runtimeAlias === undefined
       ? [
         experimentalEffectRuntime(options),

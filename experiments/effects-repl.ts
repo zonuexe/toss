@@ -4,22 +4,25 @@ import {
   runtimePreludeLines,
 } from "../src/codegen_prelude.ts";
 import { compileExperimentalEffectsCell } from "./effects-compiler.ts";
-import {
-  type EffectFailureObserver,
-  experimentalEffectRuntime,
-} from "./effects-runtime.ts";
+import type { EffectDiagnosticHost } from "../src/effect_diagnostics.ts";
+import { experimentalEffectRuntime } from "./effects-runtime.ts";
 
 export function createExperimentalEffectsRepl(
   output: (text: string) => void,
-  options: {
+  options: Partial<EffectDiagnosticHost> & {
     readonly failureCarriers?: boolean;
-    readonly onEffectFailure?: EffectFailureObserver;
   } = {},
 ): {
   readonly evaluate: (source: string, file: string) => unknown;
 } {
-  const { onEffectFailure, failureCarriers = onEffectFailure !== undefined } =
-    options;
+  const {
+    onEffectFailure,
+    onEffectObserverError,
+    failureCarriers = onEffectFailure !== undefined,
+  } = options;
+  if (onEffectObserverError !== undefined && onEffectFailure === undefined) {
+    throw new TypeError("An observer error hook requires a failure observer.");
+  }
   if (onEffectFailure !== undefined && !failureCarriers) {
     throw new TypeError("A failure observer requires failure carriers.");
   }
@@ -38,9 +41,14 @@ export function createExperimentalEffectsRepl(
     "return Object.freeze({ evaluate(generated, javascriptEvaluators) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { const details = getEffectFailureDetails(error); return {kind: 'error', error: exposeEffectFailure(error, 'repl'), details}; } } });",
   ].join("\n");
   const bridge: unknown = Reflect.apply(
-    Function("outputHandler", "onEffectFailure", code),
+    Function("outputHandler", "effectDiagnosticHost", code),
     undefined,
-    [output, onEffectFailure],
+    [
+      output,
+      onEffectFailure === undefined
+        ? undefined
+        : { onEffectFailure, onEffectObserverError },
+    ],
   );
   if (
     typeof bridge !== "object" || bridge === null ||

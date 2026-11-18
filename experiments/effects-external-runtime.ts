@@ -37,7 +37,7 @@ const bridge = [
 
 function factory(options: ExternalRuntimeOptions): string {
   return [
-    "export function createEffectRuntime(onEffectFailure) {",
+    "export function createEffectRuntime(effectDiagnosticHost) {",
     ...runtimePreludeLines(),
     experimentalEffectRuntime(options),
     experimentalEffectModuleRuntime,
@@ -71,7 +71,7 @@ export function experimentalRuntimeSetup(
       JSON.stringify(message)
     });`,
     "let experimentalRuntime;",
-    `try { experimentalRuntime = ${namespace}.createEffectRuntime(onEffectFailure); } catch (cause) { throw new Error(${
+    `try { experimentalRuntime = ${namespace}.createEffectRuntime(effectDiagnosticHost); } catch (cause) { throw new Error(${
       JSON.stringify(message)
     }, {cause}); }`,
     `if (experimentalRuntime === null || typeof experimentalRuntime !== "object" || !${

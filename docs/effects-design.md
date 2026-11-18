@@ -1578,6 +1578,35 @@ record and its description arrays are immutable, while its `error` field
 retains the original object and its mutability. Node and Bun probes also verify
 that an external runtime delivers the original Promise rejection value and
 its cleanup description to the observer. The hook is experimental.
-Production integration still needs a host configuration contract, a reporting
-policy for failed observers, and coverage of cancellation and additional host
-scheduling cases.
+The following section records the later observer contract and interruption
+checks.
+
+### Host observer contract and interruption ordering
+
+Hosts can type their module exports with `EffectDiagnosticHost`,
+`EffectFailureDiagnostic` and `EffectObserverError` from the compiler package.
+The experimental compiler's `failureObserverImport` loads a module with a
+required `onEffectFailure` function and an optional `onEffectObserverError`
+function. The embedded runtime, external runtime and experimental REPL use
+the same validation and dispatch code. Invalid exports prevent the Toss entry
+from running. The external runtime setup reports factory initialization errors
+with the underlying error as its cause.
+
+Observers run at the host boundary in which the failure is reported and may
+return a Promise-like value. Execution does not await the observer. On a
+synchronous throw or a rejected return value, the optional secondary hook
+receives a frozen record with the original diagnostic, original cause and
+`kind` of `throw` or `rejection`. Without a secondary hook the observer error
+is discarded. A throw or rejection from the secondary hook is also discarded.
+In every case the original Toss failure retains its identity, and the runtime
+does not retry notification. Each hook enters a fresh JS effect boundary.
+
+The interruption probe exercises a synchronous handler returning without
+resuming, including inside an async Block after `%await`. Successful cleanup
+produces no failure diagnostic. When module cleanup fails, inner and outer
+cleanup run before the Promise failure notification. A later import reports
+the cached initialization interruption with the cleanup failures attached.
+Both embedded and external runtime forms exercise this sequence. Cancellation
+of a pending async Block or host Promise still requires a language and runtime
+contract. The compiler package exports the host types for integration work.
+Diagnostic execution currently uses the experimental backend.

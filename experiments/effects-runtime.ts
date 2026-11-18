@@ -1,15 +1,5 @@
 // Experimental runtime source; not the production Toss runtime.
-export type EffectFailureObserver = (diagnostic: {
-  readonly boundary:
-    | "entry"
-    | "callback"
-    | "promise"
-    | "unobserved-async"
-    | "repl";
-  readonly error: unknown;
-  readonly cleanupDescriptions: readonly string[];
-  readonly handlerDescriptions: readonly string[];
-}) => void;
+import { effectDiagnosticRuntime } from "../src/effect_diagnostics.ts";
 
 export type ExperimentalRuntimeOptions = {
   readonly sharedDispatchTables?: boolean;
@@ -32,6 +22,7 @@ export function experimentalEffectRuntime(
   const allowedMessages =
     `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "toString", "inspect", "not"]);`;
   return `
+${effectDiagnosticRuntime}
 const effectBlocks = new WeakSet();
 ${sharedDispatchTables ? allowedMessages : ""}
 const effectJavaScriptCallbacks = new WeakMap();
@@ -572,13 +563,7 @@ function exposeEffectFailure(error, boundary) {
     cleanupDescriptions: details.cleanupDescriptions,
     handlerDescriptions: details.handlerDescriptions,
   });
-  try {
-    withEffectBoundary(() => {
-      const result = onEffectFailure(diagnostic);
-      if (result !== undefined) Promise.resolve(result).catch(() => {});
-    });
-  }
-  catch (_observerFailure) { /* Reporting must preserve the original failure. */ }
+  notifyEffectFailure(diagnostic);
   return details.error;
 }
 function reportEffectFailures(error) {
