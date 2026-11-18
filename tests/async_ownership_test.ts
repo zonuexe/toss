@@ -98,44 +98,54 @@ Deno.test("a child that fails before suspending still fails the owning task's jo
   assert.equal(text(result.stderr), "");
 });
 
-Deno.test("a cancellation accepted before resuming a fulfilled host wait prevents the continuation", async () => {
-  const javascript = compile(
-    `
-%export({
-  #task bind: (%async({
-    $Effect onCancel: { %js(events.push("cleanup")) }.
-    %await(%js(gate.promise)).
-    %js(events.push("unexpected continuation"))
-  }) value).
-  #cancel bind: { $task cancel: (%js(reason)) } asJSCallback.
-  %js(task = $task, cancel = $cancel; ({task, cancel}))
-} asJSCallback).
-`,
-    "cancel-before-host-resume.toss",
-    { format: "esm", failureObserverImport },
-  );
-  const result = await executeModuleJavaScript(
-    javascript,
-    `
-    import assert from "node:assert/strict";
-    Object.assign(globalThis, {events: [], reports: [], gate: Promise.withResolvers(), reason: new Error("stop")});
-    const {task, cancel} = value();
-    const rejection = task.catch(error => {
-      events.push("catch");
-      return error;
-    });
-    gate.resolve(42);
-    queueMicrotask(() => assert.equal(cancel(), true));
-    const error = await rejection;
-    assert.equal(error.cause, reason);
-    assert.equal(reports.length, 1);
-    assert.equal(error, reports[0].error);
-    assert.deepEqual(events, ["cleanup", "diagnostic:promise", "catch"]);
+for (
+  const [kind, operand, cancel] of [
+    [
+      "host",
+      "%js(gate.promise)",
+      "gate.resolve(42); queueMicrotask(() => assert.equal(cancel(), true));",
+    ],
+    ["Toss", "%async({ 42 }) value", "assert.equal(cancel(), true);"],
+  ]
+) {
+  Deno.test(`cancellation accepted before resuming a fulfilled ${kind} wait prevents the continuation`, async () => {
+    const javascript = compile(
+      `
+  %export({
+    #task bind: (%async({
+      $Effect onCancel: { %js(events.push("cleanup")) }.
+      %await(${operand}).
+      %js(events.push("unexpected continuation"))
+    }) value).
+    #cancel bind: { $task cancel: (%js(reason)) } asJSCallback.
+    %js(task = $task, cancel = $cancel; ({task, cancel}))
+  } asJSCallback).
   `,
-  );
-  assert.equal(result.success, true, text(result.stderr));
-  assert.equal(text(result.stderr), "");
-});
+      "cancel-before-resume.toss",
+      { format: "esm", failureObserverImport },
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      Object.assign(globalThis, {events: [], reports: [], gate: Promise.withResolvers(), reason: new Error("stop")});
+      const {task, cancel} = value();
+      const rejection = task.catch(error => {
+        events.push("catch");
+        return error;
+      });
+      ${cancel}
+      const error = await rejection;
+      assert.equal(error.cause, reason);
+      assert.equal(reports.length, 1);
+      assert.equal(error, reports[0].error);
+      assert.deepEqual(events, ["cleanup", "diagnostic:promise", "catch"]);
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+}
 
 Deno.test("awaiting a rejected owned host Promise reports its failure only as the primary error", async () => {
   const javascript = compile(
@@ -160,6 +170,60 @@ Deno.test("awaiting a rejected owned host Promise reports its failure only as th
   `,
   );
   assert.equal(result.success, true, text(result.stderr));
+});
+
+Deno.test("awaiting a task in failure cleanup remains cancellable", async () => {
+  const javascript = compile(
+    `
+%export({
+  #child bind: (%async({
+    $Effect spawn: %async({
+      $Effect onCancel: %async({
+        %js(cleanupStarted.resolve(0)).
+        %await(%js(cleanupGate.promise)).
+        %js(events.push("cleanup finished")).
+        $cleanupFailure
+      }).
+      %await(%js(new Promise(() => {})))
+    }).
+    $bodyFailure
+  }) value).
+  #waiting bind: (%async({ %await($child) }) value).
+  #cancel bind: { $waiting cancel: (%js(reason)) } asJSCallback.
+  %js(child = $child, waiting = $waiting, cancel = $cancel; ({child, waiting, cancel}))
+} asJSCallback).
+`,
+    "await-during-failure-cleanup.toss",
+    { format: "esm", failureObserverImport },
+  );
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
+    import assert from "node:assert/strict";
+    Object.assign(globalThis, {
+      events: [], reports: [], reason: new Error("stop waiting"),
+      cleanupStarted: Promise.withResolvers(), cleanupGate: Promise.withResolvers(),
+    });
+    const {child, waiting, cancel} = value();
+    const childFailure = child.catch(error => error);
+    const waitingFailure = waiting.catch(error => error);
+    await cleanupStarted.promise;
+    assert.equal(cancel(), true);
+    const stopped = await waitingFailure;
+    assert.equal(stopped.cause, reason);
+    assert.deepEqual(events, ["diagnostic:promise"]);
+    assert.equal(reports[0].error, stopped);
+    cleanupGate.resolve(0);
+    const failed = await childFailure;
+    assert.match(failed.message, /bodyFailure/);
+    assert.equal(reports[1].error, failed);
+    assert.match(reports[1].cleanupDescriptions[0], /cleanupFailure/);
+    assert.deepEqual(events, ["diagnostic:promise", "cleanup finished", "diagnostic:promise"]);
+    assert.equal(reports.length, 2);
+  `,
+  );
+  assert.equal(result.success, true, text(result.stderr));
+  assert.equal(text(result.stderr), "");
 });
 
 for (const external of [false, true]) {

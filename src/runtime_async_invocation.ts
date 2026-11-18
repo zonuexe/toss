@@ -42,8 +42,10 @@ awaitToss = function(value, context) {
   if (task === undefined) return awaitOwnedValue(value, context);
   const waiting = asyncResults.get(value);
   if (waiting !== undefined) {
-    observeEffectAsyncResult(value);
-    return suspendEffectTask(waiting, task);
+    const child = effectTasksByResult.get(value);
+    if (child === undefined) return waiting;
+    child.observed = true;
+    return child.finished ? waiting : suspendEffectTask(waiting, task);
   }
   const operation = hostValues.get(value);
   if (operation === undefined) return {value: checkEffectTask(value, task)};
@@ -65,7 +67,8 @@ function invokeOwnedAsyncBlock(block, args, context) {
     ? {asyncTask: task} : {...context.methodReceiver, asyncTask: task};
   const promise = Reflect.apply(block, invocation, args);
   const result = asyncResult(promise);
-  if (!task.closed) {
+  // A task can close to cancellation while it still has cleanup to await.
+  if (!task.finished) {
     task.promise = promise;
     effectTasksByResult.set(result, task);
   }

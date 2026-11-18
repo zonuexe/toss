@@ -1878,3 +1878,39 @@ the same Block. Embedded runtime estimates were 76, 173, and 123 ns across
 the three versions. External runtime estimates were 82, 193, and 145 ns.
 This separates repeated wait cost from most of the callback and task setup
 cost, while still including the Toss operand lookup.
+
+### Awaiting another Toss async Block
+
+The prior embedded result for a synchronously completing Block was about
+5% slower at `a6b723b` than at `6d088dc`. That increase did not recur
+in three new Deno processes. The paired medians were 3222 → 2481,
+3059 → 2855, and 2585 → 2450 ns per call. The measurements used Deno 2.9.7
+on arm64 macOS and the benchmark's `--toss-await` selection.
+
+The ordinary runtime used a cancellable Promise relay even for a
+completed Toss async result. It can now await the internal Promise
+directly once the producer has finished. The generated continuation
+still checks cancellation before using the result. The result box has
+its own `then: undefined` so a host-supplied prototype getter cannot
+delay settlement. A task in failure cleanup remains registered until
+cleanup finishes, even though it has closed to further cancellation.
+Awaiters of that task can still cancel their own wait.
+
+The table reports the median of three independent run medians, in ns per
+Block call. The relay control includes the completion-state and result-box
+fixes and restores the relay for every Toss result. In the suspension
+case the inner Block awaits a plain value before returning.
+
+| Runtime | Workload | Before integration (`a52fd39`) | Previous (`a6b723b`) | Relay control | Direct wait |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Embedded | Await synchronous completion | 1956 | 2365 | 2380 | 2230 |
+| Embedded | Await after suspension | 1960 | 2755 | 2889 | 2955 |
+| Embedded | Invocation only | 2150 | 2182 | 2218 | 2158 |
+| External | Await synchronous completion | 2060 | 2533 | 2507 | 2727 |
+| External | Await after suspension | 2411 | 3047 | 3014 | 2879 |
+| External | Invocation only | 2286 | 2304 | 2124 | 2172 |
+
+The embedded direct wait for synchronous completion saved 6–17% in
+each paired comparison with the relay control. External measurements for
+that case changed direction across runs. The suspended case still uses a
+relay, and its measurements differed across runs and runtime forms.

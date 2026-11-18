@@ -14,14 +14,15 @@ export function emitBlock(
     }).bindings.set(Symbol.for(${JSON.stringify(name)}), arg${index});`
   );
   const asynchronous = expression.asynchronous === true;
+  // Internal result boxes must settle without assimilating an inherited then.
   const body = expression.body.map((item, index) => {
     const value = emit(item, "scope");
     if (index !== expression.body.length - 1) return `${value};`;
     if (!asynchronous) return `return ${value};`;
     return `const result = ${value};
-if (asyncTask === undefined) return {value: result};
+if (asyncTask === undefined) return {value: result, then: undefined};
 if (hasEffectOwnedWork(asyncTask)) await joinEffectOwnedWork(asyncTask);
-return {value: checkEffectTask(result, asyncTask)};`;
+return {value: checkEffectTask(result, asyncTask), then: undefined};`;
   });
   const functionKind = asynchronous ? "async function" : "function";
   return `((captured) => ${
@@ -43,7 +44,11 @@ ${
     [
       ...bindings,
       ...(body.length === 0
-        ? [asynchronous ? "return {value: null};" : "return null;"]
+        ? [
+          asynchronous
+            ? "return {value: null, then: undefined};"
+            : "return null;",
+        ]
         : body),
     ].join("\n")
   }

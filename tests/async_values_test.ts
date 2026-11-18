@@ -34,6 +34,11 @@ const cases = [
     "9\n",
   ],
   [
+    "Toss async result boxes do not inherit a JavaScript then getter",
+    "#run bind: %async({ %await(%async({ 42 }) value) }) asJSCallback. %js(f = $run; (async () => { Object.defineProperty(Object.prototype, 'then', { configurable: true, get() { if (Object.hasOwn(this, 'value')) throw new Error('result box assimilated'); } }); try { console.log(await f()); } finally { delete Object.prototype.then; } })()).",
+    "42\n",
+  ],
+  [
     "async callback result converts to a native Promise and original Response",
     "#block bind: %async({ %await(%js(Promise.resolve(new Response('ok')))) }). #callback bind: $block asJSCallback. %js(callback = $callback; callback().then(value => console.log(value instanceof Response))).",
     "true\n",

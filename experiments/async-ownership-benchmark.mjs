@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const checkouts = Deno.args.length ? Deno.args : ["."];
+const tossAwaitOnly = Deno.args.includes("--toss-await");
+const paths = Deno.args.filter((arg) => arg !== "--toss-await");
+const checkouts = paths.length ? paths : ["."];
 const compilers = await Promise.all(checkouts.map(async (checkout) => ({
   checkout,
   ...await import(pathToFileURL(resolve(checkout, "src/compiler.ts")).href),
@@ -14,6 +16,8 @@ const workloads = [
   ["value await", "%await(42)"],
   ["host Promise await", "%await($input)"],
   ["Toss async await", "%await(%async({ 42 }) value)"],
+  ["Toss async await with suspension", "%await(%async({ %await(42) }) value)"],
+  ["Toss async invocation only", "%async({ 42 }) value. 42"],
   ["host Promise await x8", Array(8).fill("%await($input)").join(". ")],
   [
     "pending host Promise await",
@@ -35,6 +39,7 @@ async function measure(callback, iterations, makeInput) {
 
 for (const external of [false, true]) {
   for (const [name, body, makeInput] of workloads) {
+    if (tossAwaitOnly && !name.startsWith("Toss async")) continue;
     const callbacks = await Promise.all(compilers.map(async (compiler) => {
       const runtimeImport = external
         ? moduleUrl(compiler.generateRuntimeModule())

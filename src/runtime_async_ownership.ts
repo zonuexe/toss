@@ -9,7 +9,7 @@ if (onLateHostOperationFailure !== undefined && typeof onLateHostOperationFailur
 
 function createEffectAsyncTask() {
   return {
-    closed: false, cancellation: undefined, wake: undefined, cleanups: undefined,
+    closed: false, finished: false, cancellation: undefined, wake: undefined, cleanups: undefined,
     children: undefined, hostOperations: undefined, controller: undefined,
     hostAbortTime: undefined,
   };
@@ -17,6 +17,7 @@ function createEffectAsyncTask() {
 function finishEffectAsyncTask(task) {
   if (task === undefined) return;
   task.closed = true;
+  task.finished = true;
   task.wake = undefined;
   task.cleanups = undefined;
   task.children?.clear();
