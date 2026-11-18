@@ -1914,3 +1914,54 @@ The embedded direct wait for synchronous completion saved 6–17% in
 each paired comparison with the relay control. External measurements for
 that case changed direction across runs. The suspended case still uses a
 relay, and its measurements differed across runs and runtime forms.
+
+### Awaiting a pending Toss result
+
+The benchmark's `--pending-toss-await` selection splits this path into
+three cases. One inner Block suspends with `%await(42)` and the outer
+Block joins it. A second inner Block awaits a fresh host Promise that
+settles via a microtask. The invocation control starts the first inner
+Block and returns from the outer Block without joining it.
+
+Three independent runs on Deno 2.9.7 on arm64 macOS compared
+`a52fd39`, `a6b723b`, and `d0f4110`. For the plain suspension, the
+paired changes from `a6b723b` to `d0f4110` were −1%, +21%, and +3%
+with the embedded runtime and −3%, +1%, and −14% with the external
+runtime. The prior direction of the difference varied between runs.
+All six measurements of `d0f4110` were slower than `a52fd39` for that
+workload.
+
+A second comparison used a temporary build differing from `d0f4110`
+only in the pending Toss path. It returned the producer's Promise
+directly, bypassing the cancellation relay. The direct-delivery trial
+instead registered waiting tasks with the producer, delivered its
+result at completion, and removed individual registrations on
+cancellation. Here are the medians of three independent run medians in
+ns per outer Block call.
+
+| Runtime | Workload | Before integration | Current relay | No-relay control | Direct delivery with Set |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Embedded | Await after suspension | 2249 | 2857 | 2742 | 3077 |
+| Embedded | Await a Block with pending host input | 3231 | 3708 | 3762 | 3860 |
+| Embedded | Suspended invocation only | 1967 | 2242 | 2344 | 2251 |
+| External | Await after suspension | 2510 | 3208 | 3419 | 3063 |
+| External | Await a Block with pending host input | 3418 | 4254 | 4108 | 4293 |
+| External | Suspended invocation only | 2187 | 2418 | 2506 | 2540 |
+
+Without the relay, the embedded plain-suspension case saved 1–4% in
+each paired run, while the external results changed direction. Most
+of the pre-integration gap remained even in that control. The
+invocation-only case also measured slower than before integration.
+The no-relay build failed the shared-wait regression because the
+cancelled waiter's cleanup could not start before producer settlement.
+
+A separate direct-delivery trial used one inline waiter slot and
+allocated a Set only for additional waiters. Against the current
+relay, its paired changes ranged from −11% to +9% for the embedded
+plain-suspension case and from −5% to +12% for the external equivalent.
+Its median pending-host-input time increased in both runtime forms.
+The trials provided no repeatable throughput improvement across the
+pending workloads. The shared-wait regression also verifies that a
+second waiter still receives the producer's value while the first
+waiter's cleanup is held open, and that the first waiter's original
+reason is reported once after cleanup.

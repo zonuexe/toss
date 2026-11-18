@@ -226,6 +226,57 @@ Deno.test("awaiting a task in failure cleanup remains cancellable", async () => 
   assert.equal(text(result.stderr), "");
 });
 
+Deno.test("cancelling one pending Toss wait leaves other waiters and the producer running", async () => {
+  const javascript = compile(
+    `
+%export({
+  #producer bind: (%async({ %await(%js(producerGate.promise)) }) value).
+  #first bind: (%async({
+    $Effect onCancel: %async({
+      %js((events.push("cleanup start"), cleanupStarted.resolve(), 0)).
+      %await(%js(cleanupGate.promise)).
+      %js(events.push("cleanup end")).
+      $cleanupFailure
+    }).
+    %await($producer)
+  }) value).
+  #second bind: (%async({ %await($producer) }) value).
+  #stop bind: { $first cancel: (%js(reason)) } asJSCallback.
+  %js(first = $first, second = $second, stop = $stop; ({first, second, stop}))
+} asJSCallback).
+`,
+    "shared-pending-toss-await.toss",
+    { format: "esm", failureObserverImport },
+  );
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
+    import assert from "node:assert/strict";
+    Object.assign(globalThis, {
+      events: [], reports: [], reason: new Error("stop only the first waiter"),
+      producerGate: Promise.withResolvers(), cleanupStarted: Promise.withResolvers(),
+      cleanupGate: Promise.withResolvers(),
+    });
+    const {first, second, stop} = value();
+    const failed = first.catch(error => { events.push("catch"); return error; });
+    assert.equal(stop(), true);
+    await cleanupStarted.promise;
+    producerGate.resolve(42);
+    assert.equal(await second, 42);
+    assert.deepEqual(reports, []);
+    cleanupGate.resolve();
+    const error = await failed;
+    assert.equal(error.cause, reason);
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].error, error);
+    assert.match(reports[0].cleanupDescriptions[0], /cleanupFailure/);
+    assert.deepEqual(events, ["cleanup start", "cleanup end", "diagnostic:promise", "catch"]);
+  `,
+  );
+  assert.equal(result.success, true, text(result.stderr));
+  assert.equal(text(result.stderr), "");
+});
+
 for (const external of [false, true]) {
   const options = {
     format: "esm" as const,
