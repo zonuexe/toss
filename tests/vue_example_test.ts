@@ -11,7 +11,7 @@ Deno.test("Vue build exports working callbacks from the compiled Toss default va
     assert.doesNotMatch(generated, /\bevaluateJavaScript\s*\(/);
     assert.doesNotMatch(generated, /\bFunction\s*\(/);
     assert.match(generated, /from "\.\/runtime\.js"/);
-    assert.match(runtime, /export function createRuntime\(\)/);
+    assert.match(runtime, /export function createRuntime\(/);
     assert.doesNotMatch(generated, /function evaluateCompiledJavaScript/);
     await Deno.writeTextFile(
       `${outputDirectory}/probe.ts`,

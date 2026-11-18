@@ -12,14 +12,15 @@ export const runtimeBridgeNames = [
   "markAsyncBlock",
   "parentSend",
   "pipelineSend",
+  "reportHostFailure",
   "send",
   "toJavaScript",
 ] as const;
 
 function runtimeFactorySource(): string {
   return [
-    "export function createRuntime() {",
-    ...runtimePreludeLines(),
+    "export function createRuntime(effectDiagnosticHost) {",
+    ...runtimePreludeLines(false, undefined, undefined, true),
     `return {${runtimeBridgeNames.join(", ")}};`,
     "}",
     "",
@@ -42,6 +43,7 @@ export function runtimeModuleFingerprint(): string {
 export function runtimeCompatibilitySetupLines(
   namespace: string,
   expectedFingerprint = runtimeModuleFingerprint(),
+  diagnosticHost = "undefined",
 ): string[] {
   const diagnostic =
     "Toss runtime is missing or incompatible. Regenerate the runtime module with the matching compiler, then rebuild this artifact.";
@@ -54,7 +56,7 @@ export function runtimeCompatibilitySetupLines(
     `throw new Error(${JSON.stringify(diagnostic)});`,
     "}",
     "let tossRuntime;",
-    `try { tossRuntime = ${namespace}.createRuntime(); } catch (cause) { throw new Error(${
+    `try { tossRuntime = ${namespace}.createRuntime(${diagnosticHost}); } catch (cause) { throw new Error(${
       JSON.stringify(diagnostic)
     }, {cause}); }`,
     `if (tossRuntime === null || typeof tossRuntime !== "object" || !${requiredHelpers}.every((name) => typeof tossRuntime[name] === "function")) {`,

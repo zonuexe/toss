@@ -19,7 +19,7 @@ export interface EffectObserverError {
   readonly kind: "throw" | "rejection";
 }
 
-/** Host module exports used by the experimental effect compiler. */
+/** Host module exports used by the failureObserverImport compile option. */
 export interface EffectDiagnosticHost {
   /** Called before the failure is exposed. The runtime does not await the return value. */
   readonly onEffectFailure: (

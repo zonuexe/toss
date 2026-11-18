@@ -91,7 +91,7 @@ Deno.test("runtime fingerprint is deterministic and derives from factory source"
   const generated = generateRuntimeModule();
   const marker = generated.match(/runtimeFingerprint = "([^"]+)"/);
   const factory = generated.slice(
-    generated.indexOf("export function createRuntime()"),
+    generated.indexOf("export function createRuntime("),
   );
   assert.ok(marker?.[1]);
   assert.equal(generated, generateRuntimeModule());

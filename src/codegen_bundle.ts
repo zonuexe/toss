@@ -12,6 +12,7 @@ import {
   javascriptImportMapExpression,
 } from "./javascript_import_codegen.ts";
 import {
+  compileFailureObserverImport,
   compileFormat,
   type CompileOptions,
   compileRuntimeImport,
@@ -82,12 +83,22 @@ export function generateBundle(
 ): string {
   const format = compileFormat(options);
   const runtimeImport = compileRuntimeImport(options);
+  const observerImport = compileFailureObserverImport(options);
   const treeShakePrelude = compileTreeShakePrelude(options);
   const expressions = modules.flatMap((module) => module.expressions);
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
   const imports = collectJavaScriptImports(expressions);
-  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const hostImports = observerImport === undefined
+    ? imports
+    : [...imports, observerImport];
+  const importAliases = javascriptImportAliases(
+    hostImports,
+    javascriptExpressions,
+  );
+  const observerAlias = observerImport === undefined
+    ? undefined
+    : importAliases[imports.length];
   const runtimeAlias = runtimeImport === undefined
     ? undefined
     : javascriptRuntimeAlias(javascriptExpressions);
@@ -98,21 +109,27 @@ export function generateBundle(
     ? runtimePreludeLines(
       false,
       treeShakePrelude ? collectPreludeSelectors(expressions) : undefined,
+      undefined,
+      observerAlias !== undefined,
     )
-    : runtimeCompatibilitySetupLines("runtimeNamespace");
+    : runtimeCompatibilitySetupLines(
+      "runtimeNamespace",
+      undefined,
+      observerAlias === undefined ? "undefined" : "effectDiagnosticHost",
+    );
   const exported = modules[entry]?.expressions.find((expression) =>
     expression.kind === "export"
   );
   const lines = [
-    ...emitJavaScriptImportStatements(imports, importAliases),
+    ...emitJavaScriptImportStatements(hostImports, importAliases),
     ...(runtimeImport === undefined || runtimeAlias === undefined ? [] : [
       `import * as ${runtimeAlias} from ${JSON.stringify(runtimeImport)};`,
     ]),
     `${
       format === "esm" ? "export default " : ""
     }((javascriptEvaluators, javascriptImportNames${
-      runtimeImport === undefined ? "" : ", runtimeNamespace"
-    }) => {`,
+      observerAlias === undefined ? "" : ", effectDiagnosticHost"
+    }${runtimeImport === undefined ? "" : ", runtimeNamespace"}) => {`,
     ...runtimeSetup,
     ...moduleRuntimeLines(),
   ];
@@ -126,6 +143,7 @@ export function generateBundle(
   if (format === "esm" && exported === undefined) {
     throw new TypeError("ES module generation requires an export expression.");
   }
+  if (observerAlias !== undefined) lines.push("try {");
   lines.push(
     format === "esm"
       ? `const __tossDefaultExport = initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});\nreturn toJavaScript(__tossDefaultExport, {location: ${
@@ -133,10 +151,15 @@ export function generateBundle(
       }});`
       : `initializeModule(${entry}, {file: "<entry>", line: 1, column: 1});`,
   );
+  if (observerAlias !== undefined) {
+    lines.push("} catch (error) { throw reportHostFailure(error, 'entry'); }");
+  }
   lines.push(
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
+    }${observerAlias === undefined ? "" : `, ${observerAlias}`}${
+      runtimeAlias === undefined ? "" : `, ${runtimeAlias}`
+    });`,
   );
   return lines.join("\n") + "\n";
 }

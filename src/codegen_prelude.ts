@@ -49,6 +49,7 @@ export function runtimePreludeLines(
   includeDynamicJavaScript = false,
   selectedSelectors?: ReadonlySet<string>,
   outputHook?: string,
+  includeDiagnostics = false,
 ): string[] {
   return [
     '"use strict";',
@@ -94,7 +95,7 @@ export function runtimePreludeLines(
       outputPrint,
       outputDump,
     ], selectedSelectors),
-    runtimeJavaScript(outputHook),
+    runtimeJavaScript(outputHook, includeDiagnostics),
     ...(includeDynamicJavaScript ? [runtimeJavaScriptDynamic] : []),
   ];
 }

@@ -1,8 +1,12 @@
 import { runtimeAsyncJavaScript } from "./runtime_async.ts";
 import { runtimeJavaScriptAot } from "./runtime_javascript_aot.ts";
 import { runtimeJavaScriptCallback } from "./runtime_javascript_callback.ts";
+import { effectDiagnosticRuntime } from "./effect_diagnostics.ts";
 
-export function runtimeJavaScript(outputHook?: string): string {
+export function runtimeJavaScript(
+  outputHook?: string,
+  includeDiagnostics = false,
+): string {
   const outputCall = outputHook === undefined
     ? "console.log(text);"
     : outputHook + "(text, context.location);";
@@ -33,8 +37,26 @@ const javascriptReferenceMessages = new Map([
   ["dump", function(receiver, context) { return writeOutput(receiver, "inspect", context); }],
 ]);
 ${runtimeAsyncJavaScript}
-${runtimeJavaScriptCallback}
+${runtimeJavaScriptCallback(includeDiagnostics)}
 ${runtimeJavaScriptAot}
+${
+    includeDiagnostics
+      ? `
+function withEffectBoundary(body) { return body(); }
+${effectDiagnosticRuntime}
+const noEffectDescriptions = Object.freeze([]);
+function reportHostFailure(error, boundary) {
+  if (onEffectFailure !== undefined) {
+    notifyEffectFailure(Object.freeze({
+      boundary, error, cleanupDescriptions: noEffectDescriptions,
+      handlerDescriptions: noEffectDescriptions,
+    }));
+  }
+  return error;
+}
+`
+      : ""
+  }
 
 function isJavaScriptReference(value) { return hostValues.has(value) || asyncResults.has(value); }
 
@@ -57,9 +79,17 @@ function toJavaScript(value, context) {
   if (asyncResults.has(value)) {
     const previous = asyncHostPromises.get(value);
     if (previous !== undefined) return previous;
-    const promise = asyncResults.get(value).then((result) =>
-      toJavaScript(result.value, context)
-    );
+    const promise = asyncResults.get(value).then((result) => {
+      ${
+    includeDiagnostics
+      ? "try { return toJavaScript(result.value, context); } catch (error) { throw reportHostFailure(error, 'promise'); }"
+      : "return toJavaScript(result.value, context);"
+  }
+    }${
+    includeDiagnostics
+      ? ", (error) => { throw reportHostFailure(error, 'promise'); }"
+      : ""
+  });
     asyncHostPromises.set(value, promise);
     hostValues.set(value, promise);
     hostReferences.set(promise, value);

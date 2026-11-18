@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { compileFile } from "./compiler.ts";
 import {
+  compileFailureObserverImport,
   compileRuntimeImport,
   compileTreeShakePrelude,
 } from "./compile_options.ts";
@@ -9,7 +10,7 @@ import { TossSyntaxError } from "./diagnostic.ts";
 import { version } from "./version.ts";
 
 const usage =
-  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm] [--runtime-import <specifier>] [--tree-shake-prelude]";
+  "Usage: deno task compile <source.toss> -o <output.js> [--format program|esm] [--runtime-import <specifier>] [--failure-observer-import <specifier>] [--tree-shake-prelude]";
 
 class UsageError extends Error {
   override readonly name = "UsageError";
@@ -21,6 +22,7 @@ function parseArguments(args: readonly string[]): {
   readonly format: CompileFormat;
   readonly treeShakePrelude: boolean;
   readonly runtimeImport?: string;
+  readonly failureObserverImport?: string;
 } {
   const input = args[0];
   if (input === undefined || input.startsWith("-")) {
@@ -30,6 +32,7 @@ function parseArguments(args: readonly string[]): {
   let format: CompileFormat = "program";
   let formatSeen = false;
   let runtimeImport: string | undefined;
+  let failureObserverImport: string | undefined;
   let treeShakePrelude = false;
   let index = 1;
   while (index < args.length) {
@@ -58,6 +61,15 @@ function parseArguments(args: readonly string[]): {
       index += 2;
       continue;
     }
+    if (
+      option === "--failure-observer-import" &&
+      failureObserverImport === undefined &&
+      value !== undefined && !value.startsWith("-")
+    ) {
+      failureObserverImport = value;
+      index += 2;
+      continue;
+    }
     if (option === "--tree-shake-prelude" && !treeShakePrelude) {
       treeShakePrelude = true;
       index++;
@@ -75,6 +87,7 @@ function parseArguments(args: readonly string[]): {
     format,
     treeShakePrelude,
     ...(runtimeImport === undefined ? {} : { runtimeImport }),
+    ...(failureObserverImport === undefined ? {} : { failureObserverImport }),
   };
 }
 
@@ -88,15 +101,23 @@ export async function main(args: readonly string[]): Promise<void> {
       console.log(usage);
       return;
     }
-    const { input, output, format, runtimeImport, treeShakePrelude } =
-      parseArguments(args);
+    const {
+      input,
+      output,
+      format,
+      runtimeImport,
+      failureObserverImport,
+      treeShakePrelude,
+    } = parseArguments(args);
     const options = {
       format,
       ...(runtimeImport === undefined ? {} : { runtimeImport }),
+      ...(failureObserverImport === undefined ? {} : { failureObserverImport }),
       ...(treeShakePrelude ? { treeShakePrelude } : {}),
     };
     try {
       compileRuntimeImport(options);
+      compileFailureObserverImport(options);
       compileTreeShakePrelude(options);
     } catch (error) {
       if (!(error instanceof TypeError)) throw error;

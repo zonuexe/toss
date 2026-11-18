@@ -55,6 +55,14 @@ Vueとブラウザ検証の例では事前に生成したJSを実行します。
 
 `mise exec -- deno task runtime -o out/runtime.js` でランタイムを別ファイルに生成できます。コンパイル時に `--runtime-import ./runtime.js` を指定すると、生成JSからそのESモジュールを読み込みます。パスの基準は生成JSの場所です。APIでは `runtimeImport: './runtime.js'` と `generateRuntimeModule()` を使います。アプリとランタイムは同じコンパイラのバージョンで生成します。複数の生成JSでコードを共有できますが、束縛やキャッシュなどの実行状態はそれぞれ独立しています。[ADR-50](docs/adr/0050-external-runtime-module.md) を参照してください。
 
+AOT 生成物の失敗をホストで受け取るには、コンパイル時に
+`--failure-observer-import ./observer.js`（API では
+`failureObserverImport`）を指定します。生成 JS と同じディレクトリの
+`observer.js` が `onEffectFailure(diagnostic)` を export すると、
+エントリ、JS callback、JS に渡した Promise の失敗を受け取れます。
+フック自体の失敗は追加の `onEffectObserverError` で受け取れます。
+型は `EffectDiagnosticHost` です。
+
 新たにコンパイルしたアプリは実行前にランタイムのビルドを照合し、互換性がない場合は再生成を案内します。この機能を追加する前に生成したアプリには照合機能がありません。照合はダウンロードしたファイルの改ざん検証を目的とするものではありません。
 
 Denoのファイル操作を使わずにソース文字列をコンパイルする場合は、`src/source_compiler.ts` の `compile` を利用できます。Acorn依存は利用先で解決またはバンドルしてください。従来の `src/compiler.ts` からは引き続き `compile` と `compileFile` を利用できます。ファイルimportや共有マクロimportには対応するソースの指定が必要です。

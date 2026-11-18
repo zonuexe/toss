@@ -762,6 +762,14 @@ state and keeps its file bindings and module caches private. This shares code
 without creating a shared Toss session. The default output still embeds the
 runtime. See [ADR-50](docs/adr/0050-external-runtime-module.md).
 
+Use `--failure-observer-import ./observer.mjs` (API option
+`failureObserverImport`) to receive failures from the entry point, JS
+callbacks, and Toss async results exposed as JS Promises. The generated
+artifact imports the module relative to its own location. Export
+`onEffectFailure(diagnostic)` and optionally `onEffectObserverError(failure)`
+to receive errors from the observer itself. The package exports the
+`EffectDiagnosticHost` type for these functions.
+
 ### Reduce an embedded prelude
 
 Use `--tree-shake-prelude` when compiling an embedded-runtime artifact to omit
