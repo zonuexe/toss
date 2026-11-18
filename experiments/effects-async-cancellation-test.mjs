@@ -320,6 +320,123 @@ for (const explicitAwait of [false, true]) {
   assert.equal(result.success, true, decoder.decode(result.stderr));
   assert.equal(decoder.decode(result.stdout), "true true 1 0\n");
 }
+function boundedHostWait(cancel) {
+  return `
+%js((globalThis.events = [], globalThis.reports = [],
+  globalThis.reason = new Error("explicit cancellation"),
+  globalThis.late = Promise.withResolvers(),
+  globalThis.later = Promise.withResolvers(),
+  globalThis.cleanupStarted = Promise.withResolvers(),
+  globalThis.cleanupGate = Promise.withResolvers(),
+  globalThis.bodyGate = Promise.withResolvers(), 0)).
+#scope bind: (%async({
+  $Effect spawn: %async({
+    $Effect onCancel: %async({
+      %js((events.push("cleanup start"), cleanupStarted.resolve(), 0)).
+      %await(%js(cleanupGate.promise)).
+      %js(events.push("cleanup end")).
+      $cleanupFailure
+    }).
+    %await(%js(new Promise(() => {})))
+  }).
+  $Effect hostOperation: %js(signal => {
+    signal.addEventListener("abort", () => {
+      globalThis.abortReason = signal.reason;
+      events.push("abort");
+    }, {once: true});
+    return late.promise;
+  }) abortWaitMs: 0.
+  $Effect hostOperation: %js(_ => later.promise) abortWaitMs: 1.
+  $Effect hostOperation: %js(_ => later.promise) abortWaitMs: 0.
+  $Effect hostOperation: %js(signal => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("host cleanup")), {once: true});
+  })) abortWaitMs: 0.
+  %await(%js(bodyGate.promise)).
+  $primaryFailure
+}) value).
+#stop bind: { $scope cancel: (%js(reason)) } asJSCallback.
+%js(p = $scope, stop = $stop; (async () => {
+  const failed = p.catch(error => {
+    events.push("catch");
+    console.log("primary", reports[0].error === error,
+      ${cancel ? "error.cause === reason && abortReason === reason" : 'error === abortReason && error.message.includes("primaryFailure")'});
+  });
+  ${cancel ? "stop();" : "bodyGate.resolve();"}
+  await cleanupStarted.promise;
+  const turn = () => new Promise(resolve => setTimeout(resolve, 0));
+  await turn();
+  late.reject(new Error("late during cleanup"));
+  await turn();
+  console.log("during cleanup", reports.length, events.join("|"));
+  cleanupGate.resolve();
+  await failed;
+  later.reject(new Error("late after diagnostic"));
+  await turn();
+  console.log(events.join("|"));
+  console.log("reports", reports.length, reports[0].cleanupDescriptions.map(s =>
+    ["cleanupFailure", "did not settle within 0 ms", "did not settle within 1 ms", "host cleanup"].find(x => s.includes(x))
+  ).join("|"));
+})()).
+`;
+}
+for (const cancel of [false, true]) {
+  for (const config of [options, { ...options, runtimeImport }]) {
+    const result = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        compileExperimentalEffects(boundedHostWait(cancel), "bounded-host-wait.toss", config),
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert.equal(result.success, true, decoder.decode(result.stderr));
+    assert.equal(decoder.decode(result.stdout), [
+      "during cleanup 0 abort|cleanup start",
+      "primary true true",
+      "abort|cleanup start|cleanup end|diagnostic:promise|catch",
+      "reports 1 cleanupFailure|did not settle within 0 ms|did not settle within 1 ms|host cleanup",
+      "",
+    ].join("\n"));
+  }
+}
+const deadlineOptions = await new Deno.Command(Deno.execPath(), {
+  args: [
+    "eval",
+    compileExperimentalEffects(
+      `
+%js((globalThis.events = [], globalThis.reports = [],
+  globalThis.hostGate = Promise.withResolvers(), 0)).
+#ok bind: (%async({
+  $Effect hostOperation: %js(_ => hostGate.promise) abortWaitMs: 0.
+  42
+}) value).
+#invalid bind: %async({ ms ->
+  $Effect hostOperation: %js(_ => console.log("unexpected factory call")) abortWaitMs: $ms
+}) asJSCallback.
+%js(p = $ok, invalid = $invalid; (async () => {
+  let done = false;
+  const result = p.then(value => { done = true; return value; });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  console.log("before abort", done, reports.length);
+  hostGate.resolve();
+  console.log("normal result", await result);
+  for (const ms of [-1, 0.5, 2147483648, "0"]) {
+    await invalid(ms).catch(error => console.log(error.message.includes("abortWaitMs:")));
+  }
+})()).
+`,
+      "host-wait-options.toss",
+      options,
+    ),
+  ],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(deadlineOptions.success, true, decoder.decode(deadlineOptions.stderr));
+assert.equal(
+  decoder.decode(deadlineOptions.stdout),
+  "before abort false 0\nnormal result 42\ntrue\ntrue\ntrue\ntrue\n",
+);
 console.log(
   "PASS: async cancellation and owned work settle before the parent reports failure",
 );

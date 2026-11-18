@@ -8,6 +8,7 @@ function createEffectAsyncTask() {
   return {
     closed: false, cancellation: undefined, wake: undefined, cleanups: [],
     children: new Map(), hostOperations: new Map(), controller: undefined,
+    hostAbortTime: undefined,
   };
 }
 function bindEffectAsyncTask(task, boundary) {
@@ -44,11 +45,16 @@ function stopEffectTasks(pending, cause, context, failedParent) {
       pending.push(child);
     }
   }
-  failedParent?.controller?.abort(cause);
+  if (failedParent !== undefined) abortOwnedHostOperations(failedParent, cause);
   for (const current of cancelled) {
-    current.controller?.abort(cause);
+    abortOwnedHostOperations(current, cause);
     current.wake?.(current.cancellation);
   }
+}
+function abortOwnedHostOperations(task, cause) {
+  if (task.controller === undefined) return;
+  task.hostAbortTime = performance.now();
+  task.controller.abort(cause);
 }
 function activeEffectTask(context, operation) {
   const task = effectTasksByBoundary.get(context.boundary);
@@ -76,8 +82,12 @@ function* spawnOwnedEffectTask(value, context) {
   }
   return result;
 }
-function startOwnedHostOperation(value, context) {
+function startOwnedHostOperation(value, context, abortWaitMs) {
   const task = activeEffectTask(context, "hostOperation:");
+  if (abortWaitMs !== undefined &&
+      (!Number.isInteger(abortWaitMs) || abortWaitMs < 0 || abortWaitMs > 2147483647)) {
+    throw new TossRuntimeError("abortWaitMs: requires an integer from 0 to 2147483647.", context.location);
+  }
   const factory = hostValues.get(value);
   if (typeof factory !== "function") {
     throw new TossRuntimeError("hostOperation: requires a JavaScript function.", context.location);
@@ -89,11 +99,14 @@ function startOwnedHostOperation(value, context) {
   } catch (cause) {
     throw new TossRuntimeError("JavaScript host operation threw.", context.location, {cause});
   }
-  task.hostOperations.set(operation, context.location);
-  const forget = () => {
-    if (task.cancellation === undefined) task.hostOperations.delete(operation);
-  };
-  operation.then(forget, () => {});
+  const operations = task.hostOperations;
+  const previous = operations.get(operation);
+  // A shared Promise must satisfy the longest wait requested by its registrations.
+  if (previous === undefined || abortWaitMs === undefined ||
+      (previous.abortWaitMs !== undefined && abortWaitMs > previous.abortWaitMs)) {
+    operations.set(operation, {location: context.location, abortWaitMs});
+  }
+  operation.then(() => operations.delete(operation), () => {});
   return fromJavaScript(operation, context);
 }
 function registerEffectCancellationCleanup(value, context) {
@@ -137,7 +150,7 @@ function hasEffectOwnedWork(task) {
 }
 async function joinEffectOwnedWork(task) {
   const waiting = [...task.children.keys()].map((result) => asyncResults.get(result));
-  for (const [operation, location] of task.hostOperations) {
+  for (const [operation, {location}] of task.hostOperations) {
     waiting.push(operation.catch((cause) => {
       const error = new TossRuntimeError("JavaScript host operation rejected.", location, {cause});
       ownedHostFailureOrigins.set(error, operation);
@@ -146,6 +159,29 @@ async function joinEffectOwnedWork(task) {
   }
   await waitEffectTask(Promise.all(waiting), task);
 }
+async function observeStoppedHostOperation(operation, registration, abortTime) {
+  const {location, abortWaitMs} = registration;
+  let timer;
+  try {
+    if (abortWaitMs === undefined) {
+      await operation;
+    } else {
+      const remaining = Math.max(0, Math.ceil(abortWaitMs - (performance.now() - abortTime)));
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new TossRuntimeError(
+          "JavaScript host operation did not settle within " + abortWaitMs + " ms after abort.", location,
+        )), remaining);
+      });
+      // The race keeps observing the operation if it rejects after the timer wins.
+      await Promise.race([operation, deadline]);
+    }
+    return undefined;
+  } catch (error) {
+    return {error};
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 async function settleEffectTaskFailure(task, error, location) {
   if (task === undefined) return asEffectFailure(error);
   task.closed = true;
@@ -153,6 +189,9 @@ async function settleEffectTaskFailure(task, error, location) {
   const primary = cancelled ? task.cancellation : copyEffectFailure(asEffectFailure(error));
   const reason = cancelled ? primary.value.cause : primary.value;
   if (!cancelled) stopEffectTasks([...task.children.values()], reason, {location}, task);
+  const hostFailures = [...task.hostOperations].map(async ([operation, registration]) => ({
+    operation, failure: await observeStoppedHostOperation(operation, registration, task.hostAbortTime),
+  }));
   for (const [result, child] of task.children) {
     try {
       await asyncResults.get(result);
@@ -165,13 +204,11 @@ async function settleEffectTaskFailure(task, error, location) {
       }
     }
   }
-  for (const operation of task.hostOperations.keys()) {
-    try {
-      await operation;
-    } catch (error) {
-      if (operation !== ownedHostFailureOrigins.get(primary.value) && !Object.is(error, reason)) {
-        recordCleanupFailure(primary, error);
-      }
+  for (const waiting of hostFailures) {
+    const {operation, failure} = await waiting;
+    if (failure !== undefined && operation !== ownedHostFailureOrigins.get(primary.value) &&
+        !Object.is(failure.error, reason)) {
+      recordCleanupFailure(primary, failure.error);
     }
   }
   while (cancelled && task.cleanups.length > 0) {

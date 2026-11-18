@@ -123,7 +123,8 @@ try {
     generateExperimentalEffectsRuntime(cancellation),
   );
   const cancellationProgram = compileExperimentalEffects(
-    `#task bind: (%async({
+    `%js((globalThis.late = Promise.withResolvers(), 0)).
+    #task bind: (%async({
       #child bind: ($Effect spawn: %async({
         $Effect onCancel: %async({ %await($Nil). 'cleanup ran' print. $cleanup }).
         %await($Effect hostOperation: %js(signal => new Promise((_, reject) => {
@@ -133,11 +134,15 @@ try {
           }, {once: true});
         })))
       })).
+      $Effect hostOperation: %js(_ => late.promise) abortWaitMs: 0.
       %await($child).
       'unexpected' print
     }) value).
     ($task cancel: 'stop') print.
-    %js(p = $task; p.catch(e => console.log(e === globalThis.observedError, e.cause))).`,
+    %js(p = $task; p.catch(e => {
+      console.log(e === globalThis.observedError, e.cause);
+      late.reject(new Error('late failure'));
+    })).`,
     "cross-engine-cancel.toss",
     {
       ...cancellation,

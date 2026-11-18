@@ -1700,8 +1700,8 @@ and cleanup, with the original reason as `cause`.
 
 Callers can use `%await` to wait for a child's result. A child explicitly
 exposed to JS retains its own Promise reporting boundary. Native host work
-can ignore the signal. If the operation never settles, parent cancellation
-remains pending, as with a cleanup Block that never returns.
+can ignore the signal. By default, if the operation never settles, parent
+cancellation remains pending, as with a cleanup Block that never returns.
 
 The regression probe cancels a parent with a child, a grandchild and a
 cooperative host operation. It compares the signal reason by identity,
@@ -1723,18 +1723,42 @@ When the body already failed, its failure remains primary. An implicit join
 that fails uses the child failure or a host operation error with the original
 JS rejection as its cause. Remaining children receive cancellation, and
 registered host operations receive the primary error as their abort reason.
-The parent waits for their settlement before publishing the failure. A child's
-cancellation cleanup errors become associated failures in the parent
-diagnostic. The parent runs its own `onCancel:` registrations only when the
-parent itself was cancelled. For ordinary failures, the runtime copies the
+By default, the parent waits for their settlement before publishing the
+failure. A child's cancellation cleanup errors become associated failures in
+the parent diagnostic. The parent runs its own `onCancel:` registrations only
+when the parent itself was cancelled. For ordinary failures, the runtime copies the
 failure carrier before adding associations, so a separately observed child
 does not acquire the parent's additional failures.
 
-An operation that ignores its `AbortSignal` keeps the scope open until it
-settles. There is no implicit timeout or detachment. The probes hold such
-an operation open beyond the child's failed cleanup and verify that there
-is no parent diagnostic or rejection yet. Releasing the operation lets the
-parent report the original failure along with the associated cleanup failure
-and then reject. Separate tests verify that a normal return
-stays pending until both the owned child and host operation finish. These
-semantics apply to the experimental cancellation mode.
+An operation that ignores its `AbortSignal` keeps the scope open by default.
+The probes hold such an operation open beyond the child's failed cleanup and
+verify that there is no parent diagnostic or rejection yet. Releasing the
+operation lets the parent report the original failure along with the
+associated cleanup failure and then reject. Separate tests verify that a
+normal return stays pending until both the owned child and host operation
+finish. These semantics apply to the experimental cancellation mode.
+
+### Explicit deadline for host settlement after abort
+
+`$Effect hostOperation: factory abortWaitMs: 50` gives that host Promise up
+to 50 milliseconds to settle after the task issues its abort signal. The
+budget is an integer from 0 through 2,147,483,647 milliseconds. A zero budget
+allows settlement before the zero-delay timer fires, including an immediate
+rejection from an abort listener. Timers depend on event loop progress. If the
+same task registers the same Promise more than once, the longest requested wait
+applies, including an unbounded wait when a registration omits the budget.
+
+The deadline applies after explicit cancellation or ordinary failure aborts
+the operation. A successful scope and an explicit `%await` still wait for
+the operation normally. Host deadlines run concurrently with child cleanup.
+When a timer wins, the runtime stops waiting for that operation and records
+the deadline and registration location as an associated failure. The parent
+retains its primary error and waits for child cleanup and its own applicable
+cleanup before publishing the diagnostic. A host rejection received before
+the deadline follows the usual cleanup reporting rules.
+
+The host operation may keep running after its deadline. The runtime observes
+any later rejection to prevent an unhandled rejection and leaves the parent
+diagnostic unchanged. Code holding the original Promise can still observe
+its eventual settlement. A deadline for host settlement never bounds Toss
+cleanup Blocks.
