@@ -98,6 +98,70 @@ Deno.test("a child that fails before suspending still fails the owning task's jo
   assert.equal(text(result.stderr), "");
 });
 
+Deno.test("a cancellation accepted before resuming a fulfilled host wait prevents the continuation", async () => {
+  const javascript = compile(
+    `
+%export({
+  #task bind: (%async({
+    $Effect onCancel: { %js(events.push("cleanup")) }.
+    %await(%js(gate.promise)).
+    %js(events.push("unexpected continuation"))
+  }) value).
+  #cancel bind: { $task cancel: (%js(reason)) } asJSCallback.
+  %js(task = $task, cancel = $cancel; ({task, cancel}))
+} asJSCallback).
+`,
+    "cancel-before-host-resume.toss",
+    { format: "esm", failureObserverImport },
+  );
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
+    import assert from "node:assert/strict";
+    Object.assign(globalThis, {events: [], reports: [], gate: Promise.withResolvers(), reason: new Error("stop")});
+    const {task, cancel} = value();
+    const rejection = task.catch(error => {
+      events.push("catch");
+      return error;
+    });
+    gate.resolve(42);
+    queueMicrotask(() => assert.equal(cancel(), true));
+    const error = await rejection;
+    assert.equal(error.cause, reason);
+    assert.equal(reports.length, 1);
+    assert.equal(error, reports[0].error);
+    assert.deepEqual(events, ["cleanup", "diagnostic:promise", "catch"]);
+  `,
+  );
+  assert.equal(result.success, true, text(result.stderr));
+  assert.equal(text(result.stderr), "");
+});
+
+Deno.test("awaiting a rejected owned host Promise reports its failure only as the primary error", async () => {
+  const javascript = compile(
+    `
+%export(%async({
+  %await($Effect hostOperation: %js(_ => Promise.reject(reason)))
+}) asJSCallback).
+`,
+    "await-owned-host-failure.toss",
+    { format: "esm", failureObserverImport },
+  );
+  const result = await executeModuleJavaScript(
+    javascript,
+    `
+    import assert from "node:assert/strict";
+    Object.assign(globalThis, {events: [], reports: [], reason: new Error("host failure")});
+    const error = await value().catch(error => error);
+    assert.equal(error.cause, reason);
+    assert.equal(reports.length, 1);
+    assert.equal(error, reports[0].error);
+    assert.deepEqual(reports[0].cleanupDescriptions, []);
+  `,
+  );
+  assert.equal(result.success, true, text(result.stderr));
+});
+
 for (const external of [false, true]) {
   const options = {
     format: "esm" as const,

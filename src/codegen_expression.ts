@@ -39,9 +39,9 @@ export function createEmitter(
       case "export":
         return `(moduleExport = ${emit(expression.value, scope)})`;
       case "await":
-        return `(await awaitToss(${
+        return `resumeTossAwait(await awaitToss(${
           emit(expression.expression, scope)
-        }, ${context})).value`;
+        }, ${context}), ${scope})`;
       case "javascript":
         return evaluators?.has(expression)
           ? `evaluateCompiledJavaScript(javascriptEvaluators[${

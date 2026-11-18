@@ -43,10 +43,11 @@ awaitToss = function(value, context) {
   const waiting = asyncResults.get(value);
   if (waiting !== undefined) {
     observeEffectAsyncResult(value);
-    return waitEffectTask(waiting, task);
+    return suspendEffectTask(waiting, task);
   }
-  if (!hostValues.has(value)) return {value: checkEffectTask(value, task)};
-  return awaitEffectTask(value, context, task);
+  const operation = hostValues.get(value);
+  if (operation === undefined) return {value: checkEffectTask(value, task)};
+  return suspendEffectTask(operation, task, context);
 };
 function invokeOwnedCancellationCleanup(block, context) {
   return invokeBlock(block, [], {location: context.location});

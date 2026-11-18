@@ -14,6 +14,19 @@ function asyncResult(promise) {
   return reference;
 }
 
+function resumeTossAwait(result, environment) {
+  ${
+    includeOwnedTasks
+      ? `const task = environment.asyncTask;
+  if (task !== undefined) {
+    task.wake = undefined;
+    checkEffectTask(undefined, task);
+  }`
+      : ""
+  }
+  return result.value;
+}
+
 async function awaitToss(value, context) {
   if (asyncResults.has(value)) {
     ${includeOwnedTasks ? "observeEffectAsyncResult(value);" : ""}

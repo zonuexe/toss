@@ -14,13 +14,19 @@ const workloads = [
   ["value await", "%await(42)"],
   ["host Promise await", "%await($input)"],
   ["Toss async await", "%await(%async({ 42 }) value)"],
+  ["host Promise await x8", Array(8).fill("%await($input)").join(". ")],
+  [
+    "pending host Promise await",
+    "%await($input)",
+    () => new Promise((resolve) => queueMicrotask(() => resolve(42))),
+  ],
 ];
 
-async function measure(callback, iterations) {
+async function measure(callback, iterations, makeInput) {
   let sum = 0;
   const start = performance.now();
   for (let index = 0; index < iterations; index++) {
-    sum += await callback(fulfilled);
+    sum += await callback(makeInput === undefined ? fulfilled : makeInput());
   }
   const elapsed = performance.now() - start;
   assert.equal(sum, iterations * 42);
@@ -28,7 +34,7 @@ async function measure(callback, iterations) {
 }
 
 for (const external of [false, true]) {
-  for (const [name, body] of workloads) {
+  for (const [name, body, makeInput] of workloads) {
     const callbacks = await Promise.all(compilers.map(async (compiler) => {
       const runtimeImport = external
         ? moduleUrl(compiler.generateRuntimeModule())
@@ -42,11 +48,11 @@ for (const external of [false, true]) {
       return callback;
     }));
     const samples = callbacks.map(() => []);
-    for (const callback of callbacks) await measure(callback, 10_000);
+    for (const callback of callbacks) await measure(callback, 10_000, makeInput);
     for (let round = 0; round < 7; round++) {
       for (let offset = 0; offset < callbacks.length; offset++) {
         const index = (round + offset) % callbacks.length;
-        samples[index].push(await measure(callbacks[index], 50_000));
+        samples[index].push(await measure(callbacks[index], 50_000, makeInput));
       }
     }
     const medians = samples.map((sample) => sample.sort((a, b) => a - b)[3]);

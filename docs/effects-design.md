@@ -1813,7 +1813,7 @@ Regenerate external runtime modules with the matching compiler.
 ### Cost of async Blocks without owned work
 
 The benchmark in `experiments/async-ownership-benchmark.mjs` compiles the
-same four async Blocks against each supplied checkout. It times sequential
+same async Blocks against each supplied checkout. It times sequential
 calls through a JS callback and reports the median of seven 50,000-call
 samples after warmup. The host Promise case reuses an already-fulfilled
 Promise. These measurements include the Toss-to-JS callback boundary.
@@ -1840,3 +1840,41 @@ Waiting on a reference uses one cancellation latch, and awaiting another
 Toss async result uses its internal Promise directly. A plain value still
 suspends at the generated `await`. In this run a direct return was near the
 pre-integration time, while the await cases still cost 17–49% more.
+
+### Host Promise wait costs
+
+The ordinary runtime now delivers the JS result directly into the task's
+cancellable wait. The host operand still uses JavaScript's native `await`,
+including for cross-realm Promises and thenables. The generated Toss
+continuation clears the wait and checks cancellation before consuming the
+result. This removes a Promise relay and repeated JS reference lookups.
+An owned host rejection still retains its original cause and registration
+identity so that it is recorded only once if it becomes the primary failure.
+
+The benchmark adds one Block that waits eight times on the same fulfilled
+Promise and one that waits on a fresh Promise fulfilled in a microtask. The
+fresh Promise case includes allocating and scheduling that Promise. These
+are medians in nanoseconds per Block call on Deno 2.9.7 on arm64 macOS,
+compared in the same run against `a52fd39` and `6d088dc`.
+
+| Runtime | Block body | Before integration | Previous | Direct delivery |
+| --- | --- | ---: | ---: | ---: |
+| Embedded | Return a value | 1073 | 1197 | 1207 |
+| Embedded | Await a plain value | 1076 | 1439 | 1333 |
+| Embedded | Await a Toss async result | 2091 | 2393 | 2520 |
+| Embedded | Await a fulfilled JS Promise | 1432 | 1764 | 1619 |
+| Embedded | Await a fulfilled JS Promise eight times | 1961 | 2977 | 2481 |
+| Embedded | Await a fresh pending JS Promise | 2008 | 2409 | 2305 |
+| External | Return a value | 1387 | 1352 | 1276 |
+| External | Await a plain value | 1346 | 1539 | 1509 |
+| External | Await a Toss async result | 2380 | 2499 | 2411 |
+| External | Await a fulfilled JS Promise | 1519 | 1840 | 1599 |
+| External | Await a fulfilled JS Promise eight times | 2096 | 3192 | 2614 |
+| External | Await a fresh pending JS Promise | 2162 | 2525 | 2460 |
+
+The difference between the eight-wait and one-wait cases, divided by
+seven, estimates the cost per additional fulfilled JS Promise wait within
+the same Block. Embedded runtime estimates were 76, 173, and 123 ns across
+the three versions. External runtime estimates were 82, 193, and 145 ns.
+This separates repeated wait cost from most of the callback and task setup
+cost, while still including the Toss operand lookup.

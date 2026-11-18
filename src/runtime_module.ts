@@ -19,6 +19,7 @@ export const runtimeBridgeNames = [
   "pipelineSend",
   "preserveOwnedAsyncRejection",
   "reportHostFailure",
+  "resumeTossAwait",
   "send",
   "settleEffectTaskFailure",
   "toJavaScript",

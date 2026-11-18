@@ -24,6 +24,11 @@ const cases = [
     "14\n",
   ],
   [
+    "await on a same-realm native Promise ignores its own then getter",
+    "#promise bind: %js(Object.defineProperty(Promise.resolve(42), 'then', { get() { throw new Error('then read'); } })). #callback bind: %async({ %await($promise) }) asJSCallback. %js(f = $callback; f().then(value => console.log(value))).",
+    "42\n",
+  ],
+  [
     "nested async results are not implicitly flattened",
     "#inner bind: %async({ 9 }). #outer bind: %async({ $inner value }). #runner bind: %async({ #nested bind: %await($outer value). %await($nested) }). #callback bind: $runner asJSCallback. %js(callback = $callback; callback().then(value => console.log(value))).",
     "9\n",

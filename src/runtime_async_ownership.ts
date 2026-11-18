@@ -132,15 +132,36 @@ function awaitEffectTask(value, context, task) {
   });
   return waitEffectTask(tracked, task);
 }
+function suspendEffectTask(waiting, task, hostContext) {
+  return new Promise((resolve, reject) => {
+    task.wake = reject;
+    if (hostContext === undefined) waiting.then(resolve, reject);
+    else void forwardHostAwait(waiting, hostContext, task, resolve, reject);
+    if (task.cancellation !== undefined) reject(task.cancellation);
+  });
+}
+async function forwardHostAwait(operation, context, task, resolve, reject) {
+  let value;
+  try {
+    value = await operation;
+  } catch (cause) {
+    if (task.cancellation !== undefined) return;
+    const error = new TossRuntimeError("JavaScript Promise rejected.", context.location, {cause});
+    if (task.hostOperations?.has(operation)) ownedHostFailureOrigins.set(error, operation);
+    reject(error);
+    return;
+  }
+  if (task.cancellation !== undefined) return;
+  try {
+    resolve({value: fromJavaScript(value, context)});
+  } catch (error) {
+    reject(error);
+  }
+}
 async function waitEffectTask(waiting, task) {
   if (task === undefined) return await waiting;
   try {
-    const result = await new Promise((resolve, reject) => {
-      task.wake = reject;
-      waiting.then(resolve, reject);
-      if (task.cancellation !== undefined) reject(task.cancellation);
-    });
-    return checkEffectTask(result, task);
+    return checkEffectTask(await suspendEffectTask(waiting, task), task);
   } finally {
     task.wake = undefined;
   }
