@@ -1609,4 +1609,39 @@ the cached initialization interruption with the cleanup failures attached.
 Both embedded and external runtime forms exercise this sequence. Cancellation
 of a pending async Block or host Promise still requires a language and runtime
 contract. The compiler package exports the host types for integration work.
-Diagnostic execution currently uses the experimental backend.
+At that stage, diagnostic execution used the experimental backend.
+
+### Ordinary compiler integration and a cancellable wait
+
+The ordinary AOT compiler accepts `CompileOptions.failureObserverImport`,
+also available as the CLI's `--failure-observer-import`. The module is resolved
+with the artifact's other static imports. Both embedded and external runtimes
+use the existing host observer contract. The ordinary compiler reports entry
+failures, synchronous JavaScript callback failures and rejections of Toss
+async results converted to host Promises. Ordinary diagnostics have empty
+handler and cleanup description arrays. A failure that crosses several host
+boundaries can produce several diagnostics. A dropped async result continues
+to rely on the host's existing unhandled rejection mechanism. The external
+runtime fingerprint changes with this runtime interface.
+
+The cancellation probe uses an explicit `AbortSignal` for a single wait.
+Aborting that wait leaves other subscribers and the shared operation running.
+The adapter observes the underlying operation even if it settles after the
+wait was cancelled. A Toss async Block can await the resulting Promise. The
+probe runs asynchronous host cleanup before rejecting the Promise being
+awaited and verifies the order: cleanup start, cleanup end, boundary
+diagnostic, then the JavaScript rejection handler. Toss's existing await
+diagnostic retains the cancellation reason as its cause.
+
+A native Promise has no cancellation operation. Stopping host work requires
+an explicit cooperative API such as an operation that accepts an
+`AbortSignal`. A second probe waits for the cooperative operation itself to
+reject, so its own cleanup completes before the host diagnostic. For a future
+Toss-owned async Block, the candidate contract is
+to make cancellation observable at a suspension point, unwind cleanup in
+reverse registration order, and publish the terminal diagnostic after
+cleanup. A cleanup failure should be associated with the cancellation
+occurrence while retaining its original reason. The wait adapter only
+demonstrates explicit wait cancellation and successful asynchronous host
+cleanup. The language-level cancellation operation, ownership of cancellation
+and async cleanup failure semantics remain open.
