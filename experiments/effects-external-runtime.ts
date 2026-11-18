@@ -35,13 +35,27 @@ const bridge = [
   "throwAsyncEffectFailure",
 ] as const;
 
+const cancellationBridge = [
+  "awaitEffectTask",
+  "bindEffectAsyncTask",
+  "checkEffectTask",
+  "finishEffectAsyncTask",
+  "unwindEffectCancellation",
+] as const;
+
+function bridgeNames(options: ExternalRuntimeOptions): readonly string[] {
+  return options.asyncCancellation
+    ? [...bridge, ...cancellationBridge]
+    : bridge;
+}
+
 function factory(options: ExternalRuntimeOptions): string {
   return [
     "export function createEffectRuntime(effectDiagnosticHost) {",
     ...runtimePreludeLines(),
     experimentalEffectRuntime(options),
     experimentalEffectModuleRuntime,
-    `return {${bridge.join(", ")}};`,
+    `return {${bridgeNames(options).join(", ")}};`,
     "}",
   ].join("\n");
 }
@@ -61,7 +75,8 @@ export function experimentalRuntimeSetup(
 ): string[] {
   const expected = fingerprintRuntimeSource(factory(options));
   const message = "Experimental effect runtime is missing or incompatible.";
-  const functions = bridge.filter((name) =>
+  const names = bridgeNames(options);
+  const functions = names.filter((name) =>
     name !== "effectRoot" && name !== "effectModuleInitializers"
   );
   return [
@@ -79,6 +94,6 @@ export function experimentalRuntimeSetup(
     }.every((name) => typeof experimentalRuntime[name] === "function") || experimentalRuntime.effectRoot === null || typeof experimentalRuntime.effectRoot !== "object" || !Array.isArray(experimentalRuntime.effectModuleInitializers)) throw new Error(${
       JSON.stringify(message)
     });`,
-    `const {${bridge.join(", ")}} = experimentalRuntime;`,
+    `const {${names.join(", ")}} = experimentalRuntime;`,
   ];
 }

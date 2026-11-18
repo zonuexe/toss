@@ -47,6 +47,7 @@ type EffectCompilerOptions = {
   readonly sharedBoundaryDelegate?: boolean;
   readonly runtimeImport?: string;
   readonly failureCarriers?: boolean;
+  readonly asyncCancellation?: boolean;
   readonly failureObserverImport?: string;
 };
 
@@ -109,7 +110,11 @@ function createEffectEmitter(
           const last = index === expression.body.length - 1;
           const value = emit(item, "localScope", blockAsync);
           return last && blockAsync
-            ? `return {value: ${value}};`
+            ? `return {value: ${
+              options.asyncCancellation
+                ? `checkEffectTask(${value}, asyncTask)`
+                : value
+            }};`
             : `${last ? "return " : ""}${value};`;
         });
         const scopeSetup = `
@@ -139,8 +144,21 @@ ${
           }) {
 const invocation = this;
 const asyncBoundary = Object.freeze({});
+${
+            options.asyncCancellation
+              ? "const asyncTask = invocation?.effectAsyncTask; bindEffectAsyncTask(asyncTask, asyncBoundary);"
+              : ""
+          }
 try {${scopeSetup}
-} catch (error) { throwAsyncEffectFailure(error); }
+} catch (error) { ${
+            options.asyncCancellation
+              ? "if (asyncTask?.cancellation !== undefined) throw await unwindEffectCancellation(asyncTask); "
+              : ""
+          }throwAsyncEffectFailure(error); }${
+            options.asyncCancellation
+              ? " finally { finishEffectAsyncTask(asyncTask, asyncBoundary); }"
+              : ""
+          }
 }))(${scope})`;
         }
         return `((captured) => markEffectBlock(function*(${
@@ -231,6 +249,11 @@ const invocation = this;${scopeSetup}
       }
       case "await":
         if (!asynchronous) throw new TypeError("Await outside an async Block.");
+        if (options.asyncCancellation) {
+          return `checkEffectTask((await awaitEffectTask(${
+            emit(expression.expression, scope, asynchronous)
+          }, ${context}, asyncTask)).value, asyncTask)`;
+        }
         return `(await awaitToss(${
           emit(expression.expression, scope, asynchronous)
         }, ${context})).value`;
@@ -284,6 +307,9 @@ export function compileExperimentalEffects(
   file: string,
   options: EffectCompilerOptions = {},
 ): string {
+  if (options.asyncCancellation && !options.failureCarriers) {
+    throw new TypeError("Async cancellation requires failure carriers.");
+  }
   const expressions = expandProgram(source, { file });
   const analysis = analyzeModule(expressions, file, false);
   if (analysis.imports.length > 0) {
@@ -344,6 +370,9 @@ export function compileExperimentalEffectsSources(
   sources: ReadonlyMap<string, string>,
   options: EffectCompilerOptions = {},
 ): string {
+  if (options.asyncCancellation && !options.failureCarriers) {
+    throw new TypeError("Async cancellation requires failure carriers.");
+  }
   const { modules, edges, loadedEntry: root } = prepareVirtualSources(
     entry,
     sources,

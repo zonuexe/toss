@@ -1645,3 +1645,36 @@ occurrence while retaining its original reason. The wait adapter only
 demonstrates explicit wait cancellation and successful asynchronous host
 cleanup. The language-level cancellation operation, ownership of cancellation
 and async cleanup failure semantics remain open.
+
+### Cancellation of a Toss-owned async invocation
+
+The experimental compiler accepts `asyncCancellation: true` with
+`failureCarriers: true`. An invocation has its own task state and its async
+result is the cancellation handle. Sending `cancel: reason` to that result
+returns true for the first accepted request and false for subsequent requests
+or a completed invocation. The runtime observes cancellation while suspended
+at `%await`, before continuing from an await, or before publishing completion
+if JavaScript requests cancellation during a reentrant call. Synchronous
+execution between checkpoints can continue. A request stops the wait of this
+invocation. The awaited Promise or separately invoked async Block can continue,
+including when another caller waits for it. A late rejection of the detached
+wait remains observed by the runtime.
+
+`$Effect onCancel: cleanup` registers a zero-argument Block in the active async
+invocation. The runtime runs registered Blocks in reverse order only on
+cancellation. It awaits async cleanup in a separate effect boundary, so the
+cancelled task's request cannot interrupt that cleanup. Cleanup may fail.
+The cancellation diagnostic retains an `Async Block cancelled.` error with
+the first reason as its `cause`. Each cleanup failure is attached to this
+occurrence in execution order, and remaining cleanup still runs. The terminal
+diagnostic is emitted after cleanup and before the host rejection is delivered.
+Successful and ordinary failing invocations discard the cancellation-only
+registrations. A cleanup that never settles leaves cancellation pending.
+
+The probe covers embedded and external runtime output, repeated cancellation,
+a shared host Promise, two failing cleanups including an async cleanup,
+an unobserved rejection, and cancellation reentering from JavaScript after
+an await. Node.js and Bun also run an external-runtime probe with a failing
+async cleanup. The option and messages are experimental. Release work includes
+settling the public syntax and ownership API, cancellation of children and
+cooperative cancellation of host operations.

@@ -116,7 +116,39 @@ try {
       generateExperimentalEffectsRuntime(variant),
     );
   }
+  const cancellation = { failureCarriers: true, asyncCancellation: true };
+  const cancellationRuntime = `${directory}/cancellation.mjs`;
+  await Deno.writeTextFile(
+    cancellationRuntime,
+    generateExperimentalEffectsRuntime(cancellation),
+  );
+  const cancellationProgram = compileExperimentalEffects(
+    `#task bind: (%async({
+      $Effect onCancel: %async({ %await($Nil). 'cleanup ran' print. $cleanup }).
+      %await(%js(new Promise(() => {}))).
+      'unexpected' print
+    }) value).
+    ($task cancel: 'stop') print.
+    %js(p = $task; p.catch(e => console.log(e === globalThis.observedError, e.cause))).`,
+    "cross-engine-cancel.toss",
+    {
+      ...cancellation,
+      failureObserverImport: pathToFileURL(observerPath).href,
+      runtimeImport: pathToFileURL(cancellationRuntime).href,
+    },
+  );
   for (const engine of ["node", "bun"]) {
+    const cancelled = await new Deno.Command(engine, {
+      args: ["--input-type=module", "-e", cancellationProgram],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert.equal(cancelled.success, true, decoder.decode(cancelled.stderr));
+    assert.equal(
+      decoder.decode(cancelled.stdout),
+      "true\ncleanup ran\npromise true\ntrue stop\n",
+      engine,
+    );
     const diagnosticProgram = compileExperimentalEffects(
       "#f bind: %async({ { $missing } ensure: { $cleanup } }) asJSCallback. %js(f = $f; f().catch(e => console.log(e === globalThis.observedError))).",
       "host-diagnostic.toss",

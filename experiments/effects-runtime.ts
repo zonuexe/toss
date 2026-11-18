@@ -1,5 +1,6 @@
 // Experimental runtime source; not the production Toss runtime.
 import { effectDiagnosticRuntime } from "../src/effect_diagnostics.ts";
+import { effectAsyncCancellationRuntime } from "./effects-async-cancellation.ts";
 
 export type ExperimentalRuntimeOptions = {
   readonly sharedDispatchTables?: boolean;
@@ -7,6 +8,7 @@ export type ExperimentalRuntimeOptions = {
   readonly sharedBoundaryDelegate?: boolean;
   readonly outputHook?: string;
   readonly failureCarriers?: boolean;
+  readonly asyncCancellation?: boolean;
 };
 
 export function experimentalEffectRuntime(
@@ -18,7 +20,11 @@ export function experimentalEffectRuntime(
     sharedBoundaryDelegate = false,
     outputHook,
     failureCarriers = false,
+    asyncCancellation = false,
   } = options;
+  if (asyncCancellation && !failureCarriers) {
+    throw new TypeError("Async cancellation requires failure carriers.");
+  }
   const allowedMessages =
     `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "toString", "inspect", "not"]);`;
   return `
@@ -28,6 +34,7 @@ ${sharedDispatchTables ? allowedMessages : ""}
 const effectJavaScriptCallbacks = new WeakMap();
 let effectBoundary = Object.freeze({});
 function getEffectBoundary() { return effectBoundary; }
+${asyncCancellation ? effectAsyncCancellationRuntime : ""}
 function withEffectBoundaryValue(boundary, body) {
   const previous = effectBoundary;
   effectBoundary = boundary;
@@ -163,7 +170,17 @@ function* effectInvoke(block, args, context) {
   const methodReceiver = context.methodReceiver === undefined
     ? {kind: "effectInvocation", effectBoundary: boundary}
     : {...context.methodReceiver, effectBoundary: boundary};
+  ${
+    asyncCancellation
+      ? "const task = asyncBlockFunctions.has(block) ? createEffectAsyncTask() : undefined; if (task !== undefined) methodReceiver.effectAsyncTask = task;"
+      : ""
+  }
   const result = withEffectBoundaryValue(boundary, () => invokeBlock(block, args, {...context, methodReceiver}));
+  ${
+    asyncCancellation
+      ? "if (task !== undefined) effectTasksByResult.set(result, task);"
+      : ""
+  }
   if (!effectBlocks.has(block)) return result;
   const delegate = ${
     sharedBoundaryDelegate ? "new EffectBoundaryDelegate(result, boundary)" : `{
@@ -407,6 +424,14 @@ function* effectInspectArray(receiver, context) {
 }
 function* effectSend(receiver, message, context) {
   const {name, arguments: args} = message;
+  ${
+    asyncCancellation
+      ? `
+  if (receiver === effectRoot && name === "onCancel:") return registerEffectCancellationCleanup(args[0], context);
+  if (asyncResults.has(receiver) && name === "cancel:") return cancelEffectAsyncTask(receiver, args[0], context);
+  `
+      : ""
+  }
   if (receiver === effectRoot && name === "raise:with:") {
     if (typeof args[0] !== "symbol") throw new TossRuntimeError("Effect identity must be a Symbol.", context.location);
     if (effectCleanupDepth > 0) throw new TossRuntimeError("Effects are not allowed during cleanup.", context.location);
