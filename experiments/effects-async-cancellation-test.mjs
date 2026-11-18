@@ -132,6 +132,93 @@ assert.equal(
   decoder.decode(reentryResult.stdout),
   "reentrant true\ncleanup\nreentrant reason 1\n",
 );
+
+const owned = `
+%js((globalThis.events = [], globalThis.reports = [],
+  globalThis.reason = new Error("root stop"),
+  globalThis.grandStarted = Promise.withResolvers(),
+  globalThis.grandGate = Promise.withResolvers(),
+  globalThis.hostGate = Promise.withResolvers(),
+  globalThis.hostDone = Promise.withResolvers(),
+  globalThis.detachedGate = Promise.withResolvers(), 0)).
+#parent bind: (%async({
+  $Effect onCancel: { %js(events.push("parent cleanup")). $parentCleanup }.
+  #detached bind: (%async({ %await(%js(detachedGate.promise)) }) value).
+  %js(p = $detached; (globalThis.detached = p, 0)).
+  #child bind: ($Effect spawn: %async({
+    $Effect onCancel: { %js(events.push("child cleanup")). $childCleanup }.
+    $Effect spawn: %async({
+      $Effect onCancel: %async({
+        %js((events.push("grandchild start"), grandStarted.resolve(), 0)).
+        %await(%js(grandGate.promise)).
+        %js(events.push("grandchild end")).
+        $grandCleanup
+      }).
+      %await(%js(new Promise(() => {})))
+    }).
+    %await($Effect hostOperation: %js(signal => new Promise((_, reject) => {
+      signal.addEventListener("abort", async () => {
+        events.push("signal:" + (signal instanceof AbortSignal && signal.reason === reason));
+        events.push("reentrant cancel:" + globalThis.cancelChild());
+        await hostGate.promise;
+        events.push("host cleanup");
+        hostDone.resolve();
+        reject(new Error("hostCleanup"));
+      }, {once: true});
+    })))
+  })).
+  #retryChild bind: { $child cancel: 'different' } asJSCallback.
+  %js(f = $retryChild; (globalThis.cancelChild = f, 0)).
+  $Effect hostOperation: %js(signal => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), {once: true});
+  })).
+  %await($child)
+}) value).
+#reason bind: %js(globalThis.reason).
+#cancel bind: { $parent cancel: $reason } asJSCallback.
+%js(p = $parent, cancel = $cancel; (async () => {
+  const failed = p.catch(error => {
+    events.push("catch");
+    console.log("identity", error.cause === reason, reports[0].error === error);
+  });
+  console.log("accepted", cancel());
+  await grandStarted.promise;
+  hostGate.resolve();
+  await hostDone.promise;
+  console.log("pending", reports.length);
+  grandGate.resolve();
+  await failed;
+  detachedGate.resolve(42);
+  console.log("detached", await detached);
+  console.log(events.join("|"));
+  console.log(reports.length, reports[0].cleanupDescriptions.map(s =>
+    ["grandCleanup", "hostCleanup", "childCleanup", "parentCleanup"].find(x => s.includes(x))
+  ).join("|"));
+})()).
+`;
+for (const config of [options, { ...options, runtimeImport }]) {
+  const result = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "eval",
+      compileExperimentalEffects(owned, "cancel-tree.toss", config),
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  assert.equal(result.success, true, decoder.decode(result.stderr));
+  assert.equal(
+    decoder.decode(result.stdout),
+    [
+      "accepted true",
+      "pending 0",
+      "identity true true",
+      "detached 42",
+      "signal:true|reentrant cancel:false|grandchild start|host cleanup|grandchild end|child cleanup|parent cleanup|diagnostic:promise|catch",
+      "1 grandCleanup|hostCleanup|childCleanup|parentCleanup",
+      "",
+    ].join("\n"),
+  );
+}
 console.log(
   "PASS: async cancellation unwinds cleanup before exposing the original cause",
 );

@@ -1675,6 +1675,39 @@ The probe covers embedded and external runtime output, repeated cancellation,
 a shared host Promise, two failing cleanups including an async cleanup,
 an unobserved rejection, and cancellation reentering from JavaScript after
 an await. Node.js and Bun also run an external-runtime probe with a failing
-async cleanup. The option and messages are experimental. Release work includes
-settling the public syntax and ownership API, cancellation of children and
-cooperative cancellation of host operations.
+async cleanup. The option and messages are experimental.
+
+### Owned children and cooperative host operations
+
+In the experimental cancellation mode, `$Effect spawn: block` starts a
+zero-argument async Block as a child of the active invocation and returns
+its async result. Ordinary Block calls and `%await` do not create ownership.
+`$Effect hostOperation: factory` calls a JavaScript function with the active
+task's `AbortSignal` and returns a host Promise reference. A factory's
+Promise must settle after any host cleanup the parent needs to wait for.
+
+Cancellation marks all reachable owned tasks before firing abort listeners,
+so a listener that re-enters Toss cannot replace an accepted reason in a
+descendant. Abort signals carry that reason. The parent joins children in spawn
+order and pending host operations in registration order, then runs its own
+cancellation cleanup in reverse registration order. Actual cleanup across
+siblings or host operations may overlap. A child's cancellation contributes
+its associated cleanup failures to the parent's diagnostic. A host rejection
+identical to the abort reason adds no second failure. A different rejection
+from an operation still tracked during cancellation is associated with the
+parent failure. The parent publishes its terminal diagnostic after all joins
+and cleanup, with the original reason as `cause`.
+
+Ownership applies to cancellation of a live parent. This experiment does not
+implicitly join or cancel children on successful return or ordinary failure.
+Callers can use `%await` to wait for a child's result. A child explicitly
+exposed to JS retains its own Promise reporting boundary. Native host work
+can ignore the signal. If the operation never settles, parent cancellation
+remains pending, as with a cleanup Block that never returns.
+
+The regression probe cancels a parent with a child, a grandchild and a
+cooperative host operation. It compares the signal reason by identity,
+re-enters Toss from an abort listener, holds cleanup open, and checks the
+order and contents of the eventual diagnostic. Deno exercises embedded and
+external runtime forms. Node and Bun exercise the external runtime with an
+owned child and an abort-aware host operation.

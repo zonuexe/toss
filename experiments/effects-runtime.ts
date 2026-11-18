@@ -428,6 +428,8 @@ function* effectSend(receiver, message, context) {
     asyncCancellation
       ? `
   if (receiver === effectRoot && name === "onCancel:") return registerEffectCancellationCleanup(args[0], context);
+  if (receiver === effectRoot && name === "spawn:") return yield* spawnOwnedEffectTask(args[0], context);
+  if (receiver === effectRoot && name === "hostOperation:") return startOwnedHostOperation(args[0], context);
   if (asyncResults.has(receiver) && name === "cancel:") return cancelEffectAsyncTask(receiver, args[0], context);
   `
       : ""

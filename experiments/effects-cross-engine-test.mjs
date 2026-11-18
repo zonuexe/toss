@@ -124,8 +124,16 @@ try {
   );
   const cancellationProgram = compileExperimentalEffects(
     `#task bind: (%async({
-      $Effect onCancel: %async({ %await($Nil). 'cleanup ran' print. $cleanup }).
-      %await(%js(new Promise(() => {}))).
+      #child bind: ($Effect spawn: %async({
+        $Effect onCancel: %async({ %await($Nil). 'cleanup ran' print. $cleanup }).
+        %await($Effect hostOperation: %js(signal => new Promise((_, reject) => {
+          signal.addEventListener('abort', () => {
+            console.log('abort reason', signal.reason);
+            reject(signal.reason);
+          }, {once: true});
+        })))
+      })).
+      %await($child).
       'unexpected' print
     }) value).
     ($task cancel: 'stop') print.
@@ -146,7 +154,7 @@ try {
     assert.equal(cancelled.success, true, decoder.decode(cancelled.stderr));
     assert.equal(
       decoder.decode(cancelled.stdout),
-      "true\ncleanup ran\npromise true\ntrue stop\n",
+      "abort reason stop\ntrue\ncleanup ran\npromise true\ntrue stop\n",
       engine,
     );
     const diagnosticProgram = compileExperimentalEffects(
