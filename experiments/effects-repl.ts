@@ -4,14 +4,25 @@ import {
   runtimePreludeLines,
 } from "../src/codegen_prelude.ts";
 import { compileExperimentalEffectsCell } from "./effects-compiler.ts";
-import { experimentalEffectRuntime } from "./effects-runtime.ts";
+import {
+  type EffectFailureObserver,
+  experimentalEffectRuntime,
+} from "./effects-runtime.ts";
 
 export function createExperimentalEffectsRepl(
   output: (text: string) => void,
-  options: { readonly failureCarriers?: boolean } = {},
+  options: {
+    readonly failureCarriers?: boolean;
+    readonly onEffectFailure?: EffectFailureObserver;
+  } = {},
 ): {
   readonly evaluate: (source: string, file: string) => unknown;
 } {
+  const { onEffectFailure, failureCarriers = onEffectFailure !== undefined } =
+    options;
+  if (onEffectFailure !== undefined && !failureCarriers) {
+    throw new TypeError("A failure observer requires failure carriers.");
+  }
   const code = [
     ...runtimePreludeLines(true, undefined, "replOutput"),
     "function replOutput(text, location) { try { outputHandler(text); } catch (cause) { throw new TossRuntimeError('REPL output handler failed.', location, {cause}); } }",
@@ -20,16 +31,16 @@ export function createExperimentalEffectsRepl(
       sharedDispatchTables: true,
       sharedBoundaryDelegate: true,
       outputHook: "replOutput",
-      ...options,
+      failureCarriers,
     }),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = getEffectBoundary(); registerEffectSymbolRoot(symbolRoot);",
-    "return Object.freeze({ evaluate(generated, javascriptEvaluators) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { reportEffectFailures(error); return {kind: 'error', error: effectFailureValue(error), details: getEffectFailureDetails(error)}; } } });",
+    "return Object.freeze({ evaluate(generated, javascriptEvaluators) { try { return {kind: 'value', value: eval(generated)}; } catch (error) { const details = getEffectFailureDetails(error); return {kind: 'error', error: exposeEffectFailure(error, 'repl'), details}; } } });",
   ].join("\n");
   const bridge: unknown = Reflect.apply(
-    Function("outputHandler", code),
+    Function("outputHandler", "onEffectFailure", code),
     undefined,
-    [output],
+    [output, onEffectFailure],
   );
   if (
     typeof bridge !== "object" || bridge === null ||

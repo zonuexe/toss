@@ -47,7 +47,21 @@ type EffectCompilerOptions = {
   readonly sharedBoundaryDelegate?: boolean;
   readonly runtimeImport?: string;
   readonly failureCarriers?: boolean;
+  readonly failureObserverImport?: string;
 };
+
+function emitFailureObserver(
+  options: EffectCompilerOptions,
+  imports: readonly string[],
+  aliases: readonly string[],
+): string {
+  if (options.failureObserverImport === undefined) return "undefined";
+  if (!options.failureCarriers) {
+    throw new TypeError("A failure observer requires failure carriers.");
+  }
+  const index = imports.lastIndexOf(options.failureObserverImport);
+  return `${aliases[index]}.onEffectFailure`;
+}
 
 function createEffectEmitter(
   evaluators: ReadonlyMap<Expression, number>,
@@ -280,7 +294,14 @@ export function compileExperimentalEffects(
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
   const imports = collectJavaScriptImports(expressions);
-  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const hostImports = options.failureObserverImport === undefined
+    ? imports
+    : [...imports, options.failureObserverImport];
+  const importAliases = javascriptImportAliases(
+    hostImports,
+    javascriptExpressions,
+  );
+  const observer = emitFailureObserver(options, hostImports, importAliases);
   const runtimeAlias = options.runtimeImport === undefined
     ? undefined
     : javascriptRuntimeAlias(javascriptExpressions);
@@ -294,27 +315,30 @@ export function compileExperimentalEffects(
     "\n",
   );
   return [
-    ...emitJavaScriptImportStatements(imports, importAliases),
+    ...emitJavaScriptImportStatements(hostImports, importAliases),
     ...(runtimeAlias === undefined ? [] : [
       `import * as ${runtimeAlias} from ${
         JSON.stringify(options.runtimeImport)
       };`,
     ]),
-    `((javascriptEvaluators, javascriptImportNames${
+    `((javascriptEvaluators, javascriptImportNames, onEffectFailure${
       runtimeAlias === undefined ? "" : ", runtimeNamespace"
     }) => {`,
     ...(runtimeAlias === undefined
       ? runtimePreludeLines()
       : experimentalRuntimeSetup(options, "runtimeNamespace")),
+    ...(options.failureObserverImport === undefined ? [] : [
+      'if (typeof onEffectFailure !== "function") throw new TypeError("Expected onEffectFailure export.");',
+    ]),
     ...fileRootSetupLines(),
     ...(runtimeAlias === undefined ? [experimentalEffectRuntime(options)] : []),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
     "environment.effectBoundary = getEffectBoundary();",
     "registerEffectSymbolRoot(symbolRoot);",
-    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw effectFailureValue(error); }`,
+    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { throw exposeEffectFailure(error, "entry"); }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
+    }, ${observer}${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   ].join("\n");
 }
 
@@ -335,7 +359,14 @@ export function compileExperimentalEffectsSources(
   const imports = collectJavaScriptImports(
     graph.flatMap((module) => module.expressions),
   );
-  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const hostImports = options.failureObserverImport === undefined
+    ? imports
+    : [...imports, options.failureObserverImport];
+  const importAliases = javascriptImportAliases(
+    hostImports,
+    javascriptExpressions,
+  );
+  const observer = emitFailureObserver(options, hostImports, importAliases);
   const runtimeAlias = options.runtimeImport === undefined
     ? undefined
     : javascriptRuntimeAlias(javascriptExpressions);
@@ -355,18 +386,21 @@ export function compileExperimentalEffectsSources(
     }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = getEffectBoundary();\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
   });
   return [
-    ...emitJavaScriptImportStatements(imports, importAliases),
+    ...emitJavaScriptImportStatements(hostImports, importAliases),
     ...(runtimeAlias === undefined ? [] : [
       `import * as ${runtimeAlias} from ${
         JSON.stringify(options.runtimeImport)
       };`,
     ]),
-    `((javascriptEvaluators, javascriptImportNames${
+    `((javascriptEvaluators, javascriptImportNames, onEffectFailure${
       runtimeAlias === undefined ? "" : ", runtimeNamespace"
     }) => {`,
     ...(runtimeAlias === undefined
       ? runtimePreludeLines()
       : experimentalRuntimeSetup(options, "runtimeNamespace")),
+    ...(options.failureObserverImport === undefined ? [] : [
+      'if (typeof onEffectFailure !== "function") throw new TypeError("Expected onEffectFailure export.");',
+    ]),
     ...(runtimeAlias === undefined
       ? [
         experimentalEffectRuntime(options),
@@ -374,9 +408,9 @@ export function compileExperimentalEffectsSources(
       ]
       : []),
     ...initializers,
-    `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw effectFailureValue(error); }`,
+    `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { throw exposeEffectFailure(error, "entry"); }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
+    }, ${observer}${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   ].join("\n");
 }

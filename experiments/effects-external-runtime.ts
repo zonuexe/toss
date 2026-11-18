@@ -14,6 +14,7 @@ const bridge = [
   "blockEnvironment",
   "effectInitialize",
   "effectFailureValue",
+  "exposeEffectFailure",
   "effectModuleInitializers",
   "effectParent",
   "effectPipeline",
@@ -36,7 +37,7 @@ const bridge = [
 
 function factory(options: ExternalRuntimeOptions): string {
   return [
-    "export function createEffectRuntime() {",
+    "export function createEffectRuntime(onEffectFailure) {",
     ...runtimePreludeLines(),
     experimentalEffectRuntime(options),
     experimentalEffectModuleRuntime,
@@ -70,7 +71,7 @@ export function experimentalRuntimeSetup(
       JSON.stringify(message)
     });`,
     "let experimentalRuntime;",
-    `try { experimentalRuntime = ${namespace}.createEffectRuntime(); } catch (cause) { throw new Error(${
+    `try { experimentalRuntime = ${namespace}.createEffectRuntime(onEffectFailure); } catch (cause) { throw new Error(${
       JSON.stringify(message)
     }, {cause}); }`,
     `if (experimentalRuntime === null || typeof experimentalRuntime !== "object" || !${

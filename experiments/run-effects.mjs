@@ -4,6 +4,7 @@ import "./effects-display-test.mjs";
 import "./effects-repl-test.mjs";
 import "./effects-occurrence-gap-test.mjs";
 import "./effects-carrier-test.mjs";
+import "./effects-host-diagnostics-test.mjs";
 await import("./effects-one-shot.mjs");
 await import("./effects-cleanup-errors.mjs");
 await import("./effects-boundaries.mjs");

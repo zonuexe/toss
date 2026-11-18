@@ -81,7 +81,7 @@ const handlerFailureSource = compileExperimentalEffectsSources(
     ["lib.toss", "%export($Effect raise: #A with: $Nil)."],
   ]),
 );
-const observer = "reportEffectFailures(error); throw effectFailureValue(error);";
+const observer = 'throw exposeEffectFailure(error, "entry");';
 function instrumentRoot(source, replacement) {
   const index = source.lastIndexOf(observer);
   assert.ok(index >= 0, "root error reporter not found");

@@ -99,6 +99,16 @@ const variants = [
   },
 ];
 try {
+  const observerPath = `${directory}/observer.mjs`;
+  await Deno.writeTextFile(
+    observerPath,
+    `
+    export function onEffectFailure(report) {
+      console.log(report.boundary, report.cleanupDescriptions[0].includes('cleanup'));
+      globalThis.observedError = report.error;
+    }
+  `,
+  );
   for (const [index, variant] of variants.entries()) {
     const path = `${directory}/runtime-${index}.mjs`;
     await Deno.writeTextFile(
@@ -107,6 +117,30 @@ try {
     );
   }
   for (const engine of ["node", "bun"]) {
+    const diagnosticProgram = compileExperimentalEffects(
+      "#f bind: %async({ { $missing } ensure: { $cleanup } }) asJSCallback. %js(f = $f; f().catch(e => console.log(e === globalThis.observedError))).",
+      "host-diagnostic.toss",
+      {
+        ...variants[2],
+        failureObserverImport: pathToFileURL(observerPath).href,
+        runtimeImport: pathToFileURL(`${directory}/runtime-2.mjs`).href,
+      },
+    );
+    const diagnosticResult = await new Deno.Command(engine, {
+      args: ["--input-type=module", "-e", diagnosticProgram],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert.equal(
+      diagnosticResult.success,
+      true,
+      decoder.decode(diagnosticResult.stderr),
+    );
+    assert.equal(
+      decoder.decode(diagnosticResult.stdout),
+      "promise true\ntrue\n",
+      engine,
+    );
     for (const scenario of cases) {
       let expected = scenario.stdout;
       for (const [index, base] of variants.entries()) {

@@ -1552,3 +1552,32 @@ of an extra unhandled rejection when Toss consumes the failure. This covers
 those event sequences, not every host scheduling interleaving. The separate
 observer Promise and mutable Error stack limitations remain, and this remains
 an off-by-default experiment rather than production integration.
+
+### Host diagnostics by failure occurrence
+
+The experimental compiler accepts `failureObserverImport` with
+`failureCarriers: true`. The host module exports `onEffectFailure`. Embedded
+artifacts and the external runtime factory both pass this observer to the
+runtime instance. The experimental REPL also accepts the function directly.
+The observer receives the boundary kind, the original thrown value, and frozen
+arrays of cleanup and handler descriptions captured for that exposure. With an
+observer configured, the runtime leaves the original error's stack alone.
+
+The runtime calls the observer before throwing the original value or rejecting
+the host Promise. Observer failures leave that value intact. The observer runs
+across a fresh JS boundary and can re-enter Toss through a callback. An async
+result is reported once when exposed to the host, including when an initially
+unobserved failure is consumed later. An internal await keeps carrying the
+failure without publishing a diagnostic at that point. Distinct async results
+can report separately even when their original Error is identical.
+
+The regression probe covers a reentrant observer, two concurrent async
+callbacks, and a late Promise consumer of the same rejection. The diagnostics
+remain distinct while JS catches or receives the original cached Error. The
+record and its description arrays are immutable, while its `error` field
+retains the original object and its mutability. Node and Bun probes also verify
+that an external runtime delivers the original Promise rejection value and
+its cleanup description to the observer. The hook is experimental.
+Production integration still needs a host configuration contract, a reporting
+policy for failed observers, and coverage of cancellation and additional host
+scheduling cases.

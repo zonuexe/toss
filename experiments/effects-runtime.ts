@@ -1,4 +1,16 @@
 // Experimental runtime source; not the production Toss runtime.
+export type EffectFailureObserver = (diagnostic: {
+  readonly boundary:
+    | "entry"
+    | "callback"
+    | "promise"
+    | "unobserved-async"
+    | "repl";
+  readonly error: unknown;
+  readonly cleanupDescriptions: readonly string[];
+  readonly handlerDescriptions: readonly string[];
+}) => void;
+
 export type ExperimentalRuntimeOptions = {
   readonly sharedDispatchTables?: boolean;
   readonly directBoundarySteps?: boolean;
@@ -45,7 +57,7 @@ function effectJavaScriptCallback(receiver, context) {
       const args = hostArguments.slice(0, receiver.length).map((value) => fromJavaScript(value, context));
       const lexicalContext = {location: context.location, environment: context.environment, boundary: effectBoundary};
       return toJavaScript(runEffectProgram(effectInvoke(receiver, args, lexicalContext), "JavaScript"), context);
-    }); } catch (error) { reportEffectFailures(error); throw effectFailureValue(error); }
+    }); } catch (error) { throw exposeEffectFailure(error, "callback"); }
   };
   effectJavaScriptCallbacks.set(receiver, callback);
   return fromJavaScript(callback, context);
@@ -79,10 +91,13 @@ const effectBaseAsyncResult = asyncResult;
 const effectBaseAwaitToss = awaitToss;
 if (useEffectCarriers) asyncResult = function(promise) {
   const value = effectBaseAsyncResult(promise);
-  const state = {observed: false, publicResult: undefined};
+  const state = {observed: false, notified: false, publicResult: undefined};
   const publicResult = promise.then(
     (result) => result,
-    (error) => { if (state.observed) return; reportEffectFailures(error); throw effectFailureValue(error); },
+    (error) => {
+      if (state.observed) return;
+      throw exposeAsyncEffectFailure(state, error, "unobserved-async");
+    },
   );
   state.publicResult = publicResult;
   effectAsyncPublicResults.set(value, state);
@@ -105,7 +120,7 @@ if (useEffectCarriers) toJavaScript = function(value, context) {
   observeEffectAsyncResult(value);
   const promise = asyncResults.get(value).then(
     (result) => toJavaScript(result.value, context),
-    (error) => { reportEffectFailures(error); throw effectFailureValue(error); },
+    (error) => { throw exposeAsyncEffectFailure(effectAsyncPublicResults.get(value), error, "promise"); },
   );
   asyncHostPromises.set(value, promise);
   hostValues.set(value, promise);
@@ -537,6 +552,34 @@ function getEffectFailureDetails(error) {
   const handlerDescriptions = contexts.map((request) =>
     "while handling " + keyDescription(request.effect) + " at " + request.location.file + ":" + request.location.line + ":" + request.location.column);
   return Object.freeze({error: effectFailureValue(error), cleanup: Object.freeze(cleanup), contexts: Object.freeze(contexts), cleanupDescriptions: Object.freeze(cleanupDescriptions), handlerDescriptions: Object.freeze(handlerDescriptions)});
+}
+function exposeAsyncEffectFailure(state, error, boundary) {
+  if (typeof onEffectFailure === "function") {
+    if (state.notified) return effectFailureValue(error);
+    state.notified = true;
+  }
+  return exposeEffectFailure(error, boundary);
+}
+function exposeEffectFailure(error, boundary) {
+  if (typeof onEffectFailure !== "function") {
+    reportEffectFailures(error);
+    return effectFailureValue(error);
+  }
+  const details = getEffectFailureDetails(error);
+  const diagnostic = Object.freeze({
+    boundary,
+    error: details.error,
+    cleanupDescriptions: details.cleanupDescriptions,
+    handlerDescriptions: details.handlerDescriptions,
+  });
+  try {
+    withEffectBoundary(() => {
+      const result = onEffectFailure(diagnostic);
+      if (result !== undefined) Promise.resolve(result).catch(() => {});
+    });
+  }
+  catch (_observerFailure) { /* Reporting must preserve the original failure. */ }
+  return details.error;
 }
 function reportEffectFailures(error) {
   const details = getEffectFailureDetails(error);
