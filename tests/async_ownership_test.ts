@@ -108,6 +108,7 @@ for (
       "gate.resolve(42); queueMicrotask(() => assert.equal(cancel(), true));",
     ],
     ["Toss", "%async({ 42 }) value", "assert.equal(cancel(), true);"],
+    ["literal", "42", "assert.equal(cancel(), true);"],
   ]
 ) {
   Deno.test(`cancellation accepted before resuming a fulfilled ${kind} wait prevents the continuation`, async () => {

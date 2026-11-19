@@ -97,8 +97,12 @@ const before = await heap();
 
 let start = performance.now();
 launch(count);
+const launched = performance.now();
 await turn();
-const launchNs = (performance.now() - start) * 1e6 / count;
+const drained = performance.now();
+const launchNs = (drained - start) * 1e6 / count;
+const launchSyncNs = (launched - start) * 1e6 / count;
+const launchDrainNs = (drained - launched) * 1e6 / count;
 const settled = await heap();
 start = performance.now();
 await readAll(fixture.read, count);
@@ -145,6 +149,8 @@ console.log(JSON.stringify({
   retention,
   count,
   launchNs: Math.round(launchNs),
+  launchSyncNs: Math.round(launchSyncNs),
+  launchDrainNs: Math.round(launchDrainNs),
   tossAwaitNs: Math.round(tossAwaitNs),
   firstJavaScriptNs: Math.round(firstJavaScriptNs),
   [publicPromises === null ? "cachedJavaScriptNs" : "roundTripNs"]: Math.round(

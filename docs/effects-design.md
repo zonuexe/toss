@@ -2330,3 +2330,86 @@ Node 26.13.1 V8 Promise hooks on the generated embedded fixture counted
 `190000 → 110000` for 10,000 eight-await callbacks. Regressions also
 exercise nested awaits, concurrent invocations, and awaits in an
 extension while compact results are returned from JS.
+
+### Launch and settlement with generated waits
+
+The retained-results benchmark splits launch into the synchronous store
+loop and the time from its end to the next timer turn. The latter
+includes the continuations of the started Blocks and timer overhead.
+The fixture compiles and warms up before timing launch. Each started
+Block suspends once at `%await(42)`.
+
+The controls cross the emitter and runtime from `4ae0319` and
+`961b183`. The emitter-only control supplies the new marker and tick
+to the previous runtime, which still returns its previous awaitable
+shapes. The runtime-only control returns the box directly to the
+previous emitter when reading a compact result. That adapter is never
+taken by the launch fixture's literal await. The external module
+bridge matches each control's runtime exports.
+
+The table reports median ns per launched result across seven fresh
+Deno 2.9.7 processes per case on arm64 macOS, with 100,000 results per
+process and rotating variant order. The component medians are
+calculated separately.
+
+| Runtime | Variant | Launch and settle | Store loop | Drain to timer |
+| --- | --- | ---: | ---: | ---: |
+| Embedded | Previous | 1546 | 1441 | 105 |
+| Embedded | Emitter only | 1560 | 1449 | 108 |
+| Embedded | Runtime only | 1538 | 1433 | 90 |
+| Embedded | Both | 1519 | 1421 | 98 |
+| External | Previous | 1578 | 1488 | 90 |
+| External | Emitter only | 1578 | 1458 | 115 |
+| External | Runtime only | 1558 | 1469 | 97 |
+| External | Both | 1589 | 1489 | 99 |
+
+The earlier external launch increase of about 7% did not recur in this
+series. The full change raised the external launch median by 0.7%,
+and was slower than the previous version in three of seven paired
+runs. The two controls were within 1.3% of the previous external
+launch median. The phase measurements show how much of the elapsed
+time falls within the store loop, with no consistent attribution of
+the earlier gap to either component.
+
+A trial that skipped only the compact-result branch for known ordinary
+operands still boxed the operand and looked it up in the runtime. It
+changed the launch median from 1526 to 1482 ns in embedded output and
+from 1511 to 1525 ns in external output. Six of seven paired external
+runs were slower, so this trial was dropped.
+
+The adopted emitter specializes numeric and string literals. It checks
+for accepted cancellation before suspending on the existing shared
+fulfilled Promise, then supplies the literal to the ordinary resumption
+check. The operand needs no result lookup and does not need a box until
+resumption. The emitter still takes the compact result path for values
+returned from JS. The runtime source and its result entry layout stay
+the same.
+
+A second comparison across seven fresh processes in each runtime
+alternated runtime order and rotated the four variants. JS held the
+100,000 public Promises after exposure. Times are median ns per result
+for launch and ns per callback for reads. Heap is incremental V8 heap
+bytes per result after the round trips.
+
+| Runtime | Variant | Launch and settle | Store loop | Drain to timer | One await | Eight awaits | Heap |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Embedded | Before compaction (`17b5544`) | 1535 | 1426 | 96 | 1338 | 1650 | 614 |
+| Embedded | Before generated compact waits (`4ae0319`) | 1463 | 1377 | 88 | 1339 | 1669 | 566 |
+| Embedded | Generated compact waits (`961b183`) | 1508 | 1406 | 96 | 1313 | 1611 | 563 |
+| Embedded | Shared tick for literals | 1400 | 1332 | 72 | 1400 | 1586 | 566 |
+| External | Before compaction (`17b5544`) | 1502 | 1402 | 100 | 1301 | 1669 | 613 |
+| External | Before generated compact waits (`4ae0319`) | 1469 | 1382 | 95 | 1351 | 1783 | 565 |
+| External | Generated compact waits (`961b183`) | 1517 | 1418 | 98 | 1347 | 1554 | 565 |
+| External | Shared tick for literals | 1401 | 1321 | 78 | 1380 | 1567 | 565 |
+
+In this series the external launch median at `961b183` was 3.3%
+above `4ae0319`, with six of seven paired runs slower. The size
+of the gap varied between series. The shared tick reduced launch in
+all seven pairs in each runtime against `961b183`. An independent
+seven-pair comparison measured 1518 → 1421 ns embedded and
+1519 → 1437 ns external. With eight awaits, the final medians kept
+a 5% embedded and 12% external improvement over `4ae0319`.
+One-await medians rose by 7% embedded and 2% external against
+`961b183` in the four-variant series. Those callbacks still use
+the same dynamic await emitter. The JS-only retained heap stayed
+48 bytes below the pre-compaction result in both runtime forms.

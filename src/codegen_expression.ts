@@ -49,6 +49,16 @@ export function createEmitter(
       case "export":
         return `(moduleExport = ${emit(expression.value, scope)})`;
       case "await":
+        if (
+          expression.expression.kind === "number" ||
+          expression.expression.kind === "string"
+        ) {
+          // These literals need no result lookup or box until after suspension.
+          return `(${scope}.asyncTask === undefined || checkEffectTask(undefined, ${scope}.asyncTask),
+            await settledTossTick, resumeTossAwait({value: ${
+            emit(expression.expression, scope)
+          }}, ${scope}))`;
+        }
         return `(awaitable = awaitToss(${
           emit(expression.expression, scope)
         }, ${context}), awaitBox = awaitable[asyncResultState],
