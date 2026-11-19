@@ -38,6 +38,7 @@ ${
   // A derived constructor can attach private state to the supplied object.
   constructor(target) { return target; }
 }
+let publicWeakKeyValidator;
 class PublicAsyncReference extends PrivateReferenceTarget {
   #reference;
   constructor(promise, reference) {
@@ -49,7 +50,11 @@ class PublicAsyncReference extends PrivateReferenceTarget {
   }
   static set(value, reference) {
     if (value === null || (typeof value !== "object" && typeof value !== "function")) {
-      hostReferences.set(value, reference);
+      // Keep native WeakMap key validation. JS-to-Toss conversion cannot recover
+      // an async reference from a primitive, so retain no result for this key.
+      const validator = publicWeakKeyValidator ??= new WeakMap();
+      validator.set(value, undefined);
+      validator.delete(value);
       return;
     }
     // Custom then or species can return the same object for different results.

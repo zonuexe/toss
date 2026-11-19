@@ -348,17 +348,29 @@ for (const external of [false, true]) {
       javascript,
       `
       import assert from "node:assert/strict";
-      for (const custom of ["then", "species"]) {
-        const shared = custom === "then"
+      // (module (type (struct)) (func (export "mak") (result externref)
+      //   (extern.convert_any (struct.new_default 0))))
+      const wasm = Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0,
+        1, 7, 2, 95, 0, 96, 0, 1, 111, 3, 2, 1, 1,
+        7, 7, 1, 3, 109, 97, 107, 0, 0, 10, 9, 1, 7, 0, 251, 1, 0, 251, 27, 11);
+      const { mak } = new WebAssembly.Instance(new WebAssembly.Module(wasm)).exports;
+      class PrivateField extends class { constructor(value) { return value; } } {
+        #entry;
+      }
+      for (const custom of ["then", "species", "wasm-then", "wasm-species"]) {
+        const usesThen = custom.endsWith("then");
+        const opaque = custom.startsWith("wasm");
+        const shared = opaque ? mak() : usesThen
           ? Object.freeze(new Proxy(Object.create(null), {
               has() { throw new Error("must not probe host properties"); },
             }))
           : Object.freeze(Promise.resolve("host value"));
+        if (opaque) assert.throws(() => new PrivateField(shared), TypeError);
         assert.equal(value.echo(shared), shared);
-        const target = custom === "then" ? Promise.prototype : Promise;
-        const key = custom === "then" ? "then" : Symbol.species;
+        const target = usesThen ? Promise.prototype : Promise;
+        const key = usesThen ? "then" : Symbol.species;
         const original = Object.getOwnPropertyDescriptor(target, key);
-        const implementation = custom === "then"
+        const implementation = usesThen
           ? function (...reactions) {
               Reflect.apply(original.value, this, reactions);
               return shared;
@@ -381,8 +393,25 @@ for (const external of [false, true]) {
         }
         assert.equal(value.echo(shared), shared);
         assert.equal(await value.read(shared), 22);
-        assert.deepEqual(Reflect.ownKeys(shared), []);
-        if (custom === "species") assert.equal(await shared, "host value");
+        if (!opaque) assert.deepEqual(Reflect.ownKeys(shared), []);
+        if (!opaque && !usesThen) assert.equal(await shared, "host value");
+      }
+      const nativeThen = Promise.prototype.then;
+      for (const key of [Symbol(), Symbol.iterator, Symbol.for("invalid-weak-key"), null]) {
+        Promise.prototype.then = function (...reactions) {
+          Reflect.apply(nativeThen, this, reactions);
+          return key;
+        };
+        try {
+          if (key === null || Symbol.keyFor(key) !== undefined) {
+            assert.throws(() => value.start(1), TypeError);
+          } else {
+            assert.equal(value.start(1), key);
+            assert.throws(() => value.echo(key), /Unsupported JavaScript result type symbol/);
+          }
+        } finally {
+          Promise.prototype.then = nativeThen;
+        }
       }
     `,
     );

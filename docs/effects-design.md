@@ -2681,3 +2681,87 @@ only the selected callback after exposure. One await measured
 828 → 437 ns embedded and 802 → 417 ns external. Eight awaits measured
 1324 → 806 ns embedded and 1306 → 822 ns external. Every pair improved
 in both scenarios.
+
+### Reverse-reference fallback for opaque values
+
+There are two ways into the fallback. A custom `then` can return a
+primitive. The WeakMap accepts an unregistered or well-known Symbol
+on the tested engines. It rejects a registered Symbol and `null`.
+JS-to-Toss conversion already rejects Symbol input, so it cannot
+read the reverse association in any of these cases. The runtime now
+checks the key with a separate, lazily allocated WeakMap and deletes
+it immediately. The native key-validity behavior is preserved.
+[ECMAScript weak keys](https://tc39.es/ecma262/2026/multipage/executable-code-and-execution-contexts.html#sec-canbeheldweakly)
+
+The other route occurs when a host object rejects the private field
+with a TypeError. The test exports a WebAssembly GC struct as
+`externref`. Deno allows it as a WeakMap key and raises
+`WebAssembly objects are opaque` when stamping a private field.
+The same Wasm object is returned twice via custom `then` and twice
+via custom `Symbol.species`. Both paths preserve host identity and
+Toss reads the most recently associated result. Frozen ordinary
+objects and Proxies can still take the private-field route.
+HTML also specifies refusal for `WindowProxy` and `Location`.
+The locally tested same-origin objects in Chromium 156 allowed the
+field, so those browser cases were not used as refusal benchmarks.
+[HTML private field host hook](https://html.spec.whatwg.org/multipage/webappapis.html#hostensurecanaddprivateelement)
+
+The fallback benchmark has `symbol`, `wasm`, and `wasm-reuse`
+scenarios. The first two prepare 100,000 distinct retained keys,
+publish a transient batch of 100,000 more, collect, and time
+publication of the next key. Heap is measured relative to the
+already-allocated keys and 5,000 warmup publications. The reuse
+scenario republishes one opaque object and polls the latest
+result after the timed loop.
+
+```sh
+deno run --allow-read --v8-flags=--expose-gc \
+  experiments/async-public-fallback-benchmark.mjs \
+  . external wasm 100000
+```
+
+The following Deno 2.9.7 results are medians of five fresh process
+pairs per runtime and scenario on arm64 macOS, comparing `5ffe1c6`
+with primitive key validation that retains no result.
+
+| Metric | Embedded, before → after | External, before → after |
+| --- | ---: | ---: |
+| Distinct Symbols, first publication after GC, ms | 17.59 → 0.028 | 18.38 → 0.028 |
+| Distinct Symbols, incremental heap bytes/key | 470.45 → 0.17 | 470.40 → 0.15 |
+| Distinct Wasm objects, first publication after GC, ms | 18.03 → 17.75 | 19.08 → 19.43 |
+| Distinct Wasm objects, incremental heap bytes/key | 470.57 → 470.51 | 470.57 → 470.51 |
+| Distinct Wasm objects, one await, ns/callback | 683 → 690 | 723 → 708 |
+| Reused Wasm object, publication, ns/call | 3135 → 3223 | 3201 → 3206 |
+
+Three earlier control pairs forced a TypeError before private
+field initialization for every published Promise. With 100,000
+distinct retained public Promises the first callback took 21.76 ms
+embedded and 20.06 ms external, and incremental heap was 487
+and 486 bytes per result. The ordinary private-field control had
+first callbacks of 0.086 and 0.069 ms, and 448 retained bytes per
+result in both forms. The Wasm benchmark verifies a similar spike
+with native refusal and real weak keys.
+
+The main trial cached successful object fallbacks and skipped later
+failed stamp attempts. Reusing one Wasm object improved from about
+3.2 microseconds to 0.65–0.70 microseconds per publication. In the
+distinct-object scenario, the same trial increased the steady
+one-await median from about 0.74–0.75 to 0.96–0.99 microseconds.
+Using a dedicated map or activating the lookup only after observing
+reuse also increased the read cost. Successful object fallback
+therefore continues through the existing WeakMap. That association
+is required to recover the original Toss result from the opaque
+object.
+
+Ordinary public Promises still use the private field. With three
+fresh pairs their first round trip was 0.072 → 0.076 ms embedded
+and 0.064 → 0.067 ms external. In seven mixed pairs, ordinary
+launch was 1196 → 1193 ns embedded and 1201 → 1220 ns external.
+One await was 528 → 518 ns embedded and 537 → 557 ns external.
+Five isolated one-await pairs measured 417 → 415 ns embedded
+and 417 → 425 ns external.
+
+The 41 async ownership and boundary tests also passed with private
+field refusal forced for all public objects in a separate build.
+This exercises the WeakMap path for failure identity, cancellation
+propagation and one diagnostic after child cleanup.
