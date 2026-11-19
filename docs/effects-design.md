@@ -2224,3 +2224,48 @@ that Promise to Toss after completion and mutates the original Toss
 Array. A second case sends a pending Promise back to cancel its owned
 task and checks the original reason, one diagnostic after child
 cleanup, and the same public Promise and Error on re-exposure.
+
+### Round-trip await of a compact result
+
+The JS-only benchmark now times an identity-checked re-exposure without
+an await, then measures Blocks with one and eight Toss awaits of the same
+incoming Promise. Await timings are medians of five samples of 20,000
+reads per process. The heap snapshots still cover 100,000 promises that
+stay reachable only from JS.
+
+The earlier 7–10% difference was 4–6% on the one-await path in this
+series. Re-exposure without an await showed no corresponding increase.
+With Node 26.13.1 V8 Promise hooks, 10,000 repetitions of one compiled
+round trip created 40,000 Promises at `17b5544` and 50,000 at
+`a256362`. The awaited operand at `17b5544` was the retained native
+Promise. At `a256362`, JavaScript takes its Promise resolution path for
+the non-Promise result box.
+
+An observation-only control skipped the idempotent observation update
+for a compact result. A second trial saved the box in the calling task
+and awaited a shared fulfilled Promise. The continuation retrieved the
+box, cleared the suspension slot, and checked cancellation. The latter
+trial removed the extra allocation in the same Node probe, reporting
+40,000 Promises in 10,000 round trips.
+
+These are medians of five fresh Deno 2.9.7 processes per version and
+runtime on arm64 macOS, in ns per callback for elapsed times and
+incremental bytes per retained result for heap.
+
+| Runtime | Version | Re-expose without await | One await | Eight awaits | Heap after reads |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Embedded | Retain native Promise (`17b5544`) | 368 | 1386 | 1698 | 613 |
+| Embedded | Compact result (`a256362`) | 351 | 1438 | 1802 | 566 |
+| Embedded | Observation-only control | 378 | 1785 | 1939 | 566 |
+| Embedded | Shared Promise trial | 381 | 1402 | 1896 | 566 |
+| External | Retain native Promise (`17b5544`) | 372 | 1410 | 1782 | 613 |
+| External | Compact result (`a256362`) | 357 | 1488 | 1829 | 565 |
+| External | Observation-only control | 360 | 1421 | 1795 | 565 |
+| External | Shared Promise trial | 385 | 1540 | 1744 | 565 |
+
+The shared Promise passes the cancellation checks and preserves the
+47–48 bytes per result saved by compaction after reads. Its throughput
+changed direction across workloads and runtime forms. The regression
+suite now also verifies that awaiting a compact JS result suspends long
+enough for an accepted cancellation to prevent resumption and publish
+one diagnostic after cleanup.

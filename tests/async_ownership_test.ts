@@ -397,6 +397,47 @@ for (const external of [false, true]) {
     assert.equal(text(result.stderr), "");
   });
 
+  Deno.test(`a compact JS result still suspends and accepts cancellation before resuming (external=${external})`, async () => {
+    const javascript = compile(
+      `
+#start bind: %async({ %await(0). 42 }) asJSCallback.
+#wait bind: { input ->
+  #task bind: (%async({
+    $Effect onCancel: { %js(events.push("cleanup")) }.
+    %await($input).
+    %js(events.push("unexpected continuation"))
+  }) value).
+  #cancel bind: { $task cancel: (%js(reason)) } asJSCallback.
+  %js(task = $task, cancel = $cancel; ({task, cancel}))
+} asJSCallback.
+%export(%js(start = $start, wait = $wait; ({start, wait}))).
+`,
+      "cancel-compact-toss-wait.toss",
+      { ...options, failureObserverImport },
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      Object.assign(globalThis, {events: [], reports: [], reason: new Error("stop")});
+      const completed = value.start();
+      assert.equal(await completed, 42);
+      const {task, cancel} = value.wait(completed);
+      const failed = task.catch(error => { events.push("catch"); return error; });
+      assert.deepEqual(events, []);
+      assert.equal(cancel(), true);
+      const error = await failed;
+      assert.equal(error.cause, reason);
+      assert.equal(reports[0].error, error);
+      assert.equal(reports.length, 1);
+      assert.deepEqual(events, ["cleanup", "diagnostic:promise", "catch"]);
+      assert.equal(await completed, 42);
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+
   Deno.test(`discarded async invocation reports its original failure after child cleanup (external=${external})`, async () => {
     const javascript = compile(
       `

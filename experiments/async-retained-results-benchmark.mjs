@@ -32,9 +32,14 @@ $state at: #results put: ($Object clone).
 #read bind: %async({ index -> %await(($state at: #results) at: ($index toString)) }) asJSCallback.
 #expose bind: { index -> ($state at: #results) at: ($index toString) } asJSCallback.
 #roundTrip bind: %async({ input -> %await($input) }) asJSCallback.
+#repeatRoundTrip bind: %async({ input -> ${
+  Array(8).fill("%await($input)").join(". ")
+} }) asJSCallback.
+#reexpose bind: { input -> $input } asJSCallback.
 #clear bind: { $state at: #results put: ($Object clone). $Nil } asJSCallback.
-%export(%js(store = $store, read = $read, expose = $expose, roundTrip = $roundTrip, clear = $clear;
-  ({store, read, expose, roundTrip, clear}))).
+%export(%js(store = $store, read = $read, expose = $expose, roundTrip = $roundTrip,
+  repeatRoundTrip = $repeatRoundTrip, reexpose = $reexpose, clear = $clear;
+  ({store, read, expose, roundTrip, repeatRoundTrip, reexpose, clear}))).
 `;
 const { default: fixture } = await import(
   moduleUrl(
@@ -61,6 +66,16 @@ async function readAll(read, size) {
   for (let index = 0; index < size; index++) sum += await read(index);
   assert.equal(sum, size * 42);
 }
+async function medianRead(read) {
+  const size = Math.min(count, 20000);
+  const samples = [];
+  for (let index = 0; index < 5; index++) {
+    const start = performance.now();
+    await readAll(read, size);
+    samples.push((performance.now() - start) * 1e6 / size);
+  }
+  return Math.round(samples.sort((a, b) => a - b)[2]);
+}
 
 const warmup = Math.min(5000, count);
 launch(warmup);
@@ -69,6 +84,13 @@ await readAll(fixture.read, warmup);
 await readAll(fixture.expose, warmup);
 if (retention === "javascript") {
   await readAll((index) => fixture.roundTrip(fixture.expose(index)), warmup);
+  await readAll(
+    (index) => fixture.repeatRoundTrip(fixture.expose(index)),
+    warmup,
+  );
+  for (let index = 0; index < warmup; index++) {
+    fixture.reexpose(fixture.expose(index));
+  }
 }
 fixture.clear();
 const before = await heap();
@@ -92,14 +114,27 @@ await readAll(
 const firstJavaScriptNs = (performance.now() - start) * 1e6 / count;
 if (publicPromises !== null) fixture.clear();
 const exposed = await heap();
-start = performance.now();
-await readAll(
+const repeatedReadNs = await medianRead(
   publicPromises === null
     ? fixture.expose
     : (index) => fixture.roundTrip(publicPromises[index]),
-  count,
 );
-const repeatedReadNs = (performance.now() - start) * 1e6 / count;
+let roundTripEightNs;
+let reexposeNs;
+let afterRoundTrip;
+if (publicPromises !== null) {
+  roundTripEightNs = await medianRead(
+    (index) => fixture.repeatRoundTrip(publicPromises[index]),
+  );
+  start = performance.now();
+  for (const promise of publicPromises) {
+    if (fixture.reexpose(promise) !== promise) {
+      throw new Error("Round trip changed public Promise identity");
+    }
+  }
+  reexposeNs = Math.round((performance.now() - start) * 1e6 / count);
+  afterRoundTrip = Math.round(((await heap()) - before) / count);
+}
 if (publicPromises !== null) publicPromises.length = 0;
 fixture.clear();
 const cleared = await heap();
@@ -115,6 +150,9 @@ console.log(JSON.stringify({
   [publicPromises === null ? "cachedJavaScriptNs" : "roundTripNs"]: Math.round(
     repeatedReadNs,
   ),
+  roundTripEightNs,
+  reexposeNs,
+  afterRoundTripBytes: afterRoundTrip,
   settledBytes: Math.round((settled - before) / count),
   exposedBytes: Math.round((exposed - before) / count),
   clearedBytes: Math.round((cleared - before) / count),
