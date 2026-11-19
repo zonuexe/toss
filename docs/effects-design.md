@@ -2064,3 +2064,46 @@ in each paired comparison with the same direct dispatch. The new
 regression test runs a discarded invocation in both runtime forms,
 holds its owned child's cleanup open, and checks the single original
 diagnostic and the rejection after cleanup completes.
+
+### Retaining completed async results
+
+An observable async result now has a compact registry entry holding its
+native Promise and the observer state. The entry points to the active
+task while the invocation is pending, including during failure cleanup.
+Completion detaches the task. A result that completes synchronously
+starts with a detached entry. The original value or failure stays in
+the native Promise, and the shared notification flag still prevents a
+second diagnostic if JS exposes a result after an unobserved rejection.
+The runtime continues to cache the public JS Promise for each result.
+
+The retained-results benchmark stores 100,000 Toss result references
+whose Blocks each suspend once. It lets all Blocks complete, runs GC,
+reads each retained result through Toss `%await`, then hands each result
+to JS for the first time. It subtracts heap usage measured after warmup
+and clearing the store. The memory numbers are incremental V8 heap
+bytes divided by the number of stored results. They include the store
+and registry overhead.
+
+The table gives medians of five fresh processes per version and runtime
+on Deno 2.9.7 on arm64 macOS. The previous build is `f7ee9eb`.
+
+| Runtime | Metric | Previous | Compact entry |
+| --- | --- | ---: | ---: |
+| Embedded | Completed heap, bytes/result | 529 | 449 |
+| Embedded | Heap after JS exposure, bytes/result | 863 | 783 |
+| Embedded | Launch and settle, ns/result | 1543 | 1551 |
+| Embedded | Later Toss await, ns/result | 2088 | 2087 |
+| Embedded | First JS exposure and await, ns/result | 1311 | 1266 |
+| External | Completed heap, bytes/result | 529 | 449 |
+| External | Heap after JS exposure, bytes/result | 863 | 782 |
+| External | Launch and settle, ns/result | 1515 | 1521 |
+| External | Later Toss await, ns/result | 2101 | 2073 |
+| External | First JS exposure and await, ns/result | 1302 | 1235 |
+
+The benchmark is available as
+`deno run --allow-read --v8-flags=--expose-gc experiments/async-retained-results-benchmark.mjs . external 100000`.
+The regression suite verifies that repeated Toss waits and JS
+exposure of a completed result preserve object and Promise identity.
+It also covers the original rejection value, cancellation propagation,
+and notification after child cleanup, including later exposure of a
+previously unobserved rejection.

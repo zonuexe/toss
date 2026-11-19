@@ -282,6 +282,48 @@ for (const external of [false, true]) {
     format: "esm" as const,
     ...(external ? { runtimeImport } : { treeShakePrelude: true }),
   };
+  Deno.test(`retained completed results keep Toss and JS identity (external=${external})`, async () => {
+    const javascript = compile(
+      `
+%export({
+  #payload bind: [42].
+  #retained bind: (%async({
+    %await(%js(gate.promise)).
+    %js(done.resolve()).
+    $payload
+  }) value).
+  #read bind: %async({ %await($retained) }) asJSCallback.
+  #expose bind: { $retained } asJSCallback.
+  #stop bind: { $retained cancel: 'too late' } asJSCallback.
+  %js(payload = $payload, read = $read, expose = $expose, stop = $stop; ({payload, read, expose, stop}))
+} asJSCallback).
+`,
+      "retained-completed-result.toss",
+      { ...options, failureObserverImport },
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      Object.assign(globalThis, {
+        events: [], reports: [], gate: Promise.withResolvers(), done: Promise.withResolvers(),
+      });
+      const {payload, read, expose, stop} = value();
+      gate.resolve();
+      await done.promise;
+      assert.equal(stop(), false);
+      assert.equal(await read(), payload);
+      const exposed = expose();
+      assert.equal(expose(), exposed);
+      assert.equal(await exposed, payload);
+      assert.equal(await read(), payload);
+      assert.deepEqual(reports, []);
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+
   Deno.test(`discarded async invocation reports its original failure after child cleanup (external=${external})`, async () => {
     const javascript = compile(
       `

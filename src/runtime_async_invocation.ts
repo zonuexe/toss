@@ -44,7 +44,7 @@ awaitToss = function(value, context) {
   if (entry !== undefined) {
     const waiting = entry.promise;
     entry.observed = true;
-    return entry.finished ? waiting : suspendEffectTask(waiting, task);
+    return entry.task === undefined ? waiting : suspendEffectTask(waiting, task);
   }
   const operation = hostValues.get(value);
   if (operation === undefined) return {value: checkEffectTask(value, task)};
@@ -62,27 +62,29 @@ function invokeOwnedAsyncBlock(block, args, context, discardResult) {
   const task = createEffectAsyncTask(context.methodReceiver?.context);
   const promise = Reflect.apply(block, task, args);
   if (discardResult) {
-    task.promise = promise;
+    task.discardedPromise = promise;
     return;
   }
   return asyncResult(promise, task);
 }
 function preserveOwnedAsyncRejection(task, error) {
-  if (task.observed || !ownedFailureCarriers.has(error)) return error;
-  // A carrier reaches this point after a suspension, when the result Promise exists.
-  // Forward the underlying error only if nobody observes the Toss result.
-  task.promise.then(undefined, (failure) => {
-    if (!task.observed) throw exposeOwnedAsyncFailure(task, failure, "unobserved-async");
+  const entry = task.resultEntry;
+  if (entry?.observed || !ownedFailureCarriers.has(error)) return error;
+  // The observer state outlives the running task and can still be updated before rejection.
+  const promise = entry?.promise ?? task.discardedPromise;
+  promise.then(undefined, (failure) => {
+    if (entry === undefined) throw reportHostFailure(failure, "unobserved-async");
+    if (!entry.observed) throw exposeOwnedAsyncFailure(entry, failure, "unobserved-async");
   });
   return error;
 }
 function observeEffectAsyncResult(value) {
-  const task = asyncResultTask(value);
-  if (task !== undefined) task.observed = true;
+  const entry = asyncResults.get(value);
+  if (entry !== undefined) entry.observed = true;
 }
-function exposeOwnedAsyncFailure(task, error, boundary) {
-  if (task.notified) return effectFailureValue(error);
-  task.notified = true;
+function exposeOwnedAsyncFailure(entry, error, boundary) {
+  if (entry.notified) return effectFailureValue(error);
+  entry.notified = true;
   return reportHostFailure(error, boundary);
 }
 `;

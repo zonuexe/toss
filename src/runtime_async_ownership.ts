@@ -17,7 +17,7 @@ function createEffectAsyncTask(context) {
   return {
     ${
   ordinaryTasks
-    ? 'kind: "tossAsyncInvocation", context, observed: false, notified: false, promise: undefined,'
+    ? 'kind: "tossAsyncInvocation", context, resultEntry: undefined, discardedPromise: undefined,'
     : ""
 }
     closed: false, finished: false, cancellation: undefined, wake: undefined, cleanups: undefined,
@@ -35,6 +35,16 @@ function finishEffectAsyncTask(task) {
   task.children = undefined;
   task.hostOperations?.clear();
   task.hostOperations = undefined;
+  ${
+  ordinaryTasks
+    ? `if (task.resultEntry !== undefined) {
+    task.resultEntry.task = undefined;
+    task.resultEntry = undefined;
+  }
+  task.discardedPromise = undefined;
+  task.controller = undefined;`
+    : ""
+}
 }
 function cancelEffectAsyncTask(result, reason, context) {
   const task = asyncResultTask(result);

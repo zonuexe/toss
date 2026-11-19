@@ -4,7 +4,7 @@ const asyncResults = new WeakMap();
 const asyncHostPromises = new WeakMap();
 ${
     includeOwnedTasks
-      ? "function asyncResultTask(value) { return asyncResults.get(value); }"
+      ? "function asyncResultTask(value) { return asyncResults.get(value)?.task; }"
       : ""
   }
 
@@ -17,8 +17,9 @@ function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
   const reference = Object.freeze(Object.create(null));
   ${
     includeOwnedTasks
-      ? `task.promise = promise;
-  asyncResults.set(reference, task);`
+      ? `const entry = {promise, task: task.finished ? undefined : task, observed: false, notified: false};
+  if (entry.task !== undefined) task.resultEntry = entry;
+  asyncResults.set(reference, entry);`
       : "asyncResults.set(reference, promise);"
   }
   return reference;
