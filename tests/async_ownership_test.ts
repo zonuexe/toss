@@ -55,7 +55,9 @@ Deno.test("a cancelled task first observed after rejection keeps its original di
     assert.equal(error.cause, reason);
     assert.equal(error, reports[0].error);
     assert.match(reports[0].cleanupDescriptions[0], /cleanupFailure/);
-    assert.equal(await read().catch(error => error), error);
+    const exposed = read();
+    assert.equal(read(), exposed);
+    assert.equal(await exposed.catch(error => error), error);
     assert.deepEqual(events, ["cleanup", "diagnostic:unobserved-async", "unhandled"]);
     assert.equal(reports.length, 1);
   `,
@@ -294,8 +296,10 @@ for (const external of [false, true]) {
   }) value).
   #read bind: %async({ %await($retained) }) asJSCallback.
   #expose bind: { $retained } asJSCallback.
+  #roundTrip bind: %async({ input -> (%await($input)) at: 0 }) asJSCallback.
   #stop bind: { $retained cancel: 'too late' } asJSCallback.
-  %js(payload = $payload, read = $read, expose = $expose, stop = $stop; ({payload, read, expose, stop}))
+  %js(payload = $payload, read = $read, expose = $expose, roundTrip = $roundTrip, stop = $stop;
+    ({payload, read, expose, roundTrip, stop}))
 } asJSCallback).
 `,
       "retained-completed-result.toss",
@@ -308,14 +312,18 @@ for (const external of [false, true]) {
       Object.assign(globalThis, {
         events: [], reports: [], gate: Promise.withResolvers(), done: Promise.withResolvers(),
       });
-      const {payload, read, expose, stop} = value();
+      const {payload, read, expose, roundTrip, stop} = value();
+      const exposed = expose();
+      assert.equal(expose(), exposed);
+      const returnedWhilePending = roundTrip(exposed);
       gate.resolve();
       await done.promise;
       assert.equal(stop(), false);
       assert.equal(await read(), payload);
-      const exposed = expose();
       assert.equal(expose(), exposed);
       assert.equal(await exposed, payload);
+      assert.equal(await returnedWhilePending, 42);
+      assert.equal(await roundTrip(exposed), 42);
       assert.equal(await read(), payload);
       assert.deepEqual(reports, []);
     `,

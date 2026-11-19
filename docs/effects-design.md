@@ -2107,3 +2107,62 @@ exposure of a completed result preserve object and Promise identity.
 It also covers the original rejection value, cancellation propagation,
 and notification after child cleanup, including later exposure of a
 previously unobserved rejection.
+
+### Public Promise cache and round-trip registration
+
+The retained-results benchmark also reads every result through its cached
+public JS Promise. It separates the incremental heap after first exposure
+from the heap occupied by completed Toss results before exposure.
+
+Three matched control runs per runtime used 100,000 retained results.
+The cache-only control kept the public Promise and its original cache.
+The next control added the reverse registration that maps a host Promise
+back to its original Toss result. The previous runtime also registered
+the public Promise in the generic Toss-to-JS reference map.
+
+| Exposure configuration | Incremental heap, bytes/result |
+| --- | ---: |
+| Public Promise and original cache | 87 |
+| Cache and JS-to-Toss registration | 253 |
+| Cache and both reference registrations, previous runtime | 334 |
+
+The marginal differences were 166 bytes for adding the reverse
+registration and 81 bytes for adding the duplicate forward registration
+in this workload. These differences include V8's table capacity and other
+retained heap overhead. The cache-only build serves as a measurement
+control because it cannot recover the original reference on a JS round
+trip.
+
+The ordinary runtime now stores the public Promise in the result entry.
+The existing observation slot represents an unobserved result, an
+internal observer, or the public Promise. The JS-to-Toss registration
+continues to recover the exact original async result. The experimental
+runtime uses its generic forward reference map as the cache.
+
+The final comparison used five fresh Deno 2.9.7 processes per version
+and runtime on arm64 macOS, with `f3b7e9f` as the previous runtime.
+Memory values are incremental V8 heap bytes per retained result.
+The timing values are nanoseconds per result and include the JS
+callback and await.
+
+| Runtime | Metric | Previous | Combined cache |
+| --- | --- | ---: | ---: |
+| Embedded | Completed heap before exposure, bytes | 449 | 449 |
+| Embedded | Heap after exposure, bytes | 783 | 620 |
+| Embedded | Launch and settle, ns | 1546 | 1572 |
+| Embedded | Later Toss await, ns | 2037 | 1493 |
+| Embedded | First JS exposure and await, ns | 1246 | 835 |
+| Embedded | Cached JS exposure and await, ns | 535 | 518 |
+| External | Completed heap before exposure, bytes | 449 | 447 |
+| External | Heap after exposure, bytes | 783 | 618 |
+| External | Launch and settle, ns | 1561 | 1519 |
+| External | Later Toss await, ns | 2068 | 1500 |
+| External | First JS exposure and await, ns | 1217 | 827 |
+| External | Cached JS exposure and await, ns | 538 | 514 |
+
+The exposure increment fell from 334 to 171 bytes in both forms.
+Regression tests expose a Promise while the task is still pending,
+pass it back into Toss before and after completion, and check that
+repeated exposure returns that same Promise. The rejection tests
+verify the original error and the absence of a duplicate diagnostic
+on later exposure.

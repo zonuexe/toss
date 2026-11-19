@@ -104,9 +104,15 @@ function fromJavaScript(value, context) {
 function toJavaScript(value, context) {
   const entry = asyncResults.get(value);
   if (entry !== undefined) {
-    const previous = asyncHostPromises.get(value);
-    if (previous !== undefined) return previous;
-    ${includeOwnedTasks ? "entry.observed = true;" : ""}
+    ${
+    includeOwnedTasks
+      ? `// The observation slot holds true for an internal wait or the public Promise.
+    const previous = entry.observation;
+    if (previous !== undefined && previous !== true) return previous;
+    entry.observation = true;`
+      : `const previous = hostValues.get(value);
+    if (previous !== undefined) return previous;`
+  }
     const promise = (${
     includeOwnedTasks ? "entry.promise" : "entry"
   }).then((result) => {
@@ -122,8 +128,11 @@ function toJavaScript(value, context) {
       ? ", (error) => { throw reportHostFailure(error, 'promise'); }"
       : ""
   });
-    asyncHostPromises.set(value, promise);
-    hostValues.set(value, promise);
+    ${
+    includeOwnedTasks
+      ? "entry.observation = promise;"
+      : "hostValues.set(value, promise);"
+  }
     hostReferences.set(promise, value);
     return promise;
   }

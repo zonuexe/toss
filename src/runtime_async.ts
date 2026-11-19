@@ -1,7 +1,6 @@
 export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
   `const asyncBlockFunctions = new WeakSet();
 const asyncResults = new WeakMap();
-const asyncHostPromises = new WeakMap();
 ${
     includeOwnedTasks
       ? "function asyncResultTask(value) { return asyncResults.get(value)?.task; }"
@@ -17,7 +16,8 @@ function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
   const reference = Object.freeze(Object.create(null));
   ${
     includeOwnedTasks
-      ? `const entry = {promise, task: task.finished ? undefined : task, observed: false, notified: false};
+      ? `const entry = {promise, task: task.finished ? undefined : task,
+    observation: undefined, notified: false};
   if (entry.task !== undefined) task.resultEntry = entry;
   asyncResults.set(reference, entry);`
       : "asyncResults.set(reference, promise);"

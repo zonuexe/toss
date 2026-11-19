@@ -43,7 +43,7 @@ awaitToss = function(value, context) {
   const entry = asyncResults.get(value);
   if (entry !== undefined) {
     const waiting = entry.promise;
-    entry.observed = true;
+    entry.observation ??= true;
     return entry.task === undefined ? waiting : suspendEffectTask(waiting, task);
   }
   const operation = hostValues.get(value);
@@ -69,18 +69,18 @@ function invokeOwnedAsyncBlock(block, args, context, discardResult) {
 }
 function preserveOwnedAsyncRejection(task, error) {
   const entry = task.resultEntry;
-  if (entry?.observed || !ownedFailureCarriers.has(error)) return error;
+  if (entry?.observation !== undefined || !ownedFailureCarriers.has(error)) return error;
   // The observer state outlives the running task and can still be updated before rejection.
   const promise = entry?.promise ?? task.discardedPromise;
   promise.then(undefined, (failure) => {
     if (entry === undefined) throw reportHostFailure(failure, "unobserved-async");
-    if (!entry.observed) throw exposeOwnedAsyncFailure(entry, failure, "unobserved-async");
+    if (entry.observation === undefined) throw exposeOwnedAsyncFailure(entry, failure, "unobserved-async");
   });
   return error;
 }
 function observeEffectAsyncResult(value) {
   const entry = asyncResults.get(value);
-  if (entry !== undefined) entry.observed = true;
+  if (entry !== undefined) entry.observation ??= true;
 }
 function exposeOwnedAsyncFailure(entry, error, boundary) {
   if (entry.notified) return effectFailureValue(error);

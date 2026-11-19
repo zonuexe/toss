@@ -75,6 +75,9 @@ start = performance.now();
 await readAll(fixture.expose, count);
 const firstJavaScriptNs = (performance.now() - start) * 1e6 / count;
 const exposed = await heap();
+start = performance.now();
+await readAll(fixture.expose, count);
+const cachedJavaScriptNs = (performance.now() - start) * 1e6 / count;
 fixture.clear();
 const cleared = await heap();
 
@@ -85,6 +88,7 @@ console.log(JSON.stringify({
   launchNs: Math.round(launchNs),
   tossAwaitNs: Math.round(tossAwaitNs),
   firstJavaScriptNs: Math.round(firstJavaScriptNs),
+  cachedJavaScriptNs: Math.round(cachedJavaScriptNs),
   settledBytes: Math.round((settled - before) / count),
   exposedBytes: Math.round((exposed - before) / count),
   clearedBytes: Math.round((cleared - before) / count),

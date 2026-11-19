@@ -134,14 +134,13 @@ if (useEffectCarriers) awaitToss = function(value, context) {
 };
 if (useEffectCarriers) toJavaScript = function(value, context) {
   if (!asyncResults.has(value)) return effectBaseToJavaScript(value, context);
-  const previous = asyncHostPromises.get(value);
+  const previous = hostValues.get(value);
   if (previous !== undefined) return previous;
   observeEffectAsyncResult(value);
   const promise = asyncResults.get(value).then(
     (result) => toJavaScript(result.value, context),
     (error) => { throw exposeAsyncEffectFailure(effectAsyncPublicResults.get(value), error, "promise"); },
   );
-  asyncHostPromises.set(value, promise);
   hostValues.set(value, promise);
   hostReferences.set(promise, value);
   return promise;
