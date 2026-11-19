@@ -2621,3 +2621,63 @@ read and heap cases.
 
 The original pre-compaction build retained 614 bytes per result in
 embedded output and 613 bytes in external output in the same series.
+
+### Private reverse references on public Promises
+
+The remaining first-read spike came from inserting the new public
+Promise into the reverse WeakMap. The benchmark now has a `first`
+scenario. It uses the mixed setup, retains 100,000 public Promises,
+and reports the first round-trip callback's synchronous return and
+settlement times in milliseconds in a separate process.
+
+```sh
+deno run --allow-read --v8-flags=--expose-gc \
+  experiments/async-retained-results-benchmark.mjs \
+  . external 100000 javascript first
+```
+
+The ordinary runtime now keeps the reverse reference in a private
+field on the object returned by `then`. It updates the field when
+custom `then` or `Symbol.species` returns a previously published
+object. When a generic JS reference to that object already exists,
+the first publication removes the older reverse map entry. The
+WeakMap remains the fallback when the returned value cannot receive
+the private field. The field lives for as long as its host holder.
+The cached public object and the original Toss async result are
+still used in the two directions of the round trip.
+
+The new regression registers a frozen Proxy as a generic JS
+reference, then publishes it twice via custom `then`. It also
+publishes a frozen Promise twice via a custom species constructor.
+It checks host identity, the newest reverse association, and
+unchanged reflected keys. The test fails against a prototype that
+tries to initialize the private field on every publication.
+
+Deno 2.9.7 on arm64 macOS ran seven pairs of fresh processes per
+runtime and scenario, comparing `a47fe7f` with the private reverse
+reference. Each process prepared 100,000 results. The readings below
+are medians across processes. Launch and the first callback each ran
+in their own scenario. The mixed reader medians use five samples
+of 20,000 callbacks per process.
+
+| Metric | Embedded, previous → private field | External, previous → private field |
+| --- | ---: | ---: |
+| First callback, synchronous return, ms | 21.087 → 0.069 | 19.896 → 0.067 |
+| First callback, settled, ms | 21.105 → 0.074 | 19.915 → 0.071 |
+| Isolated launch and settle, ns/result | 1275 → 1254 | 1268 → 1268 |
+| Mixed one await, ns/callback | 1066 → 557 | 1071 → 545 |
+| Mixed eight awaits, ns/callback | 1337 → 995 | 1315 → 961 |
+| Mixed JS-only heap after reads, bytes/result | 487 → 449 | 486 → 448 |
+
+The first callback improved in every pair. A five-pair control with
+`--jitless`, 64 MiB semi-spaces, and incremental marking, concurrent
+marking and concurrent sweeping disabled measured settled times of
+19.599 → 0.032 ms embedded and 22.299 → 0.037 ms external.
+The first-callback comparison excludes the earlier launch and
+exposure phases.
+
+Five additional process pairs for each isolated read scenario warmed
+only the selected callback after exposure. One await measured
+828 → 437 ns embedded and 802 → 417 ns external. Eight awaits measured
+1324 → 806 ns embedded and 1306 → 822 ns external. Every pair improved
+in both scenarios.

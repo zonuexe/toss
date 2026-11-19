@@ -2,9 +2,7 @@ export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
   `const asyncBlockFunctions = new WeakSet();
 ${
     includeOwnedTasks
-      ? `class AsyncResultReference extends class {
-  constructor(reference) { return reference; }
-} {
+      ? `class AsyncResultReference extends PrivateReferenceTarget {
   #entry;
   constructor(entry) {
     // Preserve the opaque reference's null prototype while storing its state directly.

@@ -32,6 +32,43 @@ function formatMacroTrace(trace) {
 
 const hostValues = new WeakMap();
 const hostReferences = new WeakMap();
+${
+    includeOwnedTasks
+      ? `class PrivateReferenceTarget {
+  // A derived constructor can attach private state to the supplied object.
+  constructor(target) { return target; }
+}
+class PublicAsyncReference extends PrivateReferenceTarget {
+  #reference;
+  constructor(promise, reference) {
+    super(promise);
+    this.#reference = reference;
+  }
+  static get(value) {
+    return #reference in value ? value.#reference : hostReferences.get(value);
+  }
+  static set(value, reference) {
+    if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+      hostReferences.set(value, reference);
+      return;
+    }
+    // Custom then or species can return the same object for different results.
+    if (#reference in value) {
+      value.#reference = reference;
+      return;
+    }
+    try {
+      new PublicAsyncReference(value, reference);
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      hostReferences.set(value, reference);
+      return;
+    }
+    hostReferences.delete(value);
+  }
+}`
+      : ""
+  }
 const javascriptCallbacks = new WeakMap();
 const javascriptReferenceMessages = new Map([
   ["toString", function() { return "<js>"; }],
@@ -91,7 +128,9 @@ function fromJavaScript(value, context) {
   if (typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    const previous = hostReferences.get(value);
+    const previous = ${
+    includeOwnedTasks ? "PublicAsyncReference" : "hostReferences"
+  }.get(value);
     if (previous !== undefined) return previous;
     const reference = Object.freeze(Object.create(null));
     hostValues.set(reference, value);
@@ -140,7 +179,9 @@ function toJavaScript(value, context) {
       ? "entry.observation = promise;"
       : "hostValues.set(value, promise);"
   }
-    hostReferences.set(promise, value);
+    ${
+    includeOwnedTasks ? "PublicAsyncReference" : "hostReferences"
+  }.set(promise, value);
     return promise;
   }
   if (isJavaScriptReference(value)) return hostValues.get(value);

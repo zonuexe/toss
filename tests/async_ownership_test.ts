@@ -333,6 +333,63 @@ for (const external of [false, true]) {
     assert.equal(text(result.stderr), "");
   });
 
+  Deno.test(`custom then and species can reuse an exposed object (external=${external})`, async () => {
+    const javascript = compile(
+      `
+#start bind: %async({ item -> [$item] }) asJSCallback.
+#read bind: %async({ input -> (%await($input)) at: 0 }) asJSCallback.
+#echo bind: { input -> $input } asJSCallback.
+%export(%js(start = $start, read = $read, echo = $echo; ({start, read, echo}))).
+`,
+      "reused-public-async-result.toss",
+      options,
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      for (const custom of ["then", "species"]) {
+        const shared = custom === "then"
+          ? Object.freeze(new Proxy(Object.create(null), {
+              has() { throw new Error("must not probe host properties"); },
+            }))
+          : Object.freeze(Promise.resolve("host value"));
+        assert.equal(value.echo(shared), shared);
+        const target = custom === "then" ? Promise.prototype : Promise;
+        const key = custom === "then" ? "then" : Symbol.species;
+        const original = Object.getOwnPropertyDescriptor(target, key);
+        const implementation = custom === "then"
+          ? function (...reactions) {
+              Reflect.apply(original.value, this, reactions);
+              return shared;
+            }
+          : class {
+              constructor(executor) {
+                executor(() => {}, () => {});
+                return shared;
+              }
+            };
+        Object.defineProperty(target, key, {
+          configurable: true,
+          value: implementation,
+        });
+        try {
+          assert.equal(value.start(11), shared);
+          assert.equal(value.start(22), shared);
+        } finally {
+          Object.defineProperty(target, key, original);
+        }
+        assert.equal(value.echo(shared), shared);
+        assert.equal(await value.read(shared), 22);
+        assert.deepEqual(Reflect.ownKeys(shared), []);
+        if (custom === "species") assert.equal(await shared, "host value");
+      }
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+
   Deno.test(`JS-only async promises still round trip and cancel their original tasks (external=${external})`, async () => {
     const javascript = compile(
       `

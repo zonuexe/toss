@@ -16,10 +16,10 @@ const count = Number(countArgument);
 const extraWarmup = Number(extraWarmupArgument);
 assert.ok(runtime === "embedded" || runtime === "external");
 assert.ok(retention === "toss" || retention === "javascript");
-assert.ok(["all", "launch", "one", "eight"].includes(scenario));
+assert.ok(["all", "launch", "one", "eight", "first"].includes(scenario));
 assert.ok(producer === "literal" || producer === "dynamic");
 assert.ok(
-  (scenario !== "one" && scenario !== "eight") || retention === "javascript",
+  scenario === "all" || scenario === "launch" || retention === "javascript",
 );
 assert.ok(Number.isSafeInteger(count) && count > 0);
 assert.ok(
@@ -219,6 +219,23 @@ if (publicPromises !== null && extraWarmup > 0) {
     extraWarmup,
   );
   markPhase("oneWarmup:end");
+}
+if (scenario === "first") {
+  assert.ok(publicPromises !== null);
+  markPhase("first:start");
+  const start = performance.now();
+  const pending = fixture.roundTrip(publicPromises[0]);
+  const returned = performance.now();
+  const value = await pending;
+  const settled = performance.now();
+  markPhase("first:end");
+  assert.equal(value, 42);
+  console.log(JSON.stringify({
+    ...configuration,
+    firstCallbackSyncMs: returned - start,
+    firstCallbackMs: settled - start,
+  }));
+  Deno.exit(0);
 }
 const repeatedReadNs = await medianRead(
   publicPromises === null
