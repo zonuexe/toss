@@ -2,16 +2,31 @@ export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
   `const asyncBlockFunctions = new WeakSet();
 const asyncResults = new WeakMap();
 const asyncHostPromises = new WeakMap();
+${
+    includeOwnedTasks
+      ? "function asyncResultTask(value) { return asyncResults.get(value); }"
+      : ""
+  }
 
 function markAsyncBlock(receiver) {
   asyncBlockFunctions.add(receiver);
   return receiver;
 }
 
-function asyncResult(promise) {
+function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
   const reference = Object.freeze(Object.create(null));
-  asyncResults.set(reference, promise);
+  ${
+    includeOwnedTasks
+      ? `task.promise = promise;
+  asyncResults.set(reference, task);`
+      : "asyncResults.set(reference, promise);"
+  }
   return reference;
+}
+
+function asyncResultPromise(value) {
+  const entry = asyncResults.get(value);
+  return ${includeOwnedTasks ? "entry?.promise" : "entry"};
 }
 
 function resumeTossAwait(result, environment) {
@@ -28,9 +43,10 @@ function resumeTossAwait(result, environment) {
 }
 
 async function awaitToss(value, context) {
-  if (asyncResults.has(value)) {
+  const pendingResult = asyncResultPromise(value);
+  if (pendingResult !== undefined) {
     ${includeOwnedTasks ? "observeEffectAsyncResult(value);" : ""}
-    return await asyncResults.get(value);
+    return await pendingResult;
   }
   if (!hostValues.has(value)) return {value};
   let resolved;

@@ -46,6 +46,7 @@ ${
     includeOwnedTasks
       ? runtimeAsyncOwnership(
         includeDiagnostics ? "effectDiagnosticHost" : "undefined",
+        true,
       ) + runtimeAsyncInvocation
       : ""
   }
@@ -101,11 +102,14 @@ function fromJavaScript(value, context) {
 }
 
 function toJavaScript(value, context) {
-  if (asyncResults.has(value)) {
+  const entry = asyncResults.get(value);
+  if (entry !== undefined) {
     const previous = asyncHostPromises.get(value);
     if (previous !== undefined) return previous;
-    ${includeOwnedTasks ? "observeEffectAsyncResult(value);" : ""}
-    const promise = asyncResults.get(value).then((result) => {
+    ${includeOwnedTasks ? "entry.observed = true;" : ""}
+    const promise = (${
+    includeOwnedTasks ? "entry.promise" : "entry"
+  }).then((result) => {
       ${
     includeDiagnostics
       ? "try { return toJavaScript(result.value, context); } catch (error) { throw reportHostFailure(error, 'promise'); }"
@@ -113,7 +117,7 @@ function toJavaScript(value, context) {
   }
     }${
     includeOwnedTasks
-      ? ", (error) => { throw exposeOwnedAsyncFailure(effectTasksByResult.get(value), error, 'promise'); }"
+      ? ", (error) => { throw exposeOwnedAsyncFailure(entry, error, 'promise'); }"
       : includeDiagnostics
       ? ", (error) => { throw reportHostFailure(error, 'promise'); }"
       : ""
@@ -280,8 +284,7 @@ function lexicalEnvironment(carrier, location) {
 function blockEnvironment(captured, location, parameters) {
   const scopes = new Map(captured.scopes);
   const root = captured.root ?? captured;
-  const carrier = {bindings: new Map(), parent: captured, root, scopes,
-    superContext: captured.superContext};
+  const carrier = {root, scopes, superContext: captured.superContext};
   const blockId = location.scope?.id ?? 0;
   const parent = scopes.get(blockId) ?? lexicalEnvironment(captured, location);
   const local = {bindings: new Map(), parent, root, scopes,
@@ -295,7 +298,7 @@ function blockEnvironment(captured, location, parameters) {
       superContext: captured.superContext};
     scopes.set(id, parameterScope);
   }
-  return {carrier, local, scopes};
+  return carrier;
 }
 
 function invokeBlock(receiver, args, context) {

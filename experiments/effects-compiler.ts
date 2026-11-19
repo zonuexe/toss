@@ -123,7 +123,7 @@ return {value: checkEffectTask(result, asyncTask)};`
             : `${last ? "return " : ""}${value};`;
         });
         const scopeSetup = `
-const {carrier: localScope} = blockEnvironment(captured, ${
+const localScope = blockEnvironment(captured, ${
           JSON.stringify(expression.location)
         }, ${JSON.stringify(locations)});
 localScope.effectBoundary = ${

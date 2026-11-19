@@ -29,16 +29,29 @@ return {value: checkEffectTask(result, asyncTask), then: undefined};`;
     asynchronous ? "markAsyncBlock(" : ""
   }${functionKind}(${parameters.join(", ")}) {
 const invocation = this;
-${asynchronous ? "const asyncTask = invocation?.asyncTask;\ntry {" : ""}
-const {carrier: scope} = blockEnvironment(captured, ${
+${
+    asynchronous
+      ? 'const asyncTask = invocation?.kind === "tossAsyncInvocation" ? invocation : undefined;\ntry {'
+      : ""
+  }
+const scope = blockEnvironment(captured, ${
     JSON.stringify(expression.location)
   }, ${JSON.stringify(parameterLocations)});
-if (invocation?.asyncTask !== undefined) scope.asyncTask = invocation.asyncTask;
-if (invocation?.kind === "tossInvocation") {
-scope.superContext = invocation.context;
+const currentTask = ${asynchronous ? "asyncTask" : "invocation?.asyncTask"};
+if (currentTask !== undefined) scope.asyncTask = currentTask;
+const methodContext = ${
+    asynchronous ? "asyncTask?.context ?? " : ""
+  }(invocation?.kind === "tossInvocation" ? invocation.context : undefined);
+if (methodContext !== undefined) {
+${
+    asynchronous
+      ? "if (asyncTask !== undefined) asyncTask.context = undefined;"
+      : ""
+  }
+scope.superContext = methodContext;
 lexicalEnvironment(scope, ${
     JSON.stringify(expression.location)
-  }).bindings.set(Symbol.for("self"), invocation.context.receiver);
+  }).bindings.set(Symbol.for("self"), methodContext.receiver);
 }
 ${
     [

@@ -1965,3 +1965,59 @@ pending workloads. The shared-wait regression also verifies that a
 second waiter still receives the producer's value while the first
 waiter's cleanup is held open, and that the first waiter's original
 reason is reported once after cleanup.
+
+### Async Block startup and result registration
+
+`--async-start` compares invocation of an inner Block that returns
+immediately, invocation of one that suspends once, and invocation plus
+waiting for that suspension. The invocation-only controls include the
+outer JS callback boundary. The suspension uses a Toss value, so the
+case has no host Promise allocation or conversion.
+
+The comparison uses three cumulative changes. Block startup returns the
+scope carrier directly and removes the unused bindings Map on that
+carrier. The ordinary runtime then passes the task itself as the
+async invocation record and initializes its observer fields with the
+rest of the task. Finally, a single registry associates each result
+with the task that carries its private Promise. Both Toss awaits and JS
+conversion can find the Promise and task with one lookup. Completed
+results keep the existing task record, whose cleanup and ownership state
+has already been released.
+
+In three runs on Deno 2.9.7 on arm64 macOS, the cumulative variants
+gave the following medians of run medians for awaiting an inner Block
+that suspends once, in ns per outer Block call. The first registry trial
+stored a raw Promise for immediate results and the task for pending ones.
+
+| Runtime | Before integration | Before this change | Scope startup only | Shared invocation and task record | Registry with mixed entries |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Embedded | 2183 | 2942 | 3479 | 2608 | 2229 |
+| External | 2416 | 3132 | 2912 | 3298 | 2526 |
+
+The standalone startup and task stages changed direction by runtime.
+Consolidating the registry improved this workload in both forms. The
+mixed registry made the external invocation-only controls slower, and
+that effect persisted with one variant per Deno process. The version
+with a uniform registry entry for all results improved the suspension
+and await workload in three further paired runs against `f6533f7`.
+Its elapsed time fell by 32–39% for embedded and 22–28% for external.
+The invocation-only controls varied between runs.
+
+The following same-run comparison used the adopted uniform registry
+alongside `a52fd39` and `f6533f7`. Values are medians in ns per outer
+Block call. Absolute timings varied between runs.
+
+| Runtime | Workload | Before integration | Before this change | Uniform registry |
+| --- | --- | ---: | ---: | ---: |
+| Embedded | Await after suspension | 2389 | 3216 | 2911 |
+| Embedded | Suspended invocation only | 2146 | 2549 | 2579 |
+| Embedded | Immediate invocation only | 4903 | 4493 | 4890 |
+| External | Await after suspension | 5232 | 5950 | 5447 |
+| External | Suspended invocation only | 3648 | 3772 | 4301 |
+| External | Immediate invocation only | 3297 | 3406 | 3571 |
+
+An async method copies its method context into the lexical scope at
+startup and releases the temporary reference on the task record. Tests
+cover receiver and parent-send bindings after suspension, host Promise
+identity, cancellation of a shared wait, and publication of the original
+failure after child cleanup.

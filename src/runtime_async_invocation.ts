@@ -40,12 +40,11 @@ const awaitOwnedValue = awaitToss;
 awaitToss = function(value, context) {
   const task = taskForContext(context);
   if (task === undefined) return awaitOwnedValue(value, context);
-  const waiting = asyncResults.get(value);
-  if (waiting !== undefined) {
-    const child = effectTasksByResult.get(value);
-    if (child === undefined) return waiting;
-    child.observed = true;
-    return child.finished ? waiting : suspendEffectTask(waiting, task);
+  const entry = asyncResults.get(value);
+  if (entry !== undefined) {
+    const waiting = entry.promise;
+    entry.observed = true;
+    return entry.finished ? waiting : suspendEffectTask(waiting, task);
   }
   const operation = hostValues.get(value);
   if (operation === undefined) return {value: checkEffectTask(value, task)};
@@ -60,19 +59,9 @@ function spawnOwnedEffectTask(value, context) {
   return registerOwnedEffectChild(parent, result, context);
 }
 function invokeOwnedAsyncBlock(block, args, context) {
-  const task = createEffectAsyncTask();
-  task.observed = false;
-  task.notified = false;
-  const invocation = context.methodReceiver === undefined
-    ? {asyncTask: task} : {...context.methodReceiver, asyncTask: task};
-  const promise = Reflect.apply(block, invocation, args);
-  const result = asyncResult(promise);
-  // A task can close to cancellation while it still has cleanup to await.
-  if (!task.finished) {
-    task.promise = promise;
-    effectTasksByResult.set(result, task);
-  }
-  return result;
+  const task = createEffectAsyncTask(context.methodReceiver?.context);
+  const promise = Reflect.apply(block, task, args);
+  return asyncResult(promise, task);
 }
 function preserveOwnedAsyncRejection(task, error) {
   if (task.observed || !ownedFailureCarriers.has(error)) return error;
@@ -84,11 +73,10 @@ function preserveOwnedAsyncRejection(task, error) {
   return error;
 }
 function observeEffectAsyncResult(value) {
-  const task = effectTasksByResult.get(value);
+  const task = asyncResultTask(value);
   if (task !== undefined) task.observed = true;
 }
 function exposeOwnedAsyncFailure(task, error, boundary) {
-  if (task === undefined) return reportHostFailure(error, boundary);
   if (task.notified) return effectFailureValue(error);
   task.notified = true;
   return reportHostFailure(error, boundary);

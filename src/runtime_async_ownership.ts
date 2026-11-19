@@ -1,14 +1,25 @@
 // Shared by the ordinary and experimental runtimes.
-export const runtimeAsyncOwnership = (diagnosticHost: string): string => `
-const effectTasksByResult = new WeakMap();
+export const runtimeAsyncOwnership = (
+  diagnosticHost: string,
+  ordinaryTasks = false,
+): string => `
+${
+  ordinaryTasks ? "" : `const effectTasksByResult = new WeakMap();
+function asyncResultTask(value) { return effectTasksByResult.get(value); }`
+}
 const ownedHostFailureOrigins = new WeakMap();
 const onLateHostOperationFailure = ${diagnosticHost}?.onLateHostOperationFailure;
 if (onLateHostOperationFailure !== undefined && typeof onLateHostOperationFailure !== "function") {
   throw new TypeError("Expected onLateHostOperationFailure to be a function.");
 }
 
-function createEffectAsyncTask() {
+function createEffectAsyncTask(context) {
   return {
+    ${
+  ordinaryTasks
+    ? 'kind: "tossAsyncInvocation", context, observed: false, notified: false, promise: undefined,'
+    : ""
+}
     closed: false, finished: false, cancellation: undefined, wake: undefined, cleanups: undefined,
     children: undefined, hostOperations: undefined, controller: undefined,
     hostAbortTime: undefined,
@@ -26,7 +37,7 @@ function finishEffectAsyncTask(task) {
   task.hostOperations = undefined;
 }
 function cancelEffectAsyncTask(result, reason, context) {
-  const task = effectTasksByResult.get(result);
+  const task = asyncResultTask(result);
   if (task === undefined || task.closed || task.cancellation !== undefined) return false;
   return requestEffectCancellation(task, toJavaScript(reason, context), context);
 }
@@ -73,14 +84,14 @@ function ownedAsyncBlock(value, context) {
   return block;
 }
 function registerOwnedEffectChild(parent, result, context) {
-  const child = effectTasksByResult.get(result);
+  const child = asyncResultTask(result);
   const children = parent.children ??= new Map();
   children.set(result, child);
   observeEffectAsyncResult(result);
   const forget = () => {
     if (parent.cancellation === undefined) children.delete(result);
   };
-  asyncResults.get(result).then(forget, () => {});
+  asyncResultPromise(result).then(forget, () => {});
   if (child !== undefined && parent.cancellation !== undefined) {
     requestEffectCancellation(child, parent.cancellation.value.cause, context);
   }
@@ -175,7 +186,7 @@ function hasEffectOwnedWork(task) {
   return (task?.children?.size ?? 0) > 0 || (task?.hostOperations?.size ?? 0) > 0;
 }
 async function joinEffectOwnedWork(task) {
-  const waiting = [...(task.children?.keys() ?? [])].map((result) => asyncResults.get(result));
+  const waiting = [...(task.children?.keys() ?? [])].map(asyncResultPromise);
   for (const [operation, {location}] of task.hostOperations ?? []) {
     waiting.push(operation.catch((cause) => {
       const error = new TossRuntimeError("JavaScript host operation rejected.", location, {cause});
@@ -245,7 +256,7 @@ async function settleEffectTaskFailure(task, error, location) {
   }));
   for (const [result, child] of task.children ?? []) {
     try {
-      await asyncResults.get(result);
+      await asyncResultPromise(result);
     } catch (childError) {
       if ((!cancelled && childError === error) || childError === primary) continue;
       if (child?.cancellation !== undefined && childError === child.cancellation) {
