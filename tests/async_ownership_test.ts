@@ -332,6 +332,71 @@ for (const external of [false, true]) {
     assert.equal(text(result.stderr), "");
   });
 
+  Deno.test(`JS-only async promises still round trip and cancel their original tasks (external=${external})`, async () => {
+    const javascript = compile(
+      `
+#start bind: %async({ %await(0). [41] }) asJSCallback.
+#update bind: %async({ input ->
+  #result bind: %await($input).
+  $result at: 0 put: 42.
+  $result
+}) asJSCallback.
+#pending bind: %async({
+  #child bind: ($Effect spawn: %async({
+    $Effect onCancel: %async({
+      %js(cleanupStarted.resolve()).
+      %await(%js(cleanupGate.promise)).
+      %js(events.push("child cleanup")).
+      $cleanupFailure
+    }).
+    %await(%js(new Promise(() => {})))
+  })).
+  %await($child)
+}) asJSCallback.
+#cancel bind: { input, reason -> $input cancel: $reason } asJSCallback.
+#expose bind: { input -> $input } asJSCallback.
+%export(%js(start = $start, update = $update, pending = $pending, cancel = $cancel, expose = $expose;
+  ({start, update, pending, cancel, expose}))).
+`,
+      "javascript-only-async-result.toss",
+      { ...options, failureObserverImport },
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      Object.assign(globalThis, {
+        events: [], reports: [], reason: new Error("cancel from JS"),
+        cleanupStarted: Promise.withResolvers(), cleanupGate: Promise.withResolvers(),
+      });
+      const completed = value.start();
+      const array = await completed;
+      assert.equal(value.expose(completed), completed);
+      assert.equal(await value.update(completed), array);
+      assert.deepEqual(array, [42]);
+      assert.equal(value.cancel(completed, reason), false);
+
+      const pending = value.pending();
+      const failed = pending.catch(error => { events.push("catch"); return error; });
+      assert.equal(value.cancel(pending, reason), true);
+      await cleanupStarted.promise;
+      assert.deepEqual(reports, []);
+      cleanupGate.resolve();
+      const error = await failed;
+      const reexposed = value.expose(pending);
+      assert.equal(reexposed, pending);
+      assert.equal(await reexposed.catch(error => error), error);
+      assert.equal(error.cause, reason);
+      assert.equal(reports[0].error, error);
+      assert.match(reports[0].cleanupDescriptions[0], /cleanupFailure/);
+      assert.deepEqual(events, ["child cleanup", "diagnostic:promise", "catch"]);
+      assert.equal(reports.length, 1);
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+
   Deno.test(`discarded async invocation reports its original failure after child cleanup (external=${external})`, async () => {
     const javascript = compile(
       `

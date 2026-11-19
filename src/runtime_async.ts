@@ -3,7 +3,10 @@ export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
 const asyncResults = new WeakMap();
 ${
     includeOwnedTasks
-      ? "function asyncResultTask(value) { return asyncResults.get(value)?.task; }"
+      ? `function asyncResultTask(value) {
+  const entry = asyncResults.get(value);
+  return entry?.promise === undefined ? undefined : entry.taskOrValue;
+}`
       : ""
   }
 
@@ -16,18 +19,20 @@ function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
   const reference = Object.freeze(Object.create(null));
   ${
     includeOwnedTasks
-      ? `const entry = {promise, task: task.finished ? undefined : task,
+      ? `const entry = {promise, taskOrValue: task.finished ? undefined : task,
     observation: undefined, notified: false};
-  if (entry.task !== undefined) task.resultEntry = entry;
+  if (entry.taskOrValue !== undefined) task.resultEntry = entry;
   asyncResults.set(reference, entry);`
       : "asyncResults.set(reference, promise);"
   }
   return reference;
 }
 
-function asyncResultPromise(value) {
+function asyncResultAwaitable(value) {
   const entry = asyncResults.get(value);
-  return ${includeOwnedTasks ? "entry?.promise" : "entry"};
+  return ${
+    includeOwnedTasks ? "entry?.promise ?? entry?.taskOrValue" : "entry"
+  };
 }
 
 function resumeTossAwait(result, environment) {
@@ -44,7 +49,7 @@ function resumeTossAwait(result, environment) {
 }
 
 async function awaitToss(value, context) {
-  const pendingResult = asyncResultPromise(value);
+  const pendingResult = asyncResultAwaitable(value);
   if (pendingResult !== undefined) {
     ${includeOwnedTasks ? "observeEffectAsyncResult(value);" : ""}
     return await pendingResult;

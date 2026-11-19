@@ -117,6 +117,13 @@ function toJavaScript(value, context) {
     includeOwnedTasks ? "entry.promise" : "entry"
   }).then((result) => {
       ${
+    includeOwnedTasks
+      ? `// Retain the original Toss value for the round trip and release the settled internal Promise.
+      entry.taskOrValue = result;
+      entry.promise = undefined;`
+      : ""
+  }
+      ${
     includeDiagnostics
       ? "try { return toJavaScript(result.value, context); } catch (error) { throw reportHostFailure(error, 'promise'); }"
       : "return toJavaScript(result.value, context);"

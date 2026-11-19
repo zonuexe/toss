@@ -2166,3 +2166,61 @@ pass it back into Toss before and after completion, and check that
 repeated exposure returns that same Promise. The rejection tests
 verify the original error and the absence of a duplicate diagnostic
 on later exposure.
+
+### JavaScript-only retention and the reverse map
+
+The retained-results benchmark accepts `javascript` as its fourth
+argument. It keeps the public Promises in a JS array and clears the
+Toss result store before measuring heap and returning each Promise
+to Toss. The default `toss` mode keeps the Toss store instead. Both
+modes retain 100,000 results that suspended once and fulfilled.
+
+The no-reverse control removes the public Promise's JS-to-Toss
+registration. The split-map trial stores that association in a
+dedicated WeakMap. These measurements used Deno 2.9.7 on arm64 macOS
+and report medians of three fresh processes per configuration, in
+incremental heap bytes per stored result after publication.
+
+| Runtime | Retained by | Previous (`17b5544`) | No reverse map entry | Dedicated reverse map | Release internal Promise |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Embedded | Toss | 620 | 497 | 620 | 572 |
+| External | Toss | 620 | 497 | 620 | 571 |
+| Embedded | JS only | 613 | 93 | 613 | 564 |
+| External | JS only | 614 | 93 | 614 | 566 |
+
+With a Toss reference still present, removing the reverse association
+saved 123 bytes per result in this workload. When only JS held the
+public Promise, it also made the original Toss reference and state
+collectible. Its 520–521 byte difference includes that retained graph
+and the reverse map overhead. The no-reverse control loses the
+identity needed for Toss messages and cancellation on the returned
+reference. In both runtime forms, the control failed the regression's
+array update because the round trip produced a generic JS reference.
+The dedicated map gave the same retained heap as the generic map.
+
+On publishing a successful Toss result, the ordinary runtime now
+keeps the original boxed Toss value in the result entry and releases
+its settled internal Promise. The reverse map still returns the
+original reference. The public Promise remains cached. Rejected
+results retain their original internal rejection for diagnostics and
+identity. Successful results accounted for the 48–49 byte reduction
+in the table.
+
+The elapsed times below are medians in ns per result, including the
+callback and await. For Toss-held results, the repeated read is a
+cached JS exposure. For JS-only results it is a round trip back through
+Toss `%await`. The compact successful result uses a boxed value at
+that await, which still suspends before resuming the Block.
+
+| Runtime | Retained by | First JS exposure, previous → new | Repeated read, previous → new |
+| --- | --- | ---: | ---: |
+| Embedded | Toss | 796 → 873 | 563 → 545 |
+| External | Toss | 901 → 873 | 568 → 577 |
+| Embedded | JS only | 872 → 894 | 1904 → 2042 |
+| External | JS only | 859 → 904 | 1858 → 2042 |
+
+The regression fixture only hands out the public Promise. It returns
+that Promise to Toss after completion and mutates the original Toss
+Array. A second case sends a pending Promise back to cancel its owned
+task and checks the original reason, one diagnostic after child
+cleanup, and the same public Promise and Error on re-exposure.

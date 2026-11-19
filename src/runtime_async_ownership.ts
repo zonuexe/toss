@@ -38,7 +38,7 @@ function finishEffectAsyncTask(task) {
   ${
   ordinaryTasks
     ? `if (task.resultEntry !== undefined) {
-    task.resultEntry.task = undefined;
+    task.resultEntry.taskOrValue = undefined;
     task.resultEntry = undefined;
   }
   task.discardedPromise = undefined;
@@ -101,7 +101,8 @@ function registerOwnedEffectChild(parent, result, context) {
   const forget = () => {
     if (parent.cancellation === undefined) children.delete(result);
   };
-  asyncResultPromise(result).then(forget, () => {});
+  // A freshly invoked child has not been exposed to JS and still has its native Promise.
+  asyncResultAwaitable(result).then(forget, () => {});
   if (child !== undefined && parent.cancellation !== undefined) {
     requestEffectCancellation(child, parent.cancellation.value.cause, context);
   }
@@ -196,7 +197,7 @@ function hasEffectOwnedWork(task) {
   return (task?.children?.size ?? 0) > 0 || (task?.hostOperations?.size ?? 0) > 0;
 }
 async function joinEffectOwnedWork(task) {
-  const waiting = [...(task.children?.keys() ?? [])].map(asyncResultPromise);
+  const waiting = [...(task.children?.keys() ?? [])].map(asyncResultAwaitable);
   for (const [operation, {location}] of task.hostOperations ?? []) {
     waiting.push(operation.catch((cause) => {
       const error = new TossRuntimeError("JavaScript host operation rejected.", location, {cause});
@@ -266,7 +267,7 @@ async function settleEffectTaskFailure(task, error, location) {
   }));
   for (const [result, child] of task.children ?? []) {
     try {
-      await asyncResultPromise(result);
+      await asyncResultAwaitable(result);
     } catch (childError) {
       if ((!cancelled && childError === error) || childError === primary) continue;
       if (child?.cancellation !== undefined && childError === child.cancellation) {
