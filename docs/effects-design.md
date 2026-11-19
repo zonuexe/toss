@@ -2847,3 +2847,100 @@ the null prototype, frozen state, empty reflected own keys and
 public-Promise round-trip identity. The 41 async ownership and
 boundary tests passed on a build that forced all public objects
 through the WeakMap fallback.
+
+### Wasm fallback rehash thresholds and GC placement
+
+The fallback benchmark accepts an optional transient key count,
+GC placement and probe order after the retained count. The default
+still publishes one transient key per retained key and collects after
+releasing the transient batch. Each process now reports the first
+eight publication times separately.
+
+| GC placement | Preparation before the eight probes |
+| --- | --- |
+| `after` | Release the transient keys, then collect |
+| `before` | Collect before publishing the transient batch, with no forced collection after it |
+| `held` | Collect after both batches, retaining transient keys through the probes |
+| `between` | Release and collect the first half, time the first insertion of the second half, then release and collect that second half |
+
+`read-first` additionally times one round-trip await after preparation
+and before the first probe publication. `publish-first` is the default.
+All retained keys stay reachable in both orders.
+
+```sh
+deno run --allow-read --v8-flags=--expose-gc \
+  experiments/async-public-fallback-benchmark.mjs \
+  . external wasm 100000 120000 between
+```
+
+On Deno 2.9.7 on arm64 macOS, retaining 100,000 keys and starting
+with 0, 49,000, 50,000 or 50,001 transient keys gave first publication
+medians of 0.066–0.074 ms, with no sample above 1 ms in five processes
+per configuration and runtime. At 51,000 transient keys the first
+publication was 20.97 ms embedded and 21.67 ms external. At 100,000
+transient keys it was 16.10 ms embedded and 18.68 ms external.
+Every trial in both larger batches crossed 1 ms. The remaining
+seven publications in those high-latency runs had per-run maxima
+with medians below 0.08 ms.
+
+Three further processes per runtime and size compared 40% and 60%
+transient keys relative to retained keys. All of the 40% first
+publications finished within 0.1 ms. The 60% medians were:
+
+| Retained keys | Transient keys | Embedded first publication | External first publication |
+| ---: | ---: | ---: | ---: |
+| 25,000 | 15,000 | 4.09 ms | 4.40 ms |
+| 50,000 | 30,000 | 9.29 ms | 8.67 ms |
+| 200,000 | 120,000 | 46.67 ms | 42.69 ms |
+
+The ratio separates the two behaviors in these workloads. Live
+key count and backing table layout affect the duration once the
+work is triggered. The result agrees with the V8 insertion path
+that sends a table with many deleted slots to rehash.
+[V8 weak-table insertion](https://chromium.googlesource.com/v8/v8/%2B/22afaacd47a47baef49222b20e94083d0dd37e2d/src/objects/objects.cc#7749)
+
+A finer sweep at 100,000 retained keys found the first long
+publication at 50,002 transient keys. All three runs per runtime
+crossed 1 ms there and at 50,003, 50,010 and 50,100. The 50,001
+case was below 1 ms in all five runs. These are boundaries for
+this fixture and V8 build. Capacity pressure and engine state can
+also affect insertion.
+
+With 100,000 retained and 120,000 transient keys, five fresh
+processes per runtime gave the following medians in milliseconds:
+
+| GC placement | Embedded first publication | External first publication |
+| --- | ---: | ---: |
+| Before the transient batch | 0.044 | 0.028 |
+| After the batch with its keys kept alive | 0.079 | 0.072 |
+| After releasing the batch | 21.25 | 21.20 |
+| Between released halves, first insertion of the second half | 20.80 | 19.44 |
+| Between released halves, first insertion after both halves | 20.99 | 20.85 |
+
+The medians of the summed pauses in the last two rows were
+42.36 ms embedded and 40.73 ms external. GC with live keys
+does not create the deleted slots that trigger this pause.
+
+With 100,000 transient keys released and collected, moving one
+round-trip await before publication took 0.234 ms embedded and
+0.215 ms external. The following new fallback registration
+still took 19.93 and 18.32 ms. The later seven registrations
+had median per-process maxima below 0.07 ms. The Wasm
+round-trip await did not pay the rehash before the first new
+fallback key was inserted.
+
+The runtime cannot choose when the host collects these keys or
+explicitly rehash a WeakMap. A sentinel write would move the
+same work to an earlier call. The earlier sharding trial split it
+across successive registrations and cost more on the Wasm read
+path than the single-table implementation. No runtime change
+met the condition of removing the delay without moving cost to
+other calls.
+
+Splitting smaller transient batches of 51,000, 60,000 or 100,000
+into two also did not remove the pause. In five processes per
+condition and runtime, the first insertion between halves took
+less than 1 ms, while every first insertion after the second
+collection exceeded 1 ms. With zero transient keys, the first
+round-trip await took 0.224 ms embedded and 0.234 ms external,
+close to the read-first result after heavy churn.

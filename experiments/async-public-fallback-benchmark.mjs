@@ -7,11 +7,25 @@ const [
   runtime = "embedded",
   scenario = "wasm",
   countArgument = "100000",
+  transientArgument,
+  gcPlacement = "after",
+  probeOrder = "publish-first",
 ] = Deno.args;
 const count = Number(countArgument);
+const reuse = scenario === "wasm-reuse";
+const transientCount = transientArgument === undefined
+  ? (reuse ? 0 : count)
+  : Number(transientArgument);
 assert.ok(runtime === "embedded" || runtime === "external");
 assert.ok(["symbol", "wasm", "wasm-reuse"].includes(scenario));
 assert.ok(Number.isSafeInteger(count) && count > 0);
+assert.ok(Number.isSafeInteger(transientCount) && transientCount >= 0);
+assert.ok(["after", "before", "held", "between"].includes(gcPlacement));
+assert.ok(!reuse || (transientCount === 0 && gcPlacement === "after"));
+assert.ok(
+  probeOrder === "publish-first" ||
+    (probeOrder === "read-first" && scenario === "wasm"),
+);
 assert.equal(typeof globalThis.gc, "function", "Use --v8-flags=--expose-gc");
 
 // (module (type (struct)) (func (export "mak") (result externref)
@@ -22,7 +36,6 @@ const wasmCode = Uint8Array.fromBase64(
 const { mak } =
   new WebAssembly.Instance(new WebAssembly.Module(wasmCode)).exports;
 const wasm = scenario !== "symbol";
-const reuse = scenario === "wasm-reuse";
 const { compile, generateRuntimeModule } = await import(
   pathToFileURL(resolve(checkout, "src/compiler.ts")).href
 );
@@ -76,13 +89,38 @@ const before = await heap();
 let start = performance.now();
 publish(keys);
 const publicationNs = (performance.now() - start) * 1e6 / count;
-if (!reuse) publish(values(count));
-const retained = await heap();
+if (gcPlacement === "before") await heap();
+const heldTransient = gcPlacement === "held" ? values(transientCount) : null;
+let beforeSecondBatchMs;
+if (gcPlacement === "between" && transientCount > 1) {
+  const firstBatchSize = Math.floor(transientCount / 2);
+  publish(values(firstBatchSize));
+  await heap();
+  start = performance.now();
+  publish([make()]);
+  beforeSecondBatchMs = performance.now() - start;
+  if (transientCount - firstBatchSize > 1) {
+    publish(values(transientCount - firstBatchSize - 1));
+  }
+} else if (transientCount > 0) {
+  publish(heldTransient ?? values(transientCount));
+}
+const retained = gcPlacement === "before" ? undefined : await heap();
 if (reuse) assert.equal(await fixture.read(keys[0]), count - 1);
-const firstKey = reuse ? keys[0] : make();
-start = performance.now();
-publish([firstKey]);
-const firstCallbackMs = performance.now() - start;
+let firstReadMs;
+if (probeOrder === "read-first") {
+  start = performance.now();
+  const item = await fixture.read(keys[0]);
+  firstReadMs = performance.now() - start;
+  assert.equal(item, 0);
+}
+const probeKeys = reuse ? Array(8).fill(keys[0]) : values(8);
+const firstCallbacksMs = probeKeys.map((key) => {
+  const start = performance.now();
+  publish([key]);
+  return performance.now() - start;
+});
+if (heldTransient !== null) assert.equal(heldTransient.length, transientCount);
 let roundTripNs;
 if (scenario === "wasm") {
   const size = Math.min(count, 20000);
@@ -102,9 +140,18 @@ console.log(
     checkout,
     runtime,
     scenario,
+    count,
+    transientCount,
+    gcPlacement,
+    probeOrder,
     publicationNs,
     roundTripNs,
-    firstCallbackMs,
-    retainedBytes: (retained - before) / count,
+    firstCallbackMs: firstCallbacksMs[0],
+    firstCallbacksMs,
+    firstReadMs,
+    beforeSecondBatchMs,
+    retainedBytes: retained === undefined || heldTransient !== null
+      ? undefined
+      : (retained - before) / count,
   }),
 );
