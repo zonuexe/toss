@@ -58,9 +58,13 @@ function spawnOwnedEffectTask(value, context) {
   const result = invokeBlock(ownedAsyncBlock(value, context), [], context);
   return registerOwnedEffectChild(parent, result, context);
 }
-function invokeOwnedAsyncBlock(block, args, context) {
+function invokeOwnedAsyncBlock(block, args, context, discardResult) {
   const task = createEffectAsyncTask(context.methodReceiver?.context);
   const promise = Reflect.apply(block, task, args);
+  if (discardResult) {
+    task.promise = promise;
+    return;
+  }
   return asyncResult(promise, task);
 }
 function preserveOwnedAsyncRejection(task, error) {

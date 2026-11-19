@@ -2,16 +2,26 @@ import type { Expression } from "./ast.ts";
 import { emitBlock } from "./codegen_block.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import { containsDirectAwait } from "./codegen_analysis.ts";
+import { blockValueWithArguments } from "./prelude/block.ts";
+
+const blockKeywordSelector = new RegExp(
+  blockValueWithArguments.selectorPattern,
+);
 
 export type ExpressionEmitter = (
   expression: Expression,
   scope?: string,
+  discardResult?: boolean,
 ) => string;
 
 export function createEmitter(
   evaluators?: ReadonlyMap<Expression, number>,
 ): ExpressionEmitter {
-  const emit: ExpressionEmitter = (expression, scope = "environment") => {
+  const emit: ExpressionEmitter = (
+    expression,
+    scope = "environment",
+    discardResult = false,
+  ) => {
     const context = `{location: ${
       JSON.stringify(expression.location)
     }, environment: ${scope}}`;
@@ -65,14 +75,20 @@ export function createEmitter(
         return `[${
           expression.elements.map((item) => emit(item, scope)).join(", ")
         }]`;
-      case "send":
-        return `send(${emit(expression.receiver, scope)}, {name: ${
+      case "send": {
+        const dispatch = discardResult &&
+            (expression.name === "value" ||
+              blockKeywordSelector.test(expression.name))
+          ? "discardValueSend"
+          : "send";
+        return `${dispatch}(${emit(expression.receiver, scope)}, {name: ${
           JSON.stringify(expression.name)
         }, arguments: [${
           expression.arguments.map((argument) => emit(argument, scope)).join(
             ", ",
           )
         }]}, ${context})`;
+      }
       case "super":
         return `parentSend([${
           expression.arguments.map((argument) => emit(argument, scope)).join(

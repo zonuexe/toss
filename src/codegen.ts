@@ -85,7 +85,9 @@ export function generate(
     ...fileRootSetupLines([], true),
   ];
   if (observerAlias !== undefined) lines.push("try {");
-  for (const expression of expressions) lines.push(emit(expression) + ";");
+  for (const expression of expressions) {
+    lines.push(emit(expression, undefined, true) + ";");
+  }
   if (format === "esm") {
     const exported = expressions.find((expression) =>
       expression.kind === "export"

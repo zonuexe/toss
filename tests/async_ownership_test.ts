@@ -282,6 +282,61 @@ for (const external of [false, true]) {
     format: "esm" as const,
     ...(external ? { runtimeImport } : { treeShakePrelude: true }),
   };
+  Deno.test(`discarded async invocation reports its original failure after child cleanup (external=${external})`, async () => {
+    const javascript = compile(
+      `
+%export({
+  %async({ input ->
+    $Effect spawn: %async({
+      $Effect onCancel: %async({
+        %js(cleanupStarted.resolve()).
+        %await(%js(cleanupGate.promise)).
+        %js(events.push("child cleanup")).
+        $cleanupFailure
+      }).
+      %await(%js(new Promise(() => {})))
+    }).
+    %await($input)
+  }) value: (%js(bodyGate.promise)).
+  42
+} asJSCallback).
+`,
+      "discarded-async-failure.toss",
+      { ...options, failureObserverImport },
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      Object.assign(globalThis, {
+        events: [], reports: [], reason: new Error("original failure"),
+        bodyGate: Promise.withResolvers(), cleanupStarted: Promise.withResolvers(),
+        cleanupGate: Promise.withResolvers(),
+      });
+      const unhandled = new Promise(resolve => {
+        addEventListener("unhandledrejection", event => {
+          event.preventDefault();
+          events.push("unhandled");
+          resolve(event.reason);
+        }, {once: true});
+      });
+      assert.equal(value(), 42);
+      bodyGate.reject(reason);
+      await cleanupStarted.promise;
+      assert.deepEqual(reports, []);
+      cleanupGate.resolve();
+      const error = await unhandled;
+      assert.equal(error.cause, reason);
+      assert.equal(reports.length, 1);
+      assert.equal(reports[0].error, error);
+      assert.match(reports[0].cleanupDescriptions[0], /cleanupFailure/);
+      assert.deepEqual(events, ["child cleanup", "diagnostic:unobserved-async", "unhandled"]);
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+
   Deno.test(`ordinary AOT waits for cancelled child cleanup and reports late host failures (external=${external})`, async () => {
     const javascript = compileSources(
       "main.toss",

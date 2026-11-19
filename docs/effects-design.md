@@ -2021,3 +2021,46 @@ startup and releases the temporary reference on the task record. Tests
 cover receiver and parent-send bindings after suspension, host Promise
 identity, cancellation of a shared wait, and publication of the original
 failure after child cleanup.
+
+### Async launches whose results are discarded
+
+The benchmark's `--launch-only` selection measures the two invocation
+controls without the await workload. In three separate Deno 2.9.7
+processes per version on arm64 macOS, the external suspended launch
+measured 2092 → 2278, 2091 → 2042, and 2223 → 2589 ns from `f6533f7`
+to `5ae7977`. Two runs reproduced a slowdown. The median rose by 9%,
+with paired changes from −2% to +16%.
+
+A retention control used the same result record and lookup in both
+builds. On completion of an initially pending task, one build kept the
+task pointer in the record and the other cleared it. The external
+suspended-launch median dropped from 2628 to 2207 ns, with a 7–23%
+reduction across the paired runs. The embedded medians were 2427 and
+2456 ns, and the paired changes varied in direction. These controls
+measure execution time for short-lived results.
+
+A direct `value` or `value:` family send used as a statement can now
+launch an async Block without constructing and registering a Toss
+result reference. The compiler marks only sends whose value is unused.
+The runtime checks that the receiver is an async Block and validates
+the arguments at the same invocation point. The task keeps its private
+Promise for failure reporting and can still own children and host
+operations. A discarded failure still reports the original error
+after owned cleanup and is exposed as an unhandled rejection.
+
+The registration control used the same direct dispatch but allocated
+and registered the result before discarding it. Medians of three run
+medians follow, in ns per outer Block call.
+
+| Runtime | Inner Block | Before integration (`a52fd39`) | Before this change (`5ae7977`) | Direct dispatch with registration | Without result registration |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Embedded | Suspends once | 2193 | 2235 | 2053 | 1619 |
+| Embedded | Returns immediately | 2155 | 2158 | 2118 | 1622 |
+| External | Suspends once | 2138 | 2356 | 2166 | 1693 |
+| External | Returns immediately | 2306 | 2416 | 2578 | 1672 |
+
+For external suspended launches, skipping registration saved 21–36%
+in each paired comparison with the same direct dispatch. The new
+regression test runs a discarded invocation in both runtime forms,
+holds its owned child's cleanup open, and checks the single original
+diagnostic and the rejection after cleanup completes.

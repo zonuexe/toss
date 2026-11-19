@@ -301,14 +301,27 @@ function blockEnvironment(captured, location, parameters) {
   return carrier;
 }
 
-function invokeBlock(receiver, args, context) {
+function discardValueSend(receiver, message, context) {
+  ${
+    includeOwnedTasks
+      ? `
+  if (asyncBlockFunctions.has(receiver)) {
+    return invokeBlock(receiver, message.arguments, context, true);
+  }
+  `
+      : ""
+  }
+  return send(receiver, message, context);
+}
+
+function invokeBlock(receiver, args, context, discardResult) {
   if (receiver.length !== args.length) {
     throw new TossRuntimeError("Block expects " + receiver.length + " argument(s), received " + args.length + ".", context.location);
   }
   ${
     includeOwnedTasks
       ? `
-  if (asyncBlockFunctions.has(receiver)) return invokeOwnedAsyncBlock(receiver, args, context);
+  if (asyncBlockFunctions.has(receiver)) return invokeOwnedAsyncBlock(receiver, args, context, discardResult);
   const task = taskForContext(context);
   const invocation = task === undefined ? context.methodReceiver : {...context.methodReceiver, asyncTask: task};
   return Reflect.apply(receiver, invocation, args);

@@ -5,6 +5,7 @@ export const runtimeBridgeNames = [
   "awaitToss",
   "blockEnvironment",
   "checkEffectTask",
+  "discardValueSend",
   "evaluateCompiledJavaScript",
   "fetchBinding",
   "finishEffectAsyncTask",

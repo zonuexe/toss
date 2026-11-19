@@ -5,9 +5,10 @@ import { pathToFileURL } from "node:url";
 const tossAwaitOnly = Deno.args.includes("--toss-await");
 const pendingOnly = Deno.args.includes("--pending-toss-await");
 const asyncStartOnly = Deno.args.includes("--async-start");
+const launchOnly = Deno.args.includes("--launch-only");
 const paths = Deno.args.filter((arg) =>
   arg !== "--toss-await" && arg !== "--pending-toss-await" &&
-  arg !== "--async-start"
+  arg !== "--async-start" && arg !== "--launch-only"
 );
 const checkouts = paths.length ? paths : ["."];
 const compilers = await Promise.all(checkouts.map(async (checkout) => ({
@@ -61,6 +62,7 @@ for (const external of [false, true]) {
       "Toss async suspended invocation only",
       "Toss async invocation only",
     ].includes(name)) continue;
+    if (launchOnly && !name.endsWith("invocation only")) continue;
     const callbacks = await Promise.all(compilers.map(async (compiler) => {
       const runtimeImport = external
         ? moduleUrl(compiler.generateRuntimeModule())

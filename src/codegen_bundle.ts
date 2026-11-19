@@ -32,7 +32,7 @@ export function generateFragment(
   imports?: readonly { readonly path: string; readonly id: number }[],
 ): string {
   const previous = expressions.slice(0, -1).map((expression) =>
-    createEmitter()(expression) + ";"
+    createEmitter()(expression, undefined, true) + ";"
   );
   const final = expressions.at(-1);
   if (final === undefined) return "";
@@ -53,7 +53,7 @@ export function generateModuleInitializer(
     `[${JSON.stringify(path)}, ${id}]`
   );
   const statements = module.expressions.map((expression) =>
-    `${emit(expression)};`
+    `${emit(expression, undefined, true)};`
   );
   return `() => {\n${fileRootSetupLines(imports, true).join("\n")}\n${
     statements.join("\n")

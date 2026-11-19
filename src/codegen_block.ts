@@ -3,7 +3,11 @@ import type { Expression } from "./ast.ts";
 export function emitBlock(
   expression: Extract<Expression, { readonly kind: "block" }>,
   carrier: string,
-  emit: (expression: Expression, carrier: string) => string,
+  emit: (
+    expression: Expression,
+    carrier: string,
+    discardResult?: boolean,
+  ) => string,
 ): string {
   const parameters = expression.parameters.map((_, index) => `arg${index}`);
   const parameterLocations = expression.parameterLocations ??
@@ -16,8 +20,10 @@ export function emitBlock(
   const asynchronous = expression.asynchronous === true;
   // Internal result boxes must settle without assimilating an inherited then.
   const body = expression.body.map((item, index) => {
+    if (index !== expression.body.length - 1) {
+      return `${emit(item, "scope", true)};`;
+    }
     const value = emit(item, "scope");
-    if (index !== expression.body.length - 1) return `${value};`;
     if (!asynchronous) return `return ${value};`;
     return `const result = ${value};
 if (asyncTask === undefined) return {value: result, then: undefined};
