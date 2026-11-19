@@ -7,10 +7,17 @@ const [
   runtime = "embedded",
   countArgument = "100000",
   retention = "toss",
+  scenario = "all",
+  producer = "literal",
 ] = Deno.args;
 const count = Number(countArgument);
 assert.ok(runtime === "embedded" || runtime === "external");
 assert.ok(retention === "toss" || retention === "javascript");
+assert.ok(["all", "launch", "one", "eight"].includes(scenario));
+assert.ok(producer === "literal" || producer === "dynamic");
+assert.ok(
+  (scenario !== "one" && scenario !== "eight") || retention === "javascript",
+);
 assert.ok(Number.isSafeInteger(count) && count > 0);
 assert.equal(typeof globalThis.gc, "function", "Use --v8-flags=--expose-gc");
 
@@ -24,9 +31,13 @@ const runtimeImport = runtime === "external"
 const source = `
 #state bind: $Object clone.
 $state at: #results put: ($Object clone).
-#task bind: %async({ %await(42) }).
+#task bind: %async({ ${
+  producer === "literal" ? "%await(42)" : "input -> %await($input)"
+} }).
 #store bind: { index ->
-  ($state at: #results) at: ($index toString) put: ($task value).
+  ($state at: #results) at: ($index toString) put: ($task ${
+  producer === "literal" ? "value" : "value: 42"
+}).
   $Nil
 } asJSCallback.
 #read bind: %async({ index -> %await(($state at: #results) at: ($index toString)) }) asJSCallback.
@@ -77,7 +88,67 @@ async function medianRead(read) {
   return Math.round(samples.sort((a, b) => a - b)[2]);
 }
 
+async function measureLaunch() {
+  const start = performance.now();
+  launch(count);
+  const launched = performance.now();
+  await turn();
+  const drained = performance.now();
+  const ns = (ms) => Math.round(ms * 1e6 / count);
+  return {
+    launchNs: ns(drained - start),
+    launchSyncNs: ns(launched - start),
+    launchDrainNs: ns(drained - launched),
+  };
+}
+
+const configuration = {
+  checkout,
+  runtime,
+  retention,
+  count,
+  scenario,
+  producer,
+};
 const warmup = Math.min(5000, count);
+if (scenario === "launch") {
+  launch(warmup);
+  await turn();
+  fixture.clear();
+  await heap();
+  const timings = await measureLaunch();
+  assert.equal(await fixture.expose(count - 1), 42);
+  console.log(JSON.stringify({ ...configuration, ...timings }));
+  Deno.exit(0);
+}
+
+if (scenario === "one" || scenario === "eight") {
+  const before = await heap();
+  launch(count);
+  await turn();
+  const promises = new Array(count);
+  await readAll((index) => (promises[index] = fixture.expose(index)), count);
+  fixture.clear();
+  const exposed = await heap();
+  const callback = scenario === "one"
+    ? fixture.roundTrip
+    : fixture.repeatRoundTrip;
+  const read = (index) => callback(promises[index]);
+  await readAll(read, warmup);
+  const elapsed = await medianRead(read);
+  for (const promise of promises) {
+    assert.equal(fixture.reexpose(promise), promise);
+  }
+  const afterReads = await heap();
+  console.log(JSON.stringify({
+    ...configuration,
+    [scenario === "one" ? "roundTripNs" : "roundTripEightNs"]: elapsed,
+    exposedBytes: Math.round((exposed - before) / count),
+    afterRoundTripBytes: Math.round((afterReads - before) / count),
+  }));
+  Deno.exit(0);
+}
+
 launch(warmup);
 await turn();
 await readAll(fixture.read, warmup);
@@ -95,16 +166,9 @@ if (retention === "javascript") {
 fixture.clear();
 const before = await heap();
 
-let start = performance.now();
-launch(count);
-const launched = performance.now();
-await turn();
-const drained = performance.now();
-const launchNs = (drained - start) * 1e6 / count;
-const launchSyncNs = (launched - start) * 1e6 / count;
-const launchDrainNs = (drained - launched) * 1e6 / count;
+const launchTimings = await measureLaunch();
 const settled = await heap();
-start = performance.now();
+let start = performance.now();
 await readAll(fixture.read, count);
 const tossAwaitNs = (performance.now() - start) * 1e6 / count;
 start = performance.now();
@@ -144,13 +208,8 @@ fixture.clear();
 const cleared = await heap();
 
 console.log(JSON.stringify({
-  checkout,
-  runtime,
-  retention,
-  count,
-  launchNs: Math.round(launchNs),
-  launchSyncNs: Math.round(launchSyncNs),
-  launchDrainNs: Math.round(launchDrainNs),
+  ...configuration,
+  ...launchTimings,
   tossAwaitNs: Math.round(tossAwaitNs),
   firstJavaScriptNs: Math.round(firstJavaScriptNs),
   [publicPromises === null ? "cachedJavaScriptNs" : "roundTripNs"]: Math.round(

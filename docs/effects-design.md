@@ -2413,3 +2413,86 @@ One-await medians rose by 7% embedded and 2% external against
 `961b183` in the four-variant series. Those callbacks still use
 the same dynamic await emitter. The JS-only retained heap stayed
 48 bytes below the pre-compaction result in both runtime forms.
+
+### Isolated round-trip waits
+
+The retained-results benchmark accepts a fifth argument to select the
+scenario. `launch` times only the producer's store loop and continuations.
+`one` and `eight` prepare, settle and expose the results before timing
+only the selected reader, in separate processes. After exposure the
+Toss store is cleared and the benchmark checks that re-exposure returns
+the identical public Promise. `all` retains the original mixed workload
+and heap measurements. The optional sixth argument `dynamic` changes
+the producer's `%await(42)` to `%await($input)` with the same value.
+This control compiles without the literal optimization in either version.
+
+For example, from the repository root:
+
+```sh
+deno run --allow-read --v8-flags=--expose-gc \
+  experiments/async-retained-results-benchmark.mjs \
+  . embedded 100000 javascript one literal
+```
+
+The comparison used `961b183` and `36aa1fb` in alternating version
+and runtime order on arm64 macOS with Deno 2.9.7. Each process retained
+100,000 results. Reader timings are the median of five 20,000-callback
+samples per process. Each variant in the one-await literal comparison
+ran in 11 fresh processes per runtime. The newer version was slower
+in six pairs in each runtime. The paired median changes were +1.4%
+embedded and +2.9% external, with individual pairs moving in both
+directions. Medians across processes were 1321 → 1301 ns embedded and
+1294 → 1257 ns external.
+
+The dynamic producer control ran in nine fresh processes per version
+and runtime. Across pairs its median changes were +2.1% embedded
+and −0.9% external, with substantial spread in both runtime forms.
+
+Seven new-process pairs per runtime timed launch and the eight-await
+reader separately. The rows report medians across processes.
+
+| Isolated scenario | Embedded, previous → current | External, previous → current |
+| --- | ---: | ---: |
+| Launch and settle, ns/result | 2379 → 2126 | 2295 → 1953 |
+| Eight awaits, ns/callback | 2321 → 2416 | 2407 → 2409 |
+| Heap after eight awaits, bytes/result | 580 → 580 | 579 → 579 |
+
+Launch improved in six embedded pairs and all seven external pairs.
+The isolated eight-await medians were 4.1% higher embedded and within
+0.1% external relative to the already optimized `961b183`. The paired
+eight-await changes varied in both directions.
+
+Comparing generated modules byte for byte found the same runtime
+source for both versions. With the literal producer the only
+difference in either runtime form was the producer's await
+expression. With the dynamic producer the entire generated modules
+matched.
+
+In the original mixed workload the one-await medians were 1431 → 1475
+ns embedded and 1373 → 1609 ns external. The newer version was slower
+in all seven external pairs. In a separate series, warming the
+one-await callback with 5,000 extra reads after exposure and just
+before timing changed the external comparison to 1303 → 1313 ns,
+with four of seven pairs slower. An interleaved external-only repeat
+cycled through both versions with and without the extra warmup. The
+paired median was +5.0% with the original sequence and −6.8% with
+the extra warmup. The observed gap depends on the measurement
+sequence. These comparisons do not isolate a specific V8 optimization
+or collection event, and the isolated reads did not show a stable
+regression. No additional compiler or runtime change was made.
+
+The rows below use the original mixed workload. Each cell is the
+median of five fresh processes measured in a series that also
+included the pre-compaction version.
+
+| Mixed workload | Embedded | External |
+| --- | ---: | ---: |
+| Launch and settle, `4ae0319` → `36aa1fb`, ns/result | 1719 → 1667 | 1644 → 1466 |
+| Eight awaits, `4ae0319` → `36aa1fb`, ns/callback | 1870 → 1890 | 1926 → 1687 |
+| Heap after reads, `17b5544` → `36aa1fb`, bytes/result | 614 → 566 | 613 → 565 |
+
+A separate seven-pair run of the isolated eight-await scenario
+measured `4ae0319` → `36aa1fb` at 1805 → 1591 ns embedded and
+1796 → 1631 ns external. The paths still show an improvement in
+isolation against the version from before generated compact waits.
+The mixed embedded run did not reproduce that improvement.
