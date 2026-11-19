@@ -2496,3 +2496,128 @@ measured `4ae0319` → `36aa1fb` at 1805 → 1591 ns embedded and
 1796 → 1631 ns external. The paths still show an improvement in
 isolation against the version from before generated compact waits.
 The mixed embedded run did not reproduce that improvement.
+
+### V8 tiering and collection during mixed reads
+
+The benchmark accepts two more optional arguments. The seventh is the
+number of extra one-await callbacks to run after publication in the
+mixed JS-retention scenario. It defaults to zero. The eighth accepts
+`on` for phase markers. A terminal or pseudo-terminal keeps the V8
+tiering messages in order with the markers.
+
+```sh
+deno run --allow-read \
+  --v8-flags=--expose-gc,--trace-opt,--trace-deopt,--trace-gc-nvp \
+  experiments/async-retained-results-benchmark.mjs \
+  . external 100000 javascript all literal 5000 on
+```
+
+This follow-up used the same Deno 2.9.7 build and arm64 macOS. External
+one-await compares `961b183` to `36aa1fb`. Embedded eight-await
+compares `4ae0319` to `36aa1fb`. The timed process medians use five
+batches of 20,000 reads after preparing 100,000 public Promises. The
+table reports medians across processes in ns per callback. The default
+run used seven pairs per condition. The two flag controls used five.
+
+| V8 setting | External one await, no extra warmup | External one await, 5,000 extra | Embedded eight awaits |
+| --- | ---: | ---: | ---: |
+| Default | 1354 → 1423 | 1407 → 1331 | 1855 → 1655 |
+| Young semi-spaces fixed at 64 MiB | 1634 → 1656 | 1499 → 1564 | 1870 → 1751 |
+| Maglev and TurboFan disabled | 2130 → 2162 | 2084 → 2154 | 3411 → 3466 |
+
+The external default-setting result changed direction when comparing
+medians across processes. The median of the within-pair changes was
++3.6% without the extra reads and +3.1% with them. This differs from
+the earlier interleaved run. Under default settings the eight-await
+embedded improvement appeared again in the mixed workload. Disabling
+both optimizing tiers removed it in this series. That control changes
+optimization throughout the fixture and does not identify a specific
+compiled function.
+
+In 18 additional processes traced through a pseudo-terminal, every
+fixture completed three TurboFan optimizations during the one-await
+samples and two during the eight-await samples. Those entries were
+anonymous functions. There were no recorded deoptimizations in either
+timed read window. A `wrong feedback cell` deoptimization of the
+shared benchmark helper `readAll` occurred during initial warmup
+in all 18 processes. The runtime also logged allocation-site tenuring
+invalidation outside the read windows. The same tiering counts
+appeared with and without the extra 5,000 reads.
+
+In the pseudo-terminal series, external one-await elapsed medians
+without extra reads were 1271 → 1354 ns. Subtracting logged stop times
+from each batch before taking its process median gave 939 → 942 ns.
+With extra reads those figures were 1286 → 1143 ns elapsed and
+920 → 904 ns after pause subtraction. Pause subtraction is descriptive
+and leaves concurrent work and any changes to allocation behavior in
+the measured time. For the embedded eight-await comparison the traced
+elapsed medians were 1773 → 1536 ns and the pause-adjusted medians
+were 1478 → 1225 ns. GC pauses can move the external one-await result
+at this scale, while the embedded improvement also appears outside
+the logged pauses.
+
+The large first-batch cost is a separate observation. With the
+64 MiB semi-spaces and all JIT disabled via `--jitless`, the median
+first batch without extra warmup cost 4523 → 4694 ns per callback,
+against 2605 → 2615 ns for the median of later batches. No collection
+was logged during any of those six first batches. Two more pairs
+still had a slow first batch when incremental marking, concurrent
+marking and concurrent sweeping were also disabled. An 80 ms wait
+after the forced collections did not substitute for running extra
+callbacks. A trial with a dedicated measurement loop and the same
+call site for the extra reads still showed the first-batch cost.
+
+Further timing placed the first-batch delay in its first 1,000
+callbacks. One instrumented run took 56 ms for that segment and about
+2.5 ms per 1,000 thereafter. Clocking just the two registration calls
+in two additional external-runtime runs explained almost the entire
+first callback's synchronous time. With JIT and background collection
+disabled, and no logged collection during those calls, the costs
+were 24.4–29.1 ms in `asyncResults.set` and 17.2–19.2 ms in
+`hostReferences.set`. The first callback completed in 41.6–48.4 ms.
+With extra reads after publication the measured window had no
+registering call over 1 ms. This locates the cost in WeakMap updates
+after preparing and collecting the retained workload. The timings
+do not expose the table's internal resize or rebuild decisions.
+Ordinary GC pauses account for an additional source of variation in
+the mixed timing.
+
+For embedded eight-await reads, two more controls disabled one
+optimizing tier at a time. Across four process pairs, the median
+elapsed time was 1667 → 1517 ns with Maglev disabled and
+2074 → 1921 ns with TurboFan disabled. With either tier available the
+benefit appeared. Together with the pause-adjusted trace and the
+default runs, this distinguishes performance of the optimized
+execution path from an effect of stop times alone. There is no trace
+from the earlier series that lost the improvement.
+
+The ordinary runtime now stores each result entry in a private field
+on its own opaque async result. The reference is still frozen and
+has a null prototype. Brand checks replace the internal WeakMap
+lookups without invoking property traps. The map used to recover a
+Toss result from a public Promise is retained. A separate prototype
+stamped the reverse reference onto the object returned by
+`Promise.then`. It had encouraging timings but would need additional
+handling for host code that supplies a custom `then` or species
+constructor returning a reused object.
+
+In two post-change runs of the external map probe, the first
+callback took 22.6 and 24.5 ms. Almost all of that time was the
+remaining `hostReferences.set` call. The extra warmup absorbed that
+spike in both pairs. The result reference now needs no map registration.
+
+The table compares `36aa1fb` with the private-field implementation
+in five fresh processes per configuration under default V8 flags.
+The isolated launch check uses a separate process from the mixed
+read and heap cases.
+
+| Metric | Embedded, previous → private field | External, previous → private field |
+| --- | ---: | ---: |
+| Isolated launch and settle, ns/result | 1462 → 1178 | 1460 → 1242 |
+| Mixed launch and settle, ns/result | 1381 → 1205 | 1554 → 1205 |
+| Mixed one await, ns/callback | 1429 → 1037 | 1384 → 967 |
+| Mixed eight awaits, ns/callback | 1628 → 1279 | 1628 → 1259 |
+| JS-only heap after reads, bytes/result | 563 → 485 | 564 → 486 |
+
+The original pre-compaction build retained 614 bytes per result in
+embedded output and 613 bytes in external output in the same series.

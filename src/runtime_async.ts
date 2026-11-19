@@ -1,6 +1,27 @@
 export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
   `const asyncBlockFunctions = new WeakSet();
-const asyncResults = new WeakMap();
+${
+    includeOwnedTasks
+      ? `class AsyncResultReference extends class {
+  constructor(reference) { return reference; }
+} {
+  #entry;
+  constructor(entry) {
+    // Preserve the opaque reference's null prototype while storing its state directly.
+    super(Object.create(null));
+    this.#entry = entry;
+    Object.freeze(this);
+  }
+  static has(value) {
+    return value !== null && (typeof value === "object" || typeof value === "function") && #entry in value;
+  }
+  static get(value) {
+    if (AsyncResultReference.has(value)) return value.#entry;
+  }
+}
+const asyncResults = AsyncResultReference;`
+      : "const asyncResults = new WeakMap();"
+  }
 const asyncResultState = Symbol();
 ${
     includeOwnedTasks
@@ -17,16 +38,16 @@ function markAsyncBlock(receiver) {
 }
 
 function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
-  const reference = Object.freeze(Object.create(null));
   ${
     includeOwnedTasks
       ? `const entry = {promise, [asyncResultState]: task.finished ? undefined : task,
     observation: undefined, notified: false};
   if (entry[asyncResultState] !== undefined) task.resultEntry = entry;
-  asyncResults.set(reference, entry);`
-      : "asyncResults.set(reference, promise);"
+  return new AsyncResultReference(entry);`
+      : `const reference = Object.freeze(Object.create(null));
+  asyncResults.set(reference, promise);
+  return reference;`
   }
-  return reference;
 }
 
 function asyncResultAwaitable(value) {

@@ -9,8 +9,11 @@ const [
   retention = "toss",
   scenario = "all",
   producer = "literal",
+  extraWarmupArgument = "0",
+  phaseTrace = "off",
 ] = Deno.args;
 const count = Number(countArgument);
+const extraWarmup = Number(extraWarmupArgument);
 assert.ok(runtime === "embedded" || runtime === "external");
 assert.ok(retention === "toss" || retention === "javascript");
 assert.ok(["all", "launch", "one", "eight"].includes(scenario));
@@ -19,8 +22,22 @@ assert.ok(
   (scenario !== "one" && scenario !== "eight") || retention === "javascript",
 );
 assert.ok(Number.isSafeInteger(count) && count > 0);
+assert.ok(
+  Number.isSafeInteger(extraWarmup) && extraWarmup >= 0 && extraWarmup <= count,
+);
+assert.ok(
+  extraWarmup === 0 || (scenario === "all" && retention === "javascript"),
+);
+assert.ok(phaseTrace === "off" || phaseTrace === "on");
 assert.equal(typeof globalThis.gc, "function", "Use --v8-flags=--expose-gc");
 
+function markPhase(phase) {
+  if (phaseTrace === "on") {
+    console.log("PHASE", phase, performance.now().toFixed(3));
+  }
+}
+
+markPhase("compile:start");
 const { compile, generateRuntimeModule } = await import(
   pathToFileURL(resolve(checkout, "src/compiler.ts")).href
 );
@@ -77,13 +94,15 @@ async function readAll(read, size) {
   for (let index = 0; index < size; index++) sum += await read(index);
   assert.equal(sum, size * 42);
 }
-async function medianRead(read) {
+async function medianRead(read, label) {
   const size = Math.min(count, 20000);
   const samples = [];
   for (let index = 0; index < 5; index++) {
+    markPhase(`${label}:${index}:start`);
     const start = performance.now();
     await readAll(read, size);
     samples.push((performance.now() - start) * 1e6 / size);
+    markPhase(`${label}:${index}:end`);
   }
   return Math.round(samples.sort((a, b) => a - b)[2]);
 }
@@ -109,6 +128,7 @@ const configuration = {
   count,
   scenario,
   producer,
+  extraWarmup,
 };
 const warmup = Math.min(5000, count);
 if (scenario === "launch") {
@@ -116,7 +136,9 @@ if (scenario === "launch") {
   await turn();
   fixture.clear();
   await heap();
+  markPhase("launch:start");
   const timings = await measureLaunch();
+  markPhase("launch:end");
   assert.equal(await fixture.expose(count - 1), 42);
   console.log(JSON.stringify({ ...configuration, ...timings }));
   Deno.exit(0);
@@ -135,7 +157,7 @@ if (scenario === "one" || scenario === "eight") {
     : fixture.repeatRoundTrip;
   const read = (index) => callback(promises[index]);
   await readAll(read, warmup);
-  const elapsed = await medianRead(read);
+  const elapsed = await medianRead(read, scenario);
   for (const promise of promises) {
     assert.equal(fixture.reexpose(promise), promise);
   }
@@ -149,6 +171,7 @@ if (scenario === "one" || scenario === "eight") {
   Deno.exit(0);
 }
 
+markPhase("initialWarmup:start");
 launch(warmup);
 await turn();
 await readAll(fixture.read, warmup);
@@ -163,14 +186,20 @@ if (retention === "javascript") {
     fixture.reexpose(fixture.expose(index));
   }
 }
+markPhase("initialWarmup:end");
 fixture.clear();
 const before = await heap();
 
+markPhase("launch:start");
 const launchTimings = await measureLaunch();
+markPhase("launch:end");
 const settled = await heap();
+markPhase("tossRead:start");
 let start = performance.now();
 await readAll(fixture.read, count);
 const tossAwaitNs = (performance.now() - start) * 1e6 / count;
+markPhase("tossRead:end");
+markPhase("publish:start");
 start = performance.now();
 const publicPromises = retention === "javascript" ? new Array(count) : null;
 await readAll(
@@ -180,12 +209,22 @@ await readAll(
   count,
 );
 const firstJavaScriptNs = (performance.now() - start) * 1e6 / count;
+markPhase("publish:end");
 if (publicPromises !== null) fixture.clear();
 const exposed = await heap();
+if (publicPromises !== null && extraWarmup > 0) {
+  markPhase("oneWarmup:start");
+  await readAll(
+    (index) => fixture.roundTrip(publicPromises[index]),
+    extraWarmup,
+  );
+  markPhase("oneWarmup:end");
+}
 const repeatedReadNs = await medianRead(
   publicPromises === null
     ? fixture.expose
     : (index) => fixture.roundTrip(publicPromises[index]),
+  publicPromises === null ? "cached" : "one",
 );
 let roundTripEightNs;
 let reexposeNs;
@@ -193,6 +232,7 @@ let afterRoundTrip;
 if (publicPromises !== null) {
   roundTripEightNs = await medianRead(
     (index) => fixture.repeatRoundTrip(publicPromises[index]),
+    "eight",
   );
   start = performance.now();
   for (const promise of publicPromises) {
