@@ -2944,3 +2944,106 @@ less than 1 ms, while every first insertion after the second
 collection exceeded 1 ms. With zero transient keys, the first
 round-trip await took 0.224 ms embedded and 0.234 ms external,
 close to the read-first result after heavy churn.
+
+### Natural GC under mixed Wasm retention
+
+The churn benchmark does not expose or call forced GC. Each batch
+publishes 256 distinct Wasm objects through the real custom-`then`
+fallback, then round-trips one key from each of three cohorts. The
+160 short-lived keys per batch stay for four batches, the 80 medium
+keys for 128 batches, and the 16 long keys for 2,048 batches. At
+the observed cadence of roughly 9–10 ms per batch, this represents
+about 40 ms, 1.2 s, and 19–20 s. The rolling retained set has
+43,648 slots. The anchored profile adds 100,000 keys retained for
+the whole run and one more read per batch. Anchor preparation is
+outside the timed workload. Each batch yields to a timer.
+
+```sh
+deno run --allow-read --v8-flags=--trace-gc \
+  experiments/async-wasm-churn-benchmark.mjs \
+  . external anchored 45 timing
+```
+
+The four 45-second runs below used Deno 2.9.7 on arm64 macOS.
+They used the unmodified runtime and passive GC logging.
+There is one fresh process per row. The latencies cover the
+callback itself. Reads start after that batch's publishing loop,
+so the read times exclude time spent queued behind a synchronous
+publication or collection. The registration percentile upper
+bound at p99 was 0.060 ms in all four runs.
+
+| Runtime | Profile | Registrations | Registrations ≥1 ms | Max registration | Max next registration after ≥1 ms | Max one-await callback | Max logged GC pause |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Embedded | Mixed | 1,192,448 | 289 | 99.52 ms | 4.42 ms | 1.83 ms | 113.36 ms |
+| External | Mixed | 1,226,752 | 279 | 13.79 ms | 0.93 ms | 4.28 ms | 57.23 ms |
+| Embedded | Anchored | 1,238,528 | 124 | 35.43 ms | 0.61 ms | 2.70 ms | 146.41 ms |
+| External | Anchored | 1,205,504 | 476 | 39.01 ms | 1.31 ms | 4.53 ms | 194.19 ms |
+
+GC logs are for the whole process. The listed maxima occurred well
+into the measured window. The registration maxima include all
+causes, so they cannot be used as individual rehash timings.
+
+For attribution, four more 30-second processes timed the actual
+fallback `WeakMap.set` and emitted batch markers around the
+publication and read work. The detailed V8 GC trace was captured
+through a pseudo-terminal to preserve ordering with those markers.
+
+```sh
+deno run --allow-read --v8-flags=--trace-gc-nvp \
+  experiments/async-wasm-churn-benchmark.mjs \
+  . external anchored 30 trace
+```
+
+The next table counts 1 ms or longer calls to the measured
+`WeakMap.set` in each 30-second trace. No such call had an earlier
+GC pause logged in the same batch. The stricter column counts calls
+that were the first publication after a GC logged between batches.
+Those cases match the prior controlled rehash reproduction, including
+the largest map call in each trace. The total count includes other
+slow table writes such as potential growth. V8 does not provide an
+exact rehash count in this trace, and rehashes shorter than 1 ms
+are outside the count.
+
+| Runtime | Profile | Map calls ≥1 ms | Map calls ≥8 ms | First after GC ≥1 ms | Max map call | Max next registration | Max one await in the same batch |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Embedded | Mixed | 16 | 4 | 4 | 12.30 ms | 0.400 ms | 0.162 ms |
+| External | Mixed | 16 | 4 | 5 | 11.84 ms | 0.282 ms | 0.150 ms |
+| Embedded | Anchored | 10 | 2 | 1 | 28.24 ms | 0.230 ms | 0.357 ms |
+| External | Anchored | 7 | 4 | 2 | 26.07 ms | 0.058 ms | 0.235 ms |
+
+All four traces still recorded slow map calls after the long cohort
+began turning over. The stricter observations correspond to about
+8–10 events per minute in mixed and 2–4 per minute in anchored.
+These rates are short-series estimates from the tested allocation
+rate. Anchor count increased the worst map pause in these traces.
+The measured next registration and later read in the batch stayed
+below 1 ms in every slow-map case.
+
+Most collections in the detailed logs occurred between batches.
+The largest logged pauses in the four traces were 74.21 and
+53.50 ms in mixed, and 49.08 and 105.44 ms in anchored for embedded
+and external, respectively. The external anchored maximum included
+35.56 ms in V8's linear ephemeron marking phase across the isolate.
+The GC trace does not break that number down by individual table.
+There were also slow publications outside the timed map call
+without a GC logged in their batch. The embedded anchored trace
+included one of 84.42 ms, with 0.004 ms in the map, whose cause
+was not classified.
+
+A 60-second anchored repeat per runtime used no V8 tracing flags.
+This checks whether the outliers require trace logging. It cannot
+attribute individual outliers to a map call or a collection.
+
+| Runtime | Registrations | Registrations ≥16 ms | Max registration | Max next registration after ≥1 ms | Max one await in a slow batch |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Embedded | 1,535,232 | 3 | 39.85 ms | 2.87 ms | 0.896 ms |
+| External | 1,631,744 | 3 | 33.07 ms | 0.66 ms | 0.647 ms |
+
+The results do not support adding a dedicated rehash mitigation to
+the ordinary runtime. The measured cost is concentrated in individual
+fallback writes. In a single JS thread it can still delay work
+queued behind that call. A latency-sensitive application with this
+much fallback traffic has a wider pause problem. The natural GC
+pauses in this workload exceeded the map-write maxima, and sharding
+the registrations would address only part of the observed delay.
+The runtime code is unchanged.
