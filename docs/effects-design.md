@@ -2765,3 +2765,85 @@ The 41 async ownership and boundary tests also passed with private
 field refusal forced for all public objects in a separate build.
 This exercises the WeakMap path for failure identity, cancellation
 propagation and one diagnostic after child cleanup.
+
+### Wasm fallback table and retained result footprint
+
+A diagnostic build measured only the first `hostReferences.set`
+after the transient batch and forced collections in the Wasm
+fixture. A table-only build wrote the same weak keys with `true`
+as the value. A third build skipped the write. The latter two
+measure heap and publication only, since they cannot round trip
+the original result. Values are medians of five fresh processes
+per condition in Deno 2.9.7 on arm64 macOS. The workload uses
+100,000 retained keys and a transient batch of the same size.
+
+| Diagnostic build | Embedded first publication | External first publication | Embedded heap, bytes/key | External heap, bytes/key |
+| --- | ---: | ---: | ---: | ---: |
+| Original result entries, timed set | 21.12 ms | 19.46 ms | 470.52 | 470.52 |
+| Weak table with boolean values | 16.90 ms | 19.14 ms | 82.80 | 82.81 |
+| No write | 0.050 ms | 0.056 ms | 0.26 | 0.25 |
+
+The timed set took 21.03 ms embedded and 19.38 ms external. The heap
+difference between the table-only case and the result case was
+about 388 bytes per key. The table estimate also includes any key
+metadata introduced by insertion. It reflects the capacity left
+by the burst of transient keys.
+
+A separate Node 26.13.1 diagnostic used a plain WeakMap with the
+same two batches of Wasm keys and boolean values. The first
+insertion took 18.95 ms and V8 printed the same backing table
+address before and after it. This matches V8's in-place rehash
+path after collection leaves enough deleted slots in the table.
+The public JS API has no explicit rehash operation.
+[V8 hash table insertion and rehash](https://chromium.googlesource.com/v8/v8/%2B/22afaacd47a47baef49222b20e94083d0dd37e2d/src/objects/objects.cc#7749)
+
+The representation trial allocates the opaque async result as a
+normal private-field class instance, sets its prototype to null,
+and freezes it. The former path stamped the private field onto
+an object created by `Object.create(null)`. Node's V8 diagnostics
+reported a dictionary representation for the former reference
+allocation and fast properties for the new class allocation.
+Both retain the original result entry with a private field. A
+second trial stamped a plain object whose prototype had been
+changed to null. It measured about 281 bytes per Wasm key, compared
+with about 258 bytes for the class instance. The class instance
+was selected.
+
+Five process pairs per condition measured the selected representation
+against `580dccf`. Independent launch and one-await runs use the
+ordinary Promise fixture. The ordinary heap and eight-await values
+come from the mixed retained-results fixture.
+
+| Metric | Embedded, before → after | External, before → after |
+| --- | ---: | ---: |
+| Wasm first publication after GC, ms | 18.40 → 17.69 | 19.00 → 18.01 |
+| Wasm one await, ns/callback | 693 → 629 | 744 → 636 |
+| Wasm heap, bytes/key | 470.51 → 257.69 | 470.51 → 257.67 |
+| Ordinary launch, ns/result | 1270 → 1241 | 1318 → 1230 |
+| Ordinary isolated one await, ns/callback | 418 → 360 | 421 → 378 |
+| Ordinary mixed eight awaits, ns/callback | 943 → 802 | 926 → 791 |
+| Ordinary mixed heap, bytes/result | 446 → 225 | 447 → 224 |
+
+The estimated result-related part of the Wasm heap is now about
+175 bytes per retained key. The backing WeakMap is unchanged, so
+the first insert can still take tens of milliseconds. A separate
+five-pair series put the new representation at 21.53 ms embedded
+and 16.19 ms external.
+
+Two fixed-size sharding trials used two or four WeakMaps for the
+object fallback. They split the rehash across two or four
+successive publications. In the same comparison series the
+four-map trial's first publication took 4.31 ms embedded and
+3.83 ms external. Across the first eight calls it took 16.52 ms
+embedded and 15.71 ms external, compared with 16.61 and 20.32 ms
+for the original code. The four-map steady Wasm read took 744 and
+717 ns per callback, compared with 721 and 724 ns for the original
+code and 663 and 650 ns for the new representation alone. The
+two-map version read in 726 and 691 ns. The implementation keeps
+one table to preserve the simpler lookup and the read improvement.
+
+A direct check of the generated external runtime also confirmed
+the null prototype, frozen state, empty reflected own keys and
+public-Promise round-trip identity. The 41 async ownership and
+boundary tests passed on a build that forced all public objects
+through the WeakMap fallback.
