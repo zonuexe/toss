@@ -2269,3 +2269,64 @@ changed direction across workloads and runtime forms. The regression
 suite now also verifies that awaiting a compact JS result suspends long
 enough for an accepted cancellation to prevent resumption and publish
 one diagnostic after cleanup.
+
+### Generated waits for compact results
+
+The follow-up separated the runtime resume branch from saving a result
+on the task. The branch-only control adds the token comparison at
+resumption to the compact runtime. The runtime-slot trial also stores the
+box on the task and waits on a shared fulfilled Promise. Two emitter
+trials choose the await target before suspension. One uses the task
+slot for the box and the other uses a local variable in the generated
+async Block. Those two trials use the same classification and
+suspension path.
+
+The control timings are medians in ns per callback from five fresh
+Deno 2.9.7 processes per runtime and version on arm64 macOS. Each
+benchmark retained 100,000 results from JS only.
+
+| Runtime | Variant | One await | Eight awaits |
+| --- | --- | ---: | ---: |
+| Embedded | Compact result baseline | 1392 | 1726 |
+| Embedded | Runtime resume comparison only | 1424 | 1799 |
+| Embedded | Runtime branch and task slot | 1341 | 1703 |
+| Embedded | Generated branch and task slot | 1469 | 1750 |
+| Embedded | Generated branch and local, runtime helpers | 1447 | 1668 |
+| External | Compact result baseline | 1357 | 1791 |
+| External | Runtime resume comparison only | 1419 | 1820 |
+| External | Runtime branch and task slot | 1371 | 1669 |
+| External | Generated branch and task slot | 1356 | 1708 |
+| External | Generated branch and local, runtime helpers | 1382 | 1714 |
+
+The extra resume comparison measured 2–5% slower on the one-await
+medians. Moving the box between the task and a local with the same
+generated branch had mixed results. Neither control gives a portable
+per-operation cost because branch placement and storage interact
+with optimization and the rest of the async path.
+
+The adopted emitter reads the compact result marker and the shared
+fulfilled Promise directly. Each generated activation keeps its own
+scratch locals. The two branches await either the normal awaitable
+or the shared Promise before using the saved box. Both go
+through the ordinary resumption check. The marker uses the existing
+result-entry slot for the task or box, so it adds no per-result field.
+
+In a separate series of five paired runs per runtime, the adopted
+emitter produced these medians.
+
+| Runtime | One await, previous → new | Eight awaits, previous → new | Heap after reads, bytes/result |
+| --- | ---: | ---: | ---: |
+| Embedded | 1393 → 1409 | 1757 → 1632 | 566 → 566 |
+| External | 1407 → 1375 | 1729 → 1610 | 565 → 565 |
+
+The eight-await case improved in five of five embedded runs and four
+of five external runs. The one-await changes were small. In the same
+series, the external ordinary Toss await before exposure was
+1514 → 1550 ns, and launch and settle was 1486 → 1583 ns. The embedded
+corresponding measurements were 1563 → 1517 and 1497 → 1514 ns.
+
+Node 26.13.1 V8 Promise hooks on the generated embedded fixture counted
+`50000 → 40000` Promise creations for 10,000 one-await callbacks and
+`190000 → 110000` for 10,000 eight-await callbacks. Regressions also
+exercise nested awaits, concurrent invocations, and awaits in an
+extension while compact results are returned from JS.

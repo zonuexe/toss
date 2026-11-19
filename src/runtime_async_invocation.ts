@@ -44,8 +44,8 @@ awaitToss = function(value, context) {
   if (entry !== undefined) {
     const waiting = entry.promise;
     entry.observation ??= true;
-    if (waiting === undefined) return entry.taskOrValue;
-    return entry.taskOrValue === undefined ? waiting : suspendEffectTask(waiting, task);
+    if (waiting === undefined) return entry;
+    return entry[asyncResultState] === undefined ? waiting : suspendEffectTask(waiting, task);
   }
   const operation = hostValues.get(value);
   if (operation === undefined) return {value: checkEffectTask(value, task)};

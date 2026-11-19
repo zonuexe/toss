@@ -1,4 +1,5 @@
 import type { Expression } from "./ast.ts";
+import { containsDirectAwait } from "./codegen_analysis.ts";
 
 export function emitBlock(
   expression: Extract<Expression, { readonly kind: "block" }>,
@@ -35,6 +36,11 @@ return {value: checkEffectTask(result, asyncTask), then: undefined};`;
     asynchronous ? "markAsyncBlock(" : ""
   }${functionKind}(${parameters.join(", ")}) {
 const invocation = this;
+${
+    asynchronous && expression.body.some(containsDirectAwait)
+      ? "let awaitable, awaitBox;"
+      : ""
+  }
 ${
     asynchronous
       ? 'const asyncTask = invocation?.kind === "tossAsyncInvocation" ? invocation : undefined;\ntry {'

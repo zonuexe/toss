@@ -119,7 +119,7 @@ function toJavaScript(value, context) {
       ${
     includeOwnedTasks
       ? `// Retain the original Toss value for the round trip and release the settled internal Promise.
-      entry.taskOrValue = result;
+      entry[asyncResultState] = result;
       entry.promise = undefined;`
       : ""
   }

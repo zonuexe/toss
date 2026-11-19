@@ -438,6 +438,46 @@ for (const external of [false, true]) {
     assert.equal(text(result.stderr), "");
   });
 
+  Deno.test(`nested and concurrent awaits recover the right compact Toss results (external=${external})`, async () => {
+    const javascript = compile(
+      `
+#start bind: %async({ item -> %await(0). [$item] }) asJSCallback.
+#pair bind: %async({ first, second ->
+  #pair bind: ($Object clone |> %extend(
+    left: ((%await($first)) at: 0),
+    right: ((%await($second)) at: 0)
+  )).
+  [$pair left, $pair right]
+}) asJSCallback.
+#nested bind: %async({ item ->
+  %await(0).
+  %async({ [$item] }) value
+}) asJSCallback.
+#unwrap bind: %async({ handle -> %await(%await($handle)) }) asJSCallback.
+%export(%js(start = $start, pair = $pair, nested = $nested, unwrap = $unwrap;
+  ({start, pair, nested, unwrap}))).
+`,
+      "nested-compact-await.toss",
+      options,
+    );
+    const result = await executeModuleJavaScript(
+      javascript,
+      `
+      import assert from "node:assert/strict";
+      const left = value.start(11);
+      const right = value.start(22);
+      const nested = value.nested(42);
+      const payload = await nested;
+      await Promise.all([left, right]);
+      assert.deepEqual(await Promise.all([value.pair(left, right), value.pair(right, left)]),
+        [[11, 22], [22, 11]]);
+      assert.equal(await value.unwrap(nested), payload);
+    `,
+    );
+    assert.equal(result.success, true, text(result.stderr));
+    assert.equal(text(result.stderr), "");
+  });
+
   Deno.test(`discarded async invocation reports its original failure after child cleanup (external=${external})`, async () => {
     const javascript = compile(
       `

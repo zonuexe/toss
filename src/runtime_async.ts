@@ -1,11 +1,12 @@
 export const runtimeAsyncJavaScript = (includeOwnedTasks: boolean): string =>
   `const asyncBlockFunctions = new WeakSet();
 const asyncResults = new WeakMap();
+const asyncResultState = Symbol();
 ${
     includeOwnedTasks
       ? `function asyncResultTask(value) {
   const entry = asyncResults.get(value);
-  return entry?.promise === undefined ? undefined : entry.taskOrValue;
+  return entry?.promise === undefined ? undefined : entry[asyncResultState];
 }`
       : ""
   }
@@ -19,9 +20,9 @@ function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
   const reference = Object.freeze(Object.create(null));
   ${
     includeOwnedTasks
-      ? `const entry = {promise, taskOrValue: task.finished ? undefined : task,
+      ? `const entry = {promise, [asyncResultState]: task.finished ? undefined : task,
     observation: undefined, notified: false};
-  if (entry.taskOrValue !== undefined) task.resultEntry = entry;
+  if (entry[asyncResultState] !== undefined) task.resultEntry = entry;
   asyncResults.set(reference, entry);`
       : "asyncResults.set(reference, promise);"
   }
@@ -31,9 +32,13 @@ function asyncResult(promise${includeOwnedTasks ? ", task" : ""}) {
 function asyncResultAwaitable(value) {
   const entry = asyncResults.get(value);
   return ${
-    includeOwnedTasks ? "entry?.promise ?? entry?.taskOrValue" : "entry"
+    includeOwnedTasks ? "entry?.promise ?? entry?.[asyncResultState]" : "entry"
   };
 }
+
+const settledTossTick = ${
+    includeOwnedTasks ? "(async () => {})()" : "undefined"
+  };
 
 function resumeTossAwait(result, environment) {
   ${

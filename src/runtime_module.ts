@@ -21,8 +21,10 @@ export const runtimeBridgeNames = [
   "preserveOwnedAsyncRejection",
   "reportHostFailure",
   "resumeTossAwait",
+  "asyncResultState",
   "send",
   "settleEffectTaskFailure",
+  "settledTossTick",
   "toJavaScript",
 ] as const;
 
@@ -57,7 +59,9 @@ export function runtimeCompatibilitySetupLines(
   const diagnostic =
     "Toss runtime is missing or incompatible. Regenerate the runtime module with the matching compiler, then rebuild this artifact.";
   const requiredHelpers = JSON.stringify(
-    runtimeBridgeNames.filter((name) => name !== "ownedEffectRoot"),
+    runtimeBridgeNames.filter((name) =>
+      !["ownedEffectRoot", "asyncResultState", "settledTossTick"].includes(name)
+    ),
   );
   return [
     '"use strict";',
@@ -70,7 +74,7 @@ export function runtimeCompatibilitySetupLines(
     `try { tossRuntime = ${namespace}.createRuntime(${diagnosticHost}); } catch (cause) { throw new Error(${
       JSON.stringify(diagnostic)
     }, {cause}); }`,
-    `if (tossRuntime === null || typeof tossRuntime !== "object" || tossRuntime.ownedEffectRoot === null || typeof tossRuntime.ownedEffectRoot !== "object" || !${requiredHelpers}.every((name) => typeof tossRuntime[name] === "function")) {`,
+    `if (tossRuntime === null || typeof tossRuntime !== "object" || tossRuntime.ownedEffectRoot === null || typeof tossRuntime.ownedEffectRoot !== "object" || typeof tossRuntime.asyncResultState !== "symbol" || !(tossRuntime.settledTossTick instanceof Promise) || !${requiredHelpers}.every((name) => typeof tossRuntime[name] === "function")) {`,
     `throw new Error(${JSON.stringify(diagnostic)});`,
     "}",
     `const {${runtimeBridgeNames.join(", ")}} = tossRuntime;`,

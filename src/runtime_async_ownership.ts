@@ -38,7 +38,7 @@ function finishEffectAsyncTask(task) {
   ${
   ordinaryTasks
     ? `if (task.resultEntry !== undefined) {
-    task.resultEntry.taskOrValue = undefined;
+    task.resultEntry[asyncResultState] = undefined;
     task.resultEntry = undefined;
   }
   task.discardedPromise = undefined;
