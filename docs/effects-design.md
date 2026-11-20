@@ -3666,3 +3666,70 @@ demonstrates that a GC-free, 100 ms-class registration can occur without
 synchronous JavaScript diagnostic output. The other 15 runs had no individual
 registration reach 100 ms. In particular, the external GC-recorded repetitions
 did not reproduce the earlier 104.12 ms call.
+
+### Longer deferred diagnostic runs under CPU saturation
+
+The deferred-output workload above was repeated in fresh 180-second processes in
+the order external, embedded, embedded, external. Each process had the 16
+arithmetic workers, 10,000 fixed results, the 25,600/s publication schedule, and
+100 reads/s. The one-millisecond end-to-end histogram and passive natural GC
+trace were retained. No process used forced GC or emitted JavaScript diagnostics
+during the measured interval.
+
+The probe also wrote an in-memory numeric record for every publication slot. It
+recorded the deadline, wake time, key allocation and publish boundaries,
+completion, and benchmark-thread CPU. Slow batches also recorded sampled
+runnable and blocked time. All these records were written out after the
+schedule. The same GC receipt clock was used with a comparison window padded by
+12 ms before and 2 ms after the estimated trace interval. GC wall time and
+off-CPU time can overlap. Mach state estimates cover only intervals supported by
+the samples and are capped by elapsed time minus thread CPU.
+
+| Runtime  | Repetition | Registration p99 upper bound / max, ms | One-await p99 upper bound / max, ms | Calls ≥100 ms without aligned GC |
+| -------- | ---------: | -------------------------------------: | ----------------------------------: | -------------------------------: |
+| External |          1 |                         610 / 1,047.72 |                      611 / 1,045.87 |                                1 |
+| Embedded |          1 |                            11 / 144.75 |                         12 / 144.78 |                                0 |
+| Embedded |          2 |                             8 / 145.71 |                          9 / 145.79 |                                0 |
+| External |          2 |                             6 / 133.42 |                          7 / 133.45 |                                0 |
+
+Latencies include queue wait. Every process completed 4,608,000 registrations
+and 18,000 reads. All four runs had a median host CPU utilization of 100%, and
+no diagnostic records were lost. The one-second queue wait occurred in one of
+two external runs and neither embedded run.
+
+In the first external repetition, the one-second episode began 102.385 s into
+the schedule. A batch started only 0.09 ms after its deadline and took 117.16 ms
+with 1.15 ms of thread CPU and 113.15 ms of estimated runnable wait. Its
+interval had no GC record. Two later GC-free batches took 191.07 ms and 199.37
+ms with 1.18 ms and 2.11 ms of thread CPU respectively. They began with 292.88
+ms and 487.17 ms of backlog already present.
+
+Fifty-eight of the 252 batches from the first delay through the peak exceeded
+their 5 ms period. A 16.67 ms young collection overlapped the peak batch, which
+already waited 1,006.65 ms before it began. The most delayed one-await read
+waited 1,045.81 ms and took 0.062 ms to settle once started. Eleven reads waited
+at least one second. A later major collection occurred after this peak. The
+measured order was CPU-ready delays inside registration, increasing batch
+backlog, then a GC pause during the peak batch.
+
+In that episode a 115.05 ms registration took 0.11 ms of thread CPU, with 51.65
+ms of estimated runnable wait and 63.30 ms unclassified. Its fallback map write
+took 0.005 ms elapsed and there was no aligned GC record. The same run also had
+a separate 313.30 ms registration overlapping a 265.77 ms major collection.
+
+The first embedded run had a different order at its peak. A 127.99 ms major
+collection coincided with timer wake-up. The benchmark thread used 89.96 ms of
+CPU during the wait and the sampled runnable periods covered the roughly 37 ms
+of off-CPU time after the deadline. The first post-collection batch started
+127.35 ms late and ran for 17.40 ms. The read due with that batch waited 144.76
+ms and took 0.027 ms once started. That episode illustrates a GC-led backlog,
+with runnable wait already included in the measured pause.
+
+The second embedded peak also followed a major collection (117.97 ms) and then a
+24.53 ms registration batch. The second external peak followed a 116.13 ms major
+collection and a 17.13 ms batch. No second-scale queue developed in either case.
+The first external run itself also had a separate 512.10 ms major collection
+during timer wake-up. The just-due registration batch waited 510.56 ms and then
+ran for 44.99 ms, giving the next batch 550.58 ms of backlog. The initial
+one-second episode and these GC-led episodes show different orders of onset
+within the same load profile.
