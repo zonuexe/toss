@@ -3821,3 +3821,79 @@ also had a distinct 104.58 ms individual registration without a matching GC
 record. That call used 0.06 ms of thread CPU, and the state sampling attributed
 an estimated 103.11 ms to runnable wait. Fixed-rate splitting kept throughput
 but left both runtimes above both latency budgets in the three-minute runs.
+
+### Intermediate admission rates under CPU saturation
+
+The follow-up kept a 5 ms registration interval, 100 reads/s, 10,000 fixed
+results and the same nominal rotating-cohort lifetimes. Sixteen worker threads
+contended for 12 logical CPUs. The per-event and batch diagnostics were written
+after measurement. The V8 trace recorded only natural GC. The 6,400/s profile
+ran for 300 seconds in each runtime, followed by 180-second runs at 9,600/s.
+Latencies start at the offered arrival deadline.
+
+At 6,400/s, the five-minute external repeat stayed within both budgets. The
+embedded repeat's registration maximum reached 103.51 ms, while its one-await
+maximum stayed at 99.01 ms and both p99 bounds were 6 ms. At the registration
+peak, a 90.08 ms major collection delayed the next batch's start by 93.69 ms.
+The batch then took 9.83 ms. The breach occurred about 147 seconds into the
+repeat, so process-to-process variation was enough to reverse the earlier joint
+180-second pass.
+
+Both 9,600/s runs missed the maximum budget and stayed within the p99 budget. In
+the embedded run a 94.54 ms major collection preceded an 18.91 ms batch. The
+corresponding external run had a recorded major collection as long as 108.24 ms.
+
+The next pair at 8,000/s puts 40 results in each 5 ms batch. The lower 4,800/s
+pair uses 24 results. Both profiles run for 300 seconds per runtime. The probe
+alternates the medium and long cohort sizes because those two groups have
+fractional per-slot averages at batch sizes 40 and 24. The two-slot totals
+preserve the original proportions, and the retention ring lengths are all even
+at a 5 ms interval.
+
+| Batch / interval | Runtime  | Schedule | Actual registrations/s | Registration p99 bound / max, ms | One-await p99 bound / max, ms | Max GC, ms | Both targets |
+| ---------------- | -------- | -------: | ---------------------: | -------------------------------: | ----------------------------: | ---------: | ------------ |
+| 16 / 5 ms        | Embedded |    300 s |                3,200.0 |                        5 / 82.36 |                     5 / 82.40 |      20.45 | Pass         |
+| 16 / 5 ms        | External |    300 s |                3,200.0 |                        8 / 90.97 |                     8 / 88.80 |      78.58 | Pass         |
+| 24 / 5 ms        | Embedded |    300 s |                4,800.0 |                      12 / 528.29 |                   13 / 528.33 |      55.59 | Fail         |
+| 24 / 5 ms        | External |    300 s |                4,800.0 |                       11 / 78.28 |                    12 / 78.31 |      65.47 | Pass         |
+| 32 / 5 ms        | Embedded |    300 s |                6,400.0 |                       6 / 103.51 |                     6 / 99.01 |      90.08 | Fail         |
+| 32 / 5 ms        | External |    300 s |                6,400.0 |                        5 / 62.57 |                     5 / 59.19 |      56.28 | Pass         |
+| 40 / 5 ms        | Embedded |    300 s |                8,000.1 |                      12 / 136.99 |                   11 / 137.02 |     108.73 | Fail         |
+| 40 / 5 ms        | External |    300 s |                8,000.0 |                      12 / 127.73 |                   11 / 122.97 |     109.26 | Fail         |
+| 48 / 5 ms        | Embedded |    180 s |                9,600.1 |                       6 / 114.13 |                    7 / 109.92 |      94.54 | Fail         |
+| 48 / 5 ms        | External |    180 s |                9,600.1 |                      14 / 129.88 |                   13 / 129.92 |     108.24 | Fail         |
+
+The 8,000/s maxima followed major collections of 108.73 ms and 109.26 ms, then
+registration batches lasting 25.51 ms and 16.34 ms for embedded and external
+respectively. Both p99s stayed below the budget in each run. The preceding
+12,800/s three-minute profile also breached the external maximum, so the
+intermediate search went down to 8,000/s after the 9,600/s breach.
+
+At 4,800/s, the external peak had no aligned GC record. One batch took 36.91 ms
+with 0.63 ms of thread CPU and 31.21 ms of estimated runnable wait. A following
+batch began 38.94 ms after its deadline and took 39.34 ms with 0.24 ms of thread
+CPU. Most off-CPU time in the second batch remained unclassified because samples
+were sparse. That peak was larger than the external 6,400/s peak despite the
+lower rate.
+
+The embedded 4,800/s peak built up through a separate chain of off-CPU delays.
+Two registrations in the episode took 194.89 ms and 186.48 ms, with 0.09 ms and
+0.12 ms of thread CPU. Neither interval overlapped an aligned GC. The Mach
+sampling gaps leave most of each interval unclassified. The most delayed read
+waited 528.31 ms and took 0.028 ms to settle. The next recorded GC in that
+episode began after the read's peak. A subsequent pair used 16 registrations
+every 5 ms, or 3,200/s, for 300 seconds per runtime.
+
+At 3,200/s the embedded peak still came from off-CPU delay. A batch with 34.36
+ms of queue wait took 39.90 ms, with 0.52 ms of thread CPU and 36.78 ms of
+sampled runnable wait. The next batch started 69.27 ms late, and the most
+delayed read was 82.40 ms end to end. The peak episode had no aligned GC. The
+external registration peak followed a 78.16 ms major collection and a 9.95 ms
+batch late in the schedule, around 294.6 seconds.
+
+All ten runs had 100% median host CPU utilization, met both p99 budgets, and
+completed all admitted work. The 3,200/s point was the only tested rate to meet
+both maxima in both runtimes in the follow-up. It completed 960,000
+registrations and 30,000 reads per runtime. The next tested rate, 4,800/s,
+failed in embedded. The interval between those rates and exposures longer than
+five minutes remain unmeasured.
