@@ -3897,3 +3897,41 @@ both maxima in both runtimes in the follow-up. It completed 960,000
 registrations and 30,000 reads per runtime. The next tested rate, 4,800/s,
 failed in embedded. The interval between those rates and exposures longer than
 five minutes remain unmeasured.
+
+### Six-minute repeats at 3,200 and 4,000 arrivals per second
+
+Each runtime ran 360-second schedules with 16 and 20 registrations per 5 ms. The
+fixed set of 10,000 results, 100 reads/s, and 16 competing arithmetic workers
+matched the previous measurements. The two runtime orders were reversed across
+the rates. Batch and JavaScript diagnostic records were buffered until after the
+schedule. V8 recorded natural GC during the schedule, with no forced GC.
+
+The 20-result probe uses four successive short/medium/long cohort partitions of
+13/6/1, 12/7/1, 13/6/1, and 12/6/2. This preserves the cohort proportions and
+nominal lifetimes of 40, 1,280, and 20,480 ms. Each ring has a multiple of four
+slots. The fully populated lengths were asserted after measurement. The two
+profiles retain 5,456 and 6,820 rotating result slots respectively, in addition
+to the fixed results.
+
+| Batch / interval | Runtime  | Actual registrations/s | Registration p99 bound / max, ms | One-await p99 bound / max, ms | Max GC, ms | Both targets |
+| ---------------- | -------- | ---------------------: | -------------------------------: | ----------------------------: | ---------: | ------------ |
+| 16 / 5 ms        | Embedded |                3,200.0 |                        4 / 29.94 |                     5 / 26.30 |      16.67 | Pass         |
+| 16 / 5 ms        | External |                3,200.0 |                        5 / 15.66 |                     5 / 15.70 |      11.73 | Pass         |
+| 20 / 5 ms        | Embedded |                4,000.0 |                        4 / 66.92 |                     4 / 62.28 |      23.13 | Pass         |
+| 20 / 5 ms        | External |                4,000.0 |                        5 / 68.66 |                     6 / 64.50 |      58.26 | Pass         |
+
+Each 3,200/s repeat completed 1,152,000 registrations and 36,000 reads. Both met
+the two targets at a 100% median host CPU utilization. The earlier independent
+five-minute repeats had larger observed maxima of 82.40 ms embedded and 90.97 ms
+external. The new runs extend the measured continuous schedule to six minutes.
+
+Both 4,000/s runs also passed with 100% median CPU utilization. They each
+completed 1,440,000 registrations and 36,000 reads. The embedded registration
+peak followed a 66.32 ms timer wake delay with no aligned GC and only 0.10 ms of
+thread CPU. The corresponding external peak accumulated through a 43.61 ms timer
+delay and a 25.05 ms batch, again with no aligned GC. Thread-state samples left
+much of this off-CPU time unclassified.
+
+The 4,000/s point raises confirmed six-minute throughput by 25% relative to
+3,200/s. The earlier 4,800/s embedded run exceeded 100 ms. The rates between
+those two points and longer exposures at 4,000/s remain unmeasured.
