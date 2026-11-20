@@ -4,22 +4,34 @@ export const runtimeBridgeNames = [
   "TossRuntimeError",
   "awaitToss",
   "blockEnvironment",
+  "checkEffectTask",
+  "discardValueSend",
   "evaluateCompiledJavaScript",
   "fetchBinding",
+  "finishEffectAsyncTask",
   "fromJavaScript",
+  "hasEffectOwnedWork",
   "isJavaScriptReference",
+  "joinEffectOwnedWork",
   "lexicalEnvironment",
   "markAsyncBlock",
+  "ownedEffectRoot",
   "parentSend",
   "pipelineSend",
+  "preserveOwnedAsyncRejection",
+  "reportHostFailure",
+  "resumeTossAwait",
+  "asyncResultState",
   "send",
+  "settleEffectTaskFailure",
+  "settledTossTick",
   "toJavaScript",
 ] as const;
 
 function runtimeFactorySource(): string {
   return [
-    "export function createRuntime() {",
-    ...runtimePreludeLines(),
+    "export function createRuntime(effectDiagnosticHost) {",
+    ...runtimePreludeLines(false, undefined, undefined, true, true),
     `return {${runtimeBridgeNames.join(", ")}};`,
     "}",
     "",
@@ -42,10 +54,15 @@ export function runtimeModuleFingerprint(): string {
 export function runtimeCompatibilitySetupLines(
   namespace: string,
   expectedFingerprint = runtimeModuleFingerprint(),
+  diagnosticHost = "undefined",
 ): string[] {
   const diagnostic =
     "Toss runtime is missing or incompatible. Regenerate the runtime module with the matching compiler, then rebuild this artifact.";
-  const requiredHelpers = JSON.stringify(runtimeBridgeNames);
+  const requiredHelpers = JSON.stringify(
+    runtimeBridgeNames.filter((name) =>
+      !["ownedEffectRoot", "asyncResultState", "settledTossTick"].includes(name)
+    ),
+  );
   return [
     '"use strict";',
     `if (${namespace}.runtimeFingerprint !== ${
@@ -54,10 +71,10 @@ export function runtimeCompatibilitySetupLines(
     `throw new Error(${JSON.stringify(diagnostic)});`,
     "}",
     "let tossRuntime;",
-    `try { tossRuntime = ${namespace}.createRuntime(); } catch (cause) { throw new Error(${
+    `try { tossRuntime = ${namespace}.createRuntime(${diagnosticHost}); } catch (cause) { throw new Error(${
       JSON.stringify(diagnostic)
     }, {cause}); }`,
-    `if (tossRuntime === null || typeof tossRuntime !== "object" || !${requiredHelpers}.every((name) => typeof tossRuntime[name] === "function")) {`,
+    `if (tossRuntime === null || typeof tossRuntime !== "object" || tossRuntime.ownedEffectRoot === null || typeof tossRuntime.ownedEffectRoot !== "object" || typeof tossRuntime.asyncResultState !== "symbol" || !(tossRuntime.settledTossTick instanceof Promise) || !${requiredHelpers}.every((name) => typeof tossRuntime[name] === "function")) {`,
     `throw new Error(${JSON.stringify(diagnostic)});`,
     "}",
     `const {${runtimeBridgeNames.join(", ")}} = tossRuntime;`,

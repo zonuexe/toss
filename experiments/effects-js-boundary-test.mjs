@@ -4,8 +4,12 @@ import {
   compileExperimentalEffectsSources,
 } from "./effects-compiler.ts";
 
-async function run(source, observeCause = false) {
-  const generated = compileExperimentalEffects(source, "js-boundary.toss");
+async function run(source, observeCause = false, shared = false) {
+  const generated = compileExperimentalEffects(source, "js-boundary.toss", {
+    sharedDispatchTables: shared,
+    sharedBoundaryDelegate: shared,
+    failureCarriers: shared,
+  });
   const prefix = generated.match(/^(?:import \* as [^\n]+\n)*/)?.[0] ?? "";
   const javascript = observeCause
     ? `${prefix}try { ${
@@ -18,11 +22,21 @@ async function run(source, observeCause = false) {
     stderr: "piped",
   }).output();
   const decoder = new TextDecoder();
-  return {
+  const outcome = {
     success: result.success,
     stdout: decoder.decode(result.stdout),
     stderr: decoder.decode(result.stderr),
   };
+  if (!shared) {
+    const alternate = await run(source, observeCause, true);
+    const relevant = (stderr) =>
+      stderr.split("\n")
+        .filter((line) => !/^\s+at /.test(line)).join("\n");
+    assert.equal(alternate.success, outcome.success, source);
+    assert.equal(alternate.stdout, outcome.stdout, source);
+    assert.equal(relevant(alternate.stderr), relevant(outcome.stderr), source);
+  }
+  return outcome;
 }
 const ordinary = await run("#x bind: 2. (%js(x = $x; x + 1)) print.");
 assert.equal(ordinary.success, true, ordinary.stderr);
@@ -39,6 +53,12 @@ const localHandler = await run(
 );
 assert.equal(localHandler.success, true, localHandler.stderr);
 assert.equal(localHandler.stdout, "7\n");
+
+const reentrantHandler = await run(
+  "#cb bind: { #h bind: $Object clone. $h at: #Inner put: { p, k -> $k value: 7 }. { $Effect raise: #Inner with: $Nil } handleWith: $h } asJSCallback. #outer bind: $Object clone. $outer at: #Outer put: { p, k -> #v bind: %js(f = $cb; f()). $k value: $v }. ({ $Effect raise: #Outer with: $Nil } handleWith: $outer) print.",
+);
+assert.equal(reentrantHandler.success, true, reentrantHandler.stderr);
+assert.equal(reentrantHandler.stdout, "7\n");
 
 const crossEffect = await run(
   "#h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. #cb bind: { $Effect raise: #A with: $Nil } asJSCallback. { %js(f = $cb; f()) } handleWith: $h.",

@@ -7,6 +7,7 @@ type ModuleOutputOptions = {
   readonly moduleSources: readonly string[];
   readonly macroLibraries: ReadonlySet<string>;
   readonly runtimeImport?: string;
+  readonly failureObserverImport?: string;
 };
 
 export async function validateModuleOutput(
@@ -47,17 +48,23 @@ export async function validateModuleOutput(
       "Output must not overwrite a module source file.",
     );
   }
-  const runtimeImport = options.runtimeImport;
-  if (
-    runtimeImport !== undefined &&
-    (runtimeImport.startsWith("./") || runtimeImport.startsWith("../")) &&
-    !runtimeImport.includes("?") && !runtimeImport.includes("#") &&
-    resolve(dirname(canonicalOutput), runtimeImport) === canonicalOutput
+  for (
+    const [specifier, role] of [
+      [options.runtimeImport, "its runtime module"],
+      [options.failureObserverImport, "its failure observer module"],
+    ] as const
   ) {
-    throw new TossSyntaxError(
-      { file: options.input, line: 1, column: 1 },
-      "Output must not import itself as its runtime module.",
-    );
+    if (
+      specifier !== undefined &&
+      (specifier.startsWith("./") || specifier.startsWith("../")) &&
+      !specifier.includes("?") && !specifier.includes("#") &&
+      resolve(dirname(canonicalOutput), specifier) === canonicalOutput
+    ) {
+      throw new TossSyntaxError(
+        { file: options.input, line: 1, column: 1 },
+        "Output must not import itself as " + role + ".",
+      );
+    }
   }
 }
 

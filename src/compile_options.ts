@@ -3,6 +3,7 @@ export type CompileFormat = "program" | "esm";
 export type CompileOptions = {
   readonly format?: CompileFormat;
   readonly runtimeImport?: string;
+  readonly failureObserverImport?: string;
   readonly treeShakePrelude?: boolean;
 };
 
@@ -23,7 +24,22 @@ export function compileTreeShakePrelude(options: CompileOptions): boolean {
 export function compileRuntimeImport(
   options: CompileOptions,
 ): string | undefined {
-  const specifier = options.runtimeImport;
+  return moduleSpecifier(options.runtimeImport, "Runtime import");
+}
+
+export function compileFailureObserverImport(
+  options: CompileOptions,
+): string | undefined {
+  return moduleSpecifier(
+    options.failureObserverImport,
+    "Failure observer import",
+  );
+}
+
+function moduleSpecifier(
+  specifier: string | undefined,
+  label: string,
+): string | undefined {
   if (specifier === undefined) return undefined;
   if (
     specifier.length === 0 || specifier.trim() !== specifier ||
@@ -32,7 +48,7 @@ export function compileRuntimeImport(
       return code !== undefined && (code < 32 || code === 127);
     })
   ) {
-    throw new TypeError("Runtime import must be a nonempty module specifier.");
+    throw new TypeError(label + " must be a nonempty module specifier.");
   }
   return specifier;
 }

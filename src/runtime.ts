@@ -1,8 +1,15 @@
 import { runtimeAsyncJavaScript } from "./runtime_async.ts";
 import { runtimeJavaScriptAot } from "./runtime_javascript_aot.ts";
 import { runtimeJavaScriptCallback } from "./runtime_javascript_callback.ts";
+import { effectDiagnosticRuntime } from "./effect_diagnostics.ts";
+import { runtimeAsyncInvocation } from "./runtime_async_invocation.ts";
+import { runtimeAsyncOwnership } from "./runtime_async_ownership.ts";
 
-export function runtimeJavaScript(outputHook?: string): string {
+export function runtimeJavaScript(
+  outputHook?: string,
+  includeDiagnostics = false,
+  includeOwnedTasks = false,
+): string {
   const outputCall = outputHook === undefined
     ? "console.log(text);"
     : outputHook + "(text, context.location);";
@@ -25,6 +32,48 @@ function formatMacroTrace(trace) {
 
 const hostValues = new WeakMap();
 const hostReferences = new WeakMap();
+${
+    includeOwnedTasks
+      ? `class PrivateReferenceTarget {
+  // A derived constructor can attach private state to the supplied object.
+  constructor(target) { return target; }
+}
+let publicWeakKeyValidator;
+class PublicAsyncReference extends PrivateReferenceTarget {
+  #reference;
+  constructor(promise, reference) {
+    super(promise);
+    this.#reference = reference;
+  }
+  static get(value) {
+    return #reference in value ? value.#reference : hostReferences.get(value);
+  }
+  static set(value, reference) {
+    if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+      // Keep native WeakMap key validation. JS-to-Toss conversion cannot recover
+      // an async reference from a primitive, so retain no result for this key.
+      const validator = publicWeakKeyValidator ??= new WeakMap();
+      validator.set(value, undefined);
+      validator.delete(value);
+      return;
+    }
+    // Custom then or species can return the same object for different results.
+    if (#reference in value) {
+      value.#reference = reference;
+      return;
+    }
+    try {
+      new PublicAsyncReference(value, reference);
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      hostReferences.set(value, reference);
+      return;
+    }
+    hostReferences.delete(value);
+  }
+}`
+      : ""
+  }
 const javascriptCallbacks = new WeakMap();
 const javascriptReferenceMessages = new Map([
   ["toString", function() { return "<js>"; }],
@@ -32,9 +81,50 @@ const javascriptReferenceMessages = new Map([
   ["print", function(receiver, context) { return writeOutput(receiver, "toString", context); }],
   ["dump", function(receiver, context) { return writeOutput(receiver, "inspect", context); }],
 ]);
-${runtimeAsyncJavaScript}
-${runtimeJavaScriptCallback}
+${runtimeAsyncJavaScript(includeOwnedTasks)}
+${runtimeJavaScriptCallback(includeDiagnostics, includeOwnedTasks)}
 ${runtimeJavaScriptAot}
+${
+    includeOwnedTasks
+      ? runtimeAsyncOwnership(
+        includeDiagnostics ? "effectDiagnosticHost" : "undefined",
+        true,
+      ) + runtimeAsyncInvocation
+      : ""
+  }
+${
+    includeDiagnostics || includeOwnedTasks
+      ? `
+function withEffectBoundary(body) { return body(); }
+${includeDiagnostics ? effectDiagnosticRuntime : ""}
+const noEffectDescriptions = Object.freeze([]);
+function reportHostFailure(error, boundary) {
+  ${
+        includeOwnedTasks
+          ? "const exposed = effectFailureValue(error);"
+          : "const exposed = error;"
+      }
+  ${
+        includeDiagnostics
+          ? `
+  if (onEffectFailure !== undefined) {
+    notifyEffectFailure(Object.freeze({
+      boundary, error: exposed, cleanupDescriptions: ${
+            includeOwnedTasks
+              ? "ownedCleanupDescriptions(error)"
+              : "noEffectDescriptions"
+          },
+      handlerDescriptions: noEffectDescriptions,
+    }));
+  }
+  `
+          : ""
+      }
+  return exposed;
+}
+`
+      : ""
+  }
 
 function isJavaScriptReference(value) { return hostValues.has(value) || asyncResults.has(value); }
 
@@ -43,7 +133,9 @@ function fromJavaScript(value, context) {
   if (typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    const previous = hostReferences.get(value);
+    const previous = ${
+    includeOwnedTasks ? "PublicAsyncReference" : "hostReferences"
+  }.get(value);
     if (previous !== undefined) return previous;
     const reference = Object.freeze(Object.create(null));
     hostValues.set(reference, value);
@@ -54,15 +146,47 @@ function fromJavaScript(value, context) {
 }
 
 function toJavaScript(value, context) {
-  if (asyncResults.has(value)) {
-    const previous = asyncHostPromises.get(value);
-    if (previous !== undefined) return previous;
-    const promise = asyncResults.get(value).then((result) =>
-      toJavaScript(result.value, context)
-    );
-    asyncHostPromises.set(value, promise);
-    hostValues.set(value, promise);
-    hostReferences.set(promise, value);
+  const entry = asyncResults.get(value);
+  if (entry !== undefined) {
+    ${
+    includeOwnedTasks
+      ? `// The observation slot holds true for an internal wait or the public Promise.
+    const previous = entry.observation;
+    if (previous !== undefined && previous !== true) return previous;
+    entry.observation = true;`
+      : `const previous = hostValues.get(value);
+    if (previous !== undefined) return previous;`
+  }
+    const promise = (${
+    includeOwnedTasks ? "entry.promise" : "entry"
+  }).then((result) => {
+      ${
+    includeOwnedTasks
+      ? `// Retain the original Toss value for the round trip and release the settled internal Promise.
+      entry[asyncResultState] = result;
+      entry.promise = undefined;`
+      : ""
+  }
+      ${
+    includeDiagnostics
+      ? "try { return toJavaScript(result.value, context); } catch (error) { throw reportHostFailure(error, 'promise'); }"
+      : "return toJavaScript(result.value, context);"
+  }
+    }${
+    includeOwnedTasks
+      ? ", (error) => { throw exposeOwnedAsyncFailure(entry, error, 'promise'); }"
+      : includeDiagnostics
+      ? ", (error) => { throw reportHostFailure(error, 'promise'); }"
+      : ""
+  });
+    ${
+    includeOwnedTasks
+      ? "entry.observation = promise;"
+      : "hostValues.set(value, promise);"
+  }
+    ${
+    includeOwnedTasks ? "PublicAsyncReference" : "hostReferences"
+  }.set(promise, value);
     return promise;
   }
   if (isJavaScriptReference(value)) return hostValues.get(value);
@@ -110,6 +234,23 @@ function invokeSlot(receiver, key, owner, args, context) {
 }
 
 function send(receiver, message, context) {
+  ${
+    includeOwnedTasks
+      ? `
+  if (receiver === ownedEffectRoot) {
+    switch (message.name) {
+      case "spawn:": return spawnOwnedEffectTask(message.arguments[0], context);
+      case "onCancel:": return registerEffectCancellationCleanup(message.arguments[0], context);
+      case "hostOperation:": return startOwnedHostOperation(message.arguments[0], context);
+      case "hostOperation:abortWaitMs:": return startOwnedHostOperation(message.arguments[0], context, message.arguments[1]);
+    }
+  }
+  if (message.name === "cancel:" && asyncResults.has(receiver)) {
+    return cancelEffectAsyncTask(receiver, message.arguments[0], context);
+  }
+  `
+      : ""
+  }
   if (isJavaScriptReference(receiver)) {
     const implementation = javascriptReferenceMessages.get(message.name);
     if (implementation === undefined) throw new TossRuntimeError("Unknown message " + keyDescription(message.name) + " for JS reference.", context.location);
@@ -205,8 +346,7 @@ function lexicalEnvironment(carrier, location) {
 function blockEnvironment(captured, location, parameters) {
   const scopes = new Map(captured.scopes);
   const root = captured.root ?? captured;
-  const carrier = {bindings: new Map(), parent: captured, root, scopes,
-    superContext: captured.superContext};
+  const carrier = {root, scopes, superContext: captured.superContext};
   const blockId = location.scope?.id ?? 0;
   const parent = scopes.get(blockId) ?? lexicalEnvironment(captured, location);
   const local = {bindings: new Map(), parent, root, scopes,
@@ -220,15 +360,39 @@ function blockEnvironment(captured, location, parameters) {
       superContext: captured.superContext};
     scopes.set(id, parameterScope);
   }
-  return {carrier, local, scopes};
+  return carrier;
 }
 
-function invokeBlock(receiver, args, context) {
+function discardValueSend(receiver, message, context) {
+  ${
+    includeOwnedTasks
+      ? `
+  if (asyncBlockFunctions.has(receiver)) {
+    return invokeBlock(receiver, message.arguments, context, true);
+  }
+  `
+      : ""
+  }
+  return send(receiver, message, context);
+}
+
+function invokeBlock(receiver, args, context, discardResult) {
   if (receiver.length !== args.length) {
     throw new TossRuntimeError("Block expects " + receiver.length + " argument(s), received " + args.length + ".", context.location);
   }
+  ${
+    includeOwnedTasks
+      ? `
+  if (asyncBlockFunctions.has(receiver)) return invokeOwnedAsyncBlock(receiver, args, context, discardResult);
+  const task = taskForContext(context);
+  const invocation = task === undefined ? context.methodReceiver : {...context.methodReceiver, asyncTask: task};
+  return Reflect.apply(receiver, invocation, args);
+  `
+      : `
   const result = Reflect.apply(receiver, context.methodReceiver, args);
   return asyncBlockFunctions.has(receiver) ? asyncResult(result) : result;
+  `
+  }
 }
 
 function writeOutput(receiver, conversion, context) {

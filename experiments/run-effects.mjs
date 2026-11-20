@@ -1,4 +1,11 @@
 // Keep the exploratory probes separate from the production test suite.
+import "./effects-external-runtime-test.mjs";
+import "./effects-display-test.mjs";
+import "./effects-repl-test.mjs";
+import "./effects-occurrence-gap-test.mjs";
+import "./effects-carrier-test.mjs";
+import "./effects-host-diagnostics-test.mjs";
+import "./effects-async-cancellation-test.mjs";
 await import("./effects-one-shot.mjs");
 await import("./effects-cleanup-errors.mjs");
 await import("./effects-boundaries.mjs");
@@ -11,6 +18,7 @@ await import("./effects-codegen-super.mjs");
 await import("./effects-codegen-handler.mjs");
 await import("./effects-compiler-test.mjs");
 await import("./effects-compiler-conformance.mjs");
+await import("./effects-direct-number-test.mjs");
 await import("./effects-module-compiler-test.mjs");
 await import("./effects-demo-test.mjs");
 await import("./effects-js-boundary-test.mjs");

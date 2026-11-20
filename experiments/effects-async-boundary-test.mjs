@@ -1,30 +1,100 @@
 import assert from "node:assert/strict";
 import { compileExperimentalEffects } from "./effects-compiler.ts";
 
-async function execute(source) {
-  const javascript = compileExperimentalEffects(source, "async-boundary.toss");
+async function execute(source, shared = false) {
+  const javascript = compileExperimentalEffects(source, "async-boundary.toss", {
+    sharedDispatchTables: shared,
+    sharedBoundaryDelegate: shared,
+    failureCarriers: shared,
+  });
   const result = await new Deno.Command(Deno.execPath(), {
     args: ["eval", javascript],
     stdout: "piped",
     stderr: "piped",
   }).output();
   const decoder = new TextDecoder();
-  return {
+  const outcome = {
     success: result.success,
     stdout: decoder.decode(result.stdout),
     stderr: decoder.decode(result.stderr),
   };
+  if (!shared) {
+    const alternate = await execute(source, true);
+    const relevant = (stderr) =>
+      stderr.split("\n")
+        .filter((line) => !/^\s+at /.test(line)).join("\n");
+    assert.equal(alternate.success, outcome.success, source);
+    assert.equal(alternate.stdout, outcome.stdout, source);
+    assert.equal(relevant(alternate.stderr), relevant(outcome.stderr), source);
+  }
+  return outcome;
 }
 const order = await execute(
   "#work bind: %async({ 'before' print. %await(%js(Promise.resolve(1))). 'after' print. 7 }). $work value. 'outside' print.",
 );
 assert.equal(order.success, true, order.stderr);
 assert.equal(order.stdout, "before\noutside\nafter\n");
+const hostTiming = await execute(
+  "#f bind: %async({ 1 }) asJSCallback. %js(f = $f; (f().then(() => console.log('result')), Promise.resolve().then(() => console.log('tick1')).then(() => console.log('tick2')).then(() => console.log('tick3')), 0)).",
+);
+assert.equal(hostTiming.success, true, hostTiming.stderr);
+const rejectionTiming = await execute(
+  "#f bind: %async({ $missing }) asJSCallback. %js(f = $f; (f().catch(() => console.log('rejected')), Promise.resolve().then(() => console.log('tick1')).then(() => console.log('tick2')).then(() => console.log('tick3')), 0)).",
+);
+assert.equal(rejectionTiming.success, true, rejectionTiming.stderr);
+const nestedTiming = await execute(
+  "#inner bind: %async({ 1 }). #outer bind: %async({ %await($inner value). 'inner' print }) asJSCallback. %js(f = $outer; (f().then(() => console.log('result')), Promise.resolve().then(() => console.log('tick1')).then(() => console.log('tick2')).then(() => console.log('tick3')), 0)).",
+);
+assert.equal(nestedTiming.success, true, nestedTiming.stderr);
+const sharedResult = await execute(
+  "#inner bind: %async({ %await(%js(Promise.resolve())). 4 }). #shared bind: ($inner value). #wait bind: %async({ %await($shared) }) asJSCallback. (%js(a = $shared, b = $shared; a === b)) print. %js(f = $wait, p = $shared; Promise.all([f(), f(), p]).then(v => console.log(v.join(',')))).",
+);
+assert.equal(sharedResult.success, true, sharedResult.stderr);
+assert.equal(sharedResult.stdout, "true\n4,4,4\n");
+const sharedFailure = await execute(
+  "#inner bind: %async({ %await(%js(Promise.resolve())). $missing }). #shared bind: ($inner value). #wait bind: %async({ %await($shared) }) asJSCallback. %js(f = $wait, p = $shared; Promise.allSettled([f(), f(), p]).then(v => console.log(v.every(x => x.status === 'rejected'), v[0].reason === v[1].reason, v[1].reason === v[2].reason))).",
+);
+assert.equal(sharedFailure.success, true, sharedFailure.stderr);
+assert.equal(sharedFailure.stdout, "true true true\n");
+const lateObservation = await execute(
+  "#f bind: %async({ $missing }). #result bind: ($f value). %js(p = $result; (globalThis.addEventListener('unhandledrejection', e => { console.log('unhandled', e.reason instanceof Error); e.preventDefault(); }), globalThis.addEventListener('rejectionhandled', () => console.log('handled')), setTimeout(() => p.catch(e => console.log('caught', e instanceof Error)), 10), 0)).",
+);
+assert.equal(lateObservation.success, true, lateObservation.stderr);
+assert.match(lateObservation.stdout, /unhandled true/);
+assert.match(lateObservation.stdout, /caught true/);
 const local = await execute(
   "#work bind: %async({ %await(%js(Promise.resolve(1))). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. { $Effect raise: #A with: $Nil } handleWith: $h }) asJSCallback. %js(f = $work; f().then(v => console.log(v))).",
 );
 assert.equal(local.success, true, local.stderr);
 assert.equal(local.stdout, "7\n");
+const unguardedSource =
+  "#work bind: %async({ %await(%js(Promise.resolve(1))). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: 7 }. { $Effect raise: #A with: $Nil } handleWith: $h }) asJSCallback. %js(f = $work; f().then(v => console.log('value', v), e => console.log('error', e.message))).";
+const guarded = compileExperimentalEffects(
+  unguardedSource,
+  "async-boundary.toss",
+);
+assert.equal(guarded.split("return yield* delegate;").length, 2);
+const unguarded = guarded.replace(
+  "return yield* delegate;",
+  "return yield* result;",
+);
+const unguardedResult = await new Deno.Command(Deno.execPath(), {
+  args: ["eval", unguarded],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  unguardedResult.success,
+  true,
+  new TextDecoder().decode(unguardedResult.stderr),
+);
+assert.match(
+  new TextDecoder().decode(unguardedResult.stdout),
+  /error .*Invalid resume/,
+);
+console.log(
+  "PASS: omitting per-step boundary restoration breaks async resumption",
+);
 const concurrent = await execute(
   "#work bind: %async({ x -> %await(%js(Promise.resolve())). #h bind: $Object clone. $h at: #A put: { p, k -> $k value: $p }. { $Effect raise: #A with: $x } handleWith: $h }) asJSCallback. %js(f = $work; Promise.all([f(1), f(2)]).then(v => console.log(v.join(',')))).",
 );

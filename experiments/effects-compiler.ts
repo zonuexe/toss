@@ -6,11 +6,13 @@ import { analyzeModule } from "../src/module_analysis.ts";
 import { finalizeModuleGraph } from "../src/module_graph.ts";
 import { prepareVirtualSources } from "../src/source_compiler.ts";
 import { experimentalEffectModuleRuntime } from "./effects-module-runtime.ts";
+import { experimentalRuntimeSetup } from "./effects-external-runtime.ts";
 import { containsDirectAwait } from "../src/codegen_analysis.ts";
 import {
   collectJavaScriptExpressions,
   emitJavaScriptEvaluators,
   javascriptImportAliases,
+  javascriptRuntimeAlias,
 } from "../src/codegen_javascript.ts";
 import { collectJavaScriptImports } from "../src/javascript_import_analysis.ts";
 import {
@@ -22,7 +24,55 @@ import {
   runtimePreludeLines,
 } from "../src/codegen_prelude.ts";
 
-function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
+export type {
+  EffectDiagnosticHost as ExperimentalEffectDiagnosticHost,
+  LateHostOperationFailure,
+} from "../src/effect_diagnostics.ts";
+
+const directNumberMessages = new Set([
+  "toString",
+  "inspect",
+  "add:",
+  "subtract:",
+  "multiplyBy:",
+  "divideBy:",
+  "remainder:",
+  "negated",
+  "equals:",
+  "lessThan:",
+  "greaterThan:",
+  "lessThanOrEqual:",
+  "greaterThanOrEqual:",
+]);
+
+type EffectCompilerOptions = {
+  readonly directNumberSends?: boolean;
+  readonly sharedDispatchTables?: boolean;
+  readonly directBoundarySteps?: boolean;
+  readonly sharedBoundaryDelegate?: boolean;
+  readonly runtimeImport?: string;
+  readonly failureCarriers?: boolean;
+  readonly asyncCancellation?: boolean;
+  readonly failureObserverImport?: string;
+};
+
+function emitFailureObserver(
+  options: EffectCompilerOptions,
+  imports: readonly string[],
+  aliases: readonly string[],
+): string {
+  if (options.failureObserverImport === undefined) return "undefined";
+  if (!options.failureCarriers) {
+    throw new TypeError("A failure observer requires failure carriers.");
+  }
+  const index = imports.lastIndexOf(options.failureObserverImport);
+  return `${aliases[index]}`;
+}
+
+function createEffectEmitter(
+  evaluators: ReadonlyMap<Expression, number>,
+  options: EffectCompilerOptions,
+) {
   function emit(
     expression: Expression,
     scope = "environment",
@@ -30,7 +80,7 @@ function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
   ): string {
     const context = `{location: ${
       JSON.stringify(expression.location)
-    }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary}`;
+    }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? getEffectBoundary()}`;
     const call = (code: string): string =>
       asynchronous ? `runEffectProgram(${code}, "Async")` : `(yield* ${code})`;
     switch (expression.kind) {
@@ -65,17 +115,21 @@ function createEffectEmitter(evaluators: ReadonlyMap<Expression, number>) {
           const last = index === expression.body.length - 1;
           const value = emit(item, "localScope", blockAsync);
           return last && blockAsync
-            ? `return {value: ${value}};`
+            ? options.asyncCancellation
+              ? `const result = ${value};
+if (hasEffectOwnedWork(asyncTask)) await joinEffectOwnedWork(asyncTask);
+return {value: checkEffectTask(result, asyncTask)};`
+              : `return {value: ${value}};`
             : `${last ? "return " : ""}${value};`;
         });
         const scopeSetup = `
-const {carrier: localScope} = blockEnvironment(captured, ${
+const localScope = blockEnvironment(captured, ${
           JSON.stringify(expression.location)
         }, ${JSON.stringify(locations)});
 localScope.effectBoundary = ${
           blockAsync
             ? "asyncBoundary"
-            : "invocation?.effectBoundary ?? captured.effectBoundary ?? effectBoundary"
+            : "invocation?.effectBoundary ?? captured.effectBoundary ?? getEffectBoundary()"
         };
 if (invocation?.kind === "tossInvocation") {
   localScope.superContext = invocation.context;
@@ -95,8 +149,25 @@ ${
           }) {
 const invocation = this;
 const asyncBoundary = Object.freeze({});
+${
+            options.asyncCancellation
+              ? "const asyncTask = invocation?.effectAsyncTask; bindEffectAsyncTask(asyncTask, asyncBoundary);"
+              : ""
+          }
 try {${scopeSetup}
-} catch (error) { reportEffectFailures(error); throw error; }
+} catch (error) { ${
+            options.asyncCancellation
+              ? `if (asyncTask?.cancellation !== undefined || hasEffectOwnedWork(asyncTask)) {
+  throw await settleEffectTaskFailure(asyncTask, error, ${
+                JSON.stringify(expression.location)
+              });
+} `
+              : ""
+          }throwAsyncEffectFailure(error); }${
+            options.asyncCancellation
+              ? " finally { finishExperimentalAsyncTask(asyncTask, asyncBoundary); }"
+              : ""
+          }
 }))(${scope})`;
         }
         return `((captured) => markEffectBlock(function*(${
@@ -105,15 +176,18 @@ try {${scopeSetup}
 const invocation = this;${scopeSetup}
 }))(${scope})`;
       }
-      case "send":
-        return call(
-          `effectSend(${
-            emit(expression.receiver, scope, asynchronous)
-          }, {name: ${JSON.stringify(expression.name)}, arguments: [${
-            expression.arguments.map((item) => emit(item, scope, asynchronous))
-              .join(", ")
-          }]}, ${context})`,
-        );
+      case "send": {
+        const direct = options.directNumberSends === true &&
+          expression.receiver.kind === "number" &&
+          directNumberMessages.has(expression.name);
+        const operation = `${direct ? "send" : "effectSend"}(${
+          emit(expression.receiver, scope, asynchronous)
+        }, {name: ${JSON.stringify(expression.name)}, arguments: [${
+          expression.arguments.map((item) => emit(item, scope, asynchronous))
+            .join(", ")
+        }]}, ${context})`;
+        return direct ? operation : call(operation);
+      }
       case "pipeline":
         return call(
           `effectPipeline(${emit(expression.input, scope, asynchronous)}, ${
@@ -137,7 +211,7 @@ const invocation = this;${scopeSetup}
               emit(entry.key, scope, asynchronous)
             }, ${emit(entry.value, scope, asynchronous)}]}, {location: ${
               JSON.stringify(entry.location)
-            }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? effectBoundary})`;
+            }, environment: ${scope}, boundary: ${scope}.effectBoundary ?? getEffectBoundary()})`;
           return `${call(operation)};`;
         });
         const validator =
@@ -184,6 +258,11 @@ const invocation = this;${scopeSetup}
       }
       case "await":
         if (!asynchronous) throw new TypeError("Await outside an async Block.");
+        if (options.asyncCancellation) {
+          return `checkEffectTask((await awaitEffectTask(${
+            emit(expression.expression, scope, asynchronous)
+          }, ${context}, asyncTask)).value, asyncTask)`;
+        }
         return `(await awaitToss(${
           emit(expression.expression, scope, asynchronous)
         }, ${context})).value`;
@@ -204,10 +283,42 @@ const invocation = this;${scopeSetup}
   return emit;
 }
 
+export function compileExperimentalEffectsCell(source: string, file: string): {
+  readonly body: string;
+  readonly evaluators: string;
+} {
+  const expressions = expandProgram(source, { file });
+  const analysis = analyzeModule(expressions, file, false);
+  if (
+    analysis.imports.length > 0 || analysis.exported !== undefined ||
+    collectJavaScriptImports(expressions).length > 0
+  ) {
+    throw new TypeError(
+      "Experimental effect REPL cells do not support imports or exports.",
+    );
+  }
+  const javascript = collectJavaScriptExpressions(expressions);
+  const emit = createEffectEmitter(
+    new Map(javascript.map((expression, index) => [expression, index])),
+    {},
+  );
+  const body = expressions.map((expression, index) =>
+    `${index === expressions.length - 1 ? "return " : ""}${emit(expression)};`
+  ).join("\n");
+  return {
+    body: `runEffectProgram((function*() { ${body || "return null;"} })())`,
+    evaluators: emitJavaScriptEvaluators(javascript).source,
+  };
+}
+
 export function compileExperimentalEffects(
   source: string,
   file: string,
+  options: EffectCompilerOptions = {},
 ): string {
+  if (options.asyncCancellation && !options.failureCarriers) {
+    throw new TypeError("Async cancellation requires failure carriers.");
+  }
   const expressions = expandProgram(source, { file });
   const analysis = analyzeModule(expressions, file, false);
   if (analysis.imports.length > 0) {
@@ -218,35 +329,59 @@ export function compileExperimentalEffects(
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
   const imports = collectJavaScriptImports(expressions);
-  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const hostImports = options.failureObserverImport === undefined
+    ? imports
+    : [...imports, options.failureObserverImport];
+  const importAliases = javascriptImportAliases(
+    hostImports,
+    javascriptExpressions,
+  );
+  const observer = emitFailureObserver(options, hostImports, importAliases);
+  const runtimeAlias = options.runtimeImport === undefined
+    ? undefined
+    : javascriptRuntimeAlias(javascriptExpressions);
   const emit = createEffectEmitter(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
     ),
+    options,
   );
   const body = expressions.map((expression) => `${emit(expression)};`).join(
     "\n",
   );
   return [
-    ...emitJavaScriptImportStatements(imports, importAliases),
-    "((javascriptEvaluators, javascriptImportNames) => {",
-    ...runtimePreludeLines(),
+    ...emitJavaScriptImportStatements(hostImports, importAliases),
+    ...(runtimeAlias === undefined ? [] : [
+      `import * as ${runtimeAlias} from ${
+        JSON.stringify(options.runtimeImport)
+      };`,
+    ]),
+    `((javascriptEvaluators, javascriptImportNames, effectDiagnosticHost${
+      runtimeAlias === undefined ? "" : ", runtimeNamespace"
+    }) => {`,
+    ...(runtimeAlias === undefined
+      ? runtimePreludeLines()
+      : experimentalRuntimeSetup(options, "runtimeNamespace")),
     ...fileRootSetupLines(),
-    experimentalEffectRuntime,
+    ...(runtimeAlias === undefined ? [experimentalEffectRuntime(options)] : []),
     'environment.bindings.set(Symbol.for("Effect"), effectRoot);',
-    "environment.effectBoundary = effectBoundary;",
+    "environment.effectBoundary = getEffectBoundary();",
     "registerEffectSymbolRoot(symbolRoot);",
-    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { reportEffectFailures(error); throw error; }`,
+    `try { runEffectProgram((function*() {\n${body}\n})()); } catch (error) { throw exposeEffectFailure(error, "entry"); }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    });`,
+    }, ${observer}${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   ].join("\n");
 }
 
 export function compileExperimentalEffectsSources(
   entry: string,
   sources: ReadonlyMap<string, string>,
+  options: EffectCompilerOptions = {},
 ): string {
+  if (options.asyncCancellation && !options.failureCarriers) {
+    throw new TypeError("Async cancellation requires failure carriers.");
+  }
   const { modules, edges, loadedEntry: root } = prepareVirtualSources(
     entry,
     sources,
@@ -259,11 +394,22 @@ export function compileExperimentalEffectsSources(
   const imports = collectJavaScriptImports(
     graph.flatMap((module) => module.expressions),
   );
-  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const hostImports = options.failureObserverImport === undefined
+    ? imports
+    : [...imports, options.failureObserverImport];
+  const importAliases = javascriptImportAliases(
+    hostImports,
+    javascriptExpressions,
+  );
+  const observer = emitFailureObserver(options, hostImports, importAliases);
+  const runtimeAlias = options.runtimeImport === undefined
+    ? undefined
+    : javascriptRuntimeAlias(javascriptExpressions);
   const emit = createEffectEmitter(
     new Map(
       javascriptExpressions.map((expression, index) => [expression, index]),
     ),
+    options,
   );
   const initializers = graph.map((module, id) => {
     const body = module.expressions.map((expression) => `${emit(expression)};`)
@@ -272,18 +418,31 @@ export function compileExperimentalEffectsSources(
       fileRootSetupLines(module.imports.map(({ path, id }) =>
         `[${JSON.stringify(path)}, ${id}]`
       )).join("\n")
-    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = effectBoundary;\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
+    }\nenvironment.bindings.set(Symbol.for("Effect"), effectRoot);\nenvironment.effectBoundary = getEffectBoundary();\nregisterEffectSymbolRoot(symbolRoot);\n${body}\nreturn moduleExport;\n};`;
   });
   return [
-    ...emitJavaScriptImportStatements(imports, importAliases),
-    "((javascriptEvaluators, javascriptImportNames) => {",
-    ...runtimePreludeLines(),
-    experimentalEffectRuntime,
-    experimentalEffectModuleRuntime,
+    ...emitJavaScriptImportStatements(hostImports, importAliases),
+    ...(runtimeAlias === undefined ? [] : [
+      `import * as ${runtimeAlias} from ${
+        JSON.stringify(options.runtimeImport)
+      };`,
+    ]),
+    `((javascriptEvaluators, javascriptImportNames, effectDiagnosticHost${
+      runtimeAlias === undefined ? "" : ", runtimeNamespace"
+    }) => {`,
+    ...(runtimeAlias === undefined
+      ? runtimePreludeLines()
+      : experimentalRuntimeSetup(options, "runtimeNamespace")),
+    ...(runtimeAlias === undefined
+      ? [
+        experimentalEffectRuntime(options),
+        experimentalEffectModuleRuntime,
+      ]
+      : []),
     ...initializers,
-    `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { reportEffectFailures(error); throw error; }`,
+    `try { runEffectProgram(effectInitialize(${root}, {file: "<entry>", line: 1, column: 1})); } catch (error) { throw exposeEffectFailure(error, "entry"); }`,
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    });`,
+    }, ${observer}${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
   ].join("\n");
 }

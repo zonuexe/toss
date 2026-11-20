@@ -1,8 +1,61 @@
 // Experimental runtime source; not the production Toss runtime.
-export const experimentalEffectRuntime = `
+import { effectDiagnosticRuntime } from "../src/effect_diagnostics.ts";
+import { runtimeAsyncOwnership } from "../src/runtime_async_ownership.ts";
+
+export type ExperimentalRuntimeOptions = {
+  readonly sharedDispatchTables?: boolean;
+  readonly directBoundarySteps?: boolean;
+  readonly sharedBoundaryDelegate?: boolean;
+  readonly outputHook?: string;
+  readonly failureCarriers?: boolean;
+  readonly asyncCancellation?: boolean;
+};
+
+export function experimentalEffectRuntime(
+  options: ExperimentalRuntimeOptions = {},
+): string {
+  const {
+    sharedDispatchTables = false,
+    directBoundarySteps = false,
+    sharedBoundaryDelegate = false,
+    outputHook,
+    failureCarriers = false,
+    asyncCancellation = false,
+  } = options;
+  if (asyncCancellation && !failureCarriers) {
+    throw new TypeError("Async cancellation requires failure carriers.");
+  }
+  const allowedMessages =
+    `const effectAllowedMessages = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "toString", "inspect", "not"]);`;
+  return `
+${effectDiagnosticRuntime}
 const effectBlocks = new WeakSet();
+${sharedDispatchTables ? allowedMessages : ""}
 const effectJavaScriptCallbacks = new WeakMap();
 let effectBoundary = Object.freeze({});
+function getEffectBoundary() { return effectBoundary; }
+${asyncCancellation ? `${runtimeAsyncOwnership("effectDiagnosticHost")}
+const effectTasksByBoundary = new WeakMap();
+function bindEffectAsyncTask(task, boundary) {
+  if (task !== undefined) effectTasksByBoundary.set(boundary, task);
+}
+function finishExperimentalAsyncTask(task, boundary) {
+  finishEffectAsyncTask(task);
+  effectTasksByBoundary.delete(boundary);
+}
+function taskForContext(context) { return effectTasksByBoundary.get(context.boundary); }
+function awaitOwnedValue(value, context) { return awaitToss(value, context); }
+function* spawnOwnedEffectTask(value, context) {
+  const parent = activeEffectTask(context, "spawn:");
+  const result = yield* effectInvoke(ownedAsyncBlock(value, context), [], context);
+  return registerOwnedEffectChild(parent, result, context);
+}
+function invokeOwnedCancellationCleanup(block, context) {
+  return withEffectBoundary(() =>
+    runEffectProgram(effectInvoke(block, [], {...context, boundary: getEffectBoundary()}), "Async")
+  );
+}
+` : ""}
 function withEffectBoundaryValue(boundary, body) {
   const previous = effectBoundary;
   effectBoundary = boundary;
@@ -23,7 +76,7 @@ function effectJavaScriptCallback(receiver, context) {
       const args = hostArguments.slice(0, receiver.length).map((value) => fromJavaScript(value, context));
       const lexicalContext = {location: context.location, environment: context.environment, boundary: effectBoundary};
       return toJavaScript(runEffectProgram(effectInvoke(receiver, args, lexicalContext), "JavaScript"), context);
-    }); } catch (error) { reportEffectFailures(error); throw error; }
+    }); } catch (error) { throw exposeEffectFailure(error, "callback"); }
   };
   effectJavaScriptCallbacks.set(receiver, callback);
   return fromJavaScript(callback, context);
@@ -34,28 +87,154 @@ const effectResumeStates = new WeakMap();
 const effectCleanupFailures = new WeakMap();
 const effectHandlerContexts = new WeakMap();
 const effectOriginalErrorStacks = new WeakMap();
+const effectCarrierSet = new WeakSet();
+const useEffectCarriers = ${failureCarriers};
+function isEffectCarrier(value) {
+  return ((typeof value === "object" && value !== null) || typeof value === "function") && effectCarrierSet.has(value);
+}
+function asEffectFailure(value) {
+  if (!useEffectCarriers || isEffectCarrier(value)) return value;
+  const carrier = {value, cleanup: [], contexts: []};
+  effectCarrierSet.add(carrier);
+  return carrier;
+}
+function effectFailureValue(value) { return isEffectCarrier(value) ? value.value : value; }
+function throwAsyncEffectFailure(error) {
+  const failure = asEffectFailure(error);
+  if (!useEffectCarriers) reportEffectFailures(failure);
+  throw failure;
+}
+const effectBaseToJavaScript = toJavaScript;
+const effectAsyncPublicResults = new WeakMap();
+const effectBaseAsyncResult = asyncResult;
+const effectBaseAwaitToss = awaitToss;
+if (useEffectCarriers) asyncResult = function(promise) {
+  const value = effectBaseAsyncResult(promise);
+  const state = {observed: false, notified: false, publicResult: undefined};
+  const publicResult = promise.then(
+    (result) => result,
+    (error) => {
+      if (state.observed) return;
+      throw exposeAsyncEffectFailure(state, error, "unobserved-async");
+    },
+  );
+  state.publicResult = publicResult;
+  effectAsyncPublicResults.set(value, state);
+  return value;
+};
+function observeEffectAsyncResult(value) {
+  const state = effectAsyncPublicResults.get(value);
+  if (state === undefined) return;
+  state.observed = true;
+  state.publicResult.catch(() => {});
+}
+if (useEffectCarriers) awaitToss = function(value, context) {
+  observeEffectAsyncResult(value);
+  return effectBaseAwaitToss(value, context);
+};
+if (useEffectCarriers) toJavaScript = function(value, context) {
+  if (!asyncResults.has(value)) return effectBaseToJavaScript(value, context);
+  const previous = hostValues.get(value);
+  if (previous !== undefined) return previous;
+  observeEffectAsyncResult(value);
+  const promise = asyncResults.get(value).then(
+    (result) => toJavaScript(result.value, context),
+    (error) => { throw exposeAsyncEffectFailure(effectAsyncPublicResults.get(value), error, "promise"); },
+  );
+  hostValues.set(value, promise);
+  hostReferences.set(promise, value);
+  return promise;
+};
+function copyEffectFailure(value) {
+  if (!isEffectCarrier(value)) return value;
+  const copy = asEffectFailure(value.value);
+  copy.cleanup = value.cleanup.map(copyEffectFailure);
+  copy.contexts = [...value.contexts];
+  return copy;
+}
 let effectCleanupDepth = 0;
 const effectRoot = Object.freeze(Object.create(null));
 function markEffectBlock(block) { effectBlocks.add(block); return block; }
+${
+    sharedBoundaryDelegate
+      ? `class EffectBoundaryDelegate {
+  constructor(iterator, boundary) { this.iterator = iterator; this.boundary = boundary; }
+  [Symbol.iterator]() { return this; }
+  next(value) {
+    const previous = effectBoundary; effectBoundary = this.boundary;
+    try { return this.iterator.next(value); } finally { effectBoundary = previous; }
+  }
+  throw(error) {
+    const previous = effectBoundary; effectBoundary = this.boundary;
+    try { return this.iterator.throw(error); } finally { effectBoundary = previous; }
+  }
+  return(value) {
+    const previous = effectBoundary; effectBoundary = this.boundary;
+    try { return this.iterator.return(value); } finally { effectBoundary = previous; }
+  }
+}`
+      : ""
+  }
+${
+    directBoundarySteps
+      ? `function effectIteratorStep(boundary, iterator, method, value) {
+  const previous = effectBoundary;
+  effectBoundary = boundary;
+  try { return iterator[method](value); } finally { effectBoundary = previous; }
+}`
+      : ""
+  }
 function* effectInvoke(block, args, context) {
+  ${failureCarriers ? "try {" : ""}
   const boundary = context.boundary ?? effectBoundary;
   const methodReceiver = context.methodReceiver === undefined
     ? {kind: "effectInvocation", effectBoundary: boundary}
     : {...context.methodReceiver, effectBoundary: boundary};
+  ${
+    asyncCancellation
+      ? "const task = asyncBlockFunctions.has(block) ? createEffectAsyncTask() : undefined; if (task !== undefined) methodReceiver.effectAsyncTask = task;"
+      : ""
+  }
   const result = withEffectBoundaryValue(boundary, () => invokeBlock(block, args, {...context, methodReceiver}));
+  ${
+    asyncCancellation
+      ? "if (task !== undefined) effectTasksByResult.set(result, task);"
+      : ""
+  }
   if (!effectBlocks.has(block)) return result;
-  const delegate = {
+  const delegate = ${
+    sharedBoundaryDelegate ? "new EffectBoundaryDelegate(result, boundary)" : `{
     [Symbol.iterator]() { return this; },
-    next(value) { return withEffectBoundaryValue(boundary, () => result.next(value)); },
-    throw(error) { return withEffectBoundaryValue(boundary, () => result.throw(error)); },
-    return(value) { return withEffectBoundaryValue(boundary, () => result.return(value)); },
+    next(value) { return ${
+      directBoundarySteps
+        ? 'effectIteratorStep(boundary, result, "next", value)'
+        : "withEffectBoundaryValue(boundary, () => result.next(value))"
+    }; },
+    throw(error) { return ${
+      directBoundarySteps
+        ? 'effectIteratorStep(boundary, result, "throw", error)'
+        : "withEffectBoundaryValue(boundary, () => result.throw(error))"
+    }; },
+    return(value) { return ${
+      directBoundarySteps
+        ? 'effectIteratorStep(boundary, result, "return", value)'
+        : "withEffectBoundaryValue(boundary, () => result.return(value))"
+    }; },
+  }`
   };
   return yield* delegate;
+  ${failureCarriers ? "} catch (error) { throw asEffectFailure(error); }" : ""}
 }
 function recordCleanupFailure(primary, secondary) {
+  if (isEffectCarrier(primary)) {
+    primary.cleanup.push(copyEffectFailure(asEffectFailure(secondary)));
+    return;
+  }
   if (!(primary instanceof Error)) throw secondary;
   const failures = effectCleanupFailures.get(primary) ?? [];
-  failures.push(secondary);
+  const object = (typeof secondary === "object" && secondary !== null) || typeof secondary === "function";
+  const nested = object ? [...(effectCleanupFailures.get(secondary) ?? [])] : [];
+  failures.push(Object.freeze({error: secondary, cleanup: Object.freeze(nested)}));
   effectCleanupFailures.set(primary, failures);
 }
 function setEffectErrorStack(error, value) {
@@ -63,6 +242,7 @@ function setEffectErrorStack(error, value) {
   catch (_failure) { return false; }
 }
 function snapshotEffectFailure(error) {
+  if (isEffectCarrier(error)) return {cleanup: error.cleanup.map(copyEffectFailure), contexts: [...error.contexts]};
   if (!(error instanceof Error)) return undefined;
   return {
     cleanup: [...(effectCleanupFailures.get(error) ?? [])],
@@ -70,6 +250,11 @@ function snapshotEffectFailure(error) {
   };
 }
 function restoreEffectFailure(error, snapshot) {
+  if (isEffectCarrier(error)) {
+    error.cleanup = snapshot === undefined ? [] : snapshot.cleanup.map(copyEffectFailure);
+    error.contexts = snapshot === undefined ? [] : [...snapshot.contexts];
+    return;
+  }
   if (!(error instanceof Error)) return;
   if (snapshot === undefined || snapshot.cleanup.length === 0) effectCleanupFailures.delete(error);
   else effectCleanupFailures.set(error, [...snapshot.cleanup]);
@@ -78,6 +263,7 @@ function restoreEffectFailure(error, snapshot) {
   if (effectOriginalErrorStacks.has(error)) setEffectErrorStack(error, effectOriginalErrorStacks.get(error));
 }
 function recordHandlerContext(error, request) {
+  if (isEffectCarrier(error)) { if (!error.contexts.includes(request)) error.contexts.push(request); return; }
   if (!(error instanceof Error)) return;
   const contexts = effectHandlerContexts.get(error) ?? [];
   if (!contexts.includes(request)) contexts.push(request);
@@ -95,14 +281,14 @@ function* effectEnsure(receiver, cleanup, context) {
   let failed = false;
   let primary;
   try { return yield* effectInvoke(body, [], context); }
-  catch (error) { failed = true; primary = error; throw error; }
+  catch (error) { failed = true; primary = asEffectFailure(error); throw primary; }
   finally {
     const savedFailure = failed ? snapshotEffectFailure(primary) : undefined;
     let cleanupFailed = false;
     let cleanupError;
     effectCleanupDepth++;
     try { yield* effectInvoke(finalizer, [], context); }
-    catch (error) { cleanupFailed = true; cleanupError = error; }
+    catch (error) { cleanupFailed = true; cleanupError = asEffectFailure(error); }
     finally { effectCleanupDepth--; }
     if (failed) {
       restoreEffectFailure(primary, savedFailure);
@@ -151,6 +337,7 @@ function* effectHandle(block, handler, context) {
           continue;
         }
       } catch (error) {
+        error = asEffectFailure(error);
         if (currentState !== null) {
           currentState.active = false;
           recordHandlerContext(error, currentState.request);
@@ -201,7 +388,7 @@ function* effectHandle(block, handler, context) {
       });
       currentState = state;
     }
-  } catch (error) { failed = true; primary = error; throw error; }
+  } catch (error) { failed = true; primary = asEffectFailure(error); throw primary; }
   finally {
     let cleanupFailed = false;
     let cleanupPrimary;
@@ -210,6 +397,7 @@ function* effectHandle(block, handler, context) {
         const result = failed && propagateFailure ? target.throw(primary) : target.return();
         if (!result.done) throw new TossRuntimeError("Cleanup suspended.", context.location);
       } catch (error) {
+        error = asEffectFailure(error);
         if (failed && error !== primary) recordCleanupFailure(primary, error);
         else if (failed) return;
         else if (cleanupFailed) recordCleanupFailure(cleanupPrimary, error);
@@ -240,8 +428,33 @@ function* effectParent(args, context, scope) {
 function* effectPipeline(input, receiver, message, context) {
   return yield* effectSend(receiver, {name: message.name, arguments: [...message.arguments, input]}, context);
 }
+function* effectInspectArray(receiver, context) {
+  if (activeArrayInspections.has(receiver)) return "[...]";
+  activeArrayInspections.add(receiver);
+  try {
+    const values = receiver.slice();
+    const parts = [];
+    for (const value of values) {
+      const inspected = yield* effectSend(value, {name: "inspect", arguments: []}, context);
+      if (typeof inspected !== "string") throw new TossRuntimeError("inspect must return a string.", context.location);
+      parts.push(inspected);
+    }
+    return "[" + parts.join(", ") + "]";
+  } finally { activeArrayInspections.delete(receiver); }
+}
 function* effectSend(receiver, message, context) {
   const {name, arguments: args} = message;
+  ${
+    asyncCancellation
+      ? `
+  if (receiver === effectRoot && name === "onCancel:") return registerEffectCancellationCleanup(args[0], context);
+  if (receiver === effectRoot && name === "spawn:") return yield* spawnOwnedEffectTask(args[0], context);
+  if (receiver === effectRoot && name === "hostOperation:") return startOwnedHostOperation(args[0], context);
+  if (receiver === effectRoot && name === "hostOperation:abortWaitMs:") return startOwnedHostOperation(args[0], context, args[1]);
+  if (asyncResults.has(receiver) && name === "cancel:") return cancelEffectAsyncTask(receiver, args[0], context);
+  `
+      : ""
+  }
   if (receiver === effectRoot && name === "raise:with:") {
     if (typeof args[0] !== "symbol") throw new TossRuntimeError("Effect identity must be a Symbol.", context.location);
     if (effectCleanupDepth > 0) throw new TossRuntimeError("Effects are not allowed during cleanup.", context.location);
@@ -294,6 +507,8 @@ function* effectSend(receiver, message, context) {
     for (const value of receiver.slice()) result.push(yield* effectInvoke(block, [value], context));
     return result;
   }
+  if (Array.isArray(receiver) && (name === "inspect" || name === "toString"))
+    return yield* effectInspectArray(receiver, context);
   if (receiver !== null && typeof receiver === "object" && !Array.isArray(receiver) && !isJavaScriptReference(receiver)) {
     const owner = slotOwner(receiver, name);
     if (owner !== null) {
@@ -323,51 +538,92 @@ function* effectSend(receiver, message, context) {
     }
   }
   if (typeof name === "symbol") return send(receiver, message, context);
-  const allowed = new Set(["bind:", "clone", "at:", "at:put:", "add:", "subtract:", "multiplyBy:", "divideBy:", "remainder:", "negated", "equals:", "lessThan:", "greaterThan:", "lessThanOrEqual:", "greaterThanOrEqual:", "length", "print", "not"]);
-  if (!allowed.has(name) || (name === "print" && typeof receiver === "object" && receiver !== null))
+  if (name === "print" || name === "dump") {
+    const conversion = name === "print" ? "toString" : "inspect";
+    const text = yield* effectSend(receiver, {name: conversion, arguments: []}, context);
+    if (typeof text !== "string") throw new TossRuntimeError(conversion + " must return a string.", context.location);
+    ${
+    outputHook === undefined
+      ? "console.log(text);"
+      : `${outputHook}(text, context.location);`
+  }
+    return receiver;
+  }
+  ${sharedDispatchTables ? "" : allowedMessages}
+  if (!effectAllowedMessages.has(name))
     throw new TossRuntimeError("Unsupported message in experimental effects compiler: " + name, context.location);
   return send(receiver, message, context);
 }
 function runEffectProgram(iterator, boundary) {
-  const step = iterator.next();
+  let step;
+  try { step = iterator.next(); } catch (error) { throw asEffectFailure(error); }
   if (!step.done) {
     const reason = boundary === "JavaScript" ? "Effect cannot cross the JavaScript boundary: " : boundary === "Async" ? "Effect cannot cross the async boundary: " : "Unhandled effect ";
     const error = new TossRuntimeError(reason + keyDescription(step.value.effect) + ".", step.value.location);
     error.effect = step.value.effect;
     error.payload = step.value.payload;
-    try { iterator.throw(error); }
-    catch (cleanupError) { if (cleanupError !== error) recordCleanupFailure(error, cleanupError); }
-    throw error;
+    const failure = asEffectFailure(error);
+    try { iterator.throw(failure); }
+    catch (cleanupError) { if (cleanupError !== failure) recordCleanupFailure(failure, cleanupError); }
+    throw failure;
   }
   return step.value;
 }
 function getEffectFailureDetails(error) {
   const cleanup = [];
-  const seen = new Set([error]);
-  function collect(failure) {
-    cleanup.push(failure);
-    if ((typeof failure !== "object" || failure === null) && typeof failure !== "function") return;
-    if (seen.has(failure)) return;
-    seen.add(failure);
-    for (const nested of effectCleanupFailures.get(failure) ?? []) collect(nested);
+  const active = new Set();
+  function collect(record) {
+    cleanup.push(isEffectCarrier(record) ? record.value : record.error);
+    if (active.has(record)) return;
+    active.add(record);
+    for (const nested of record.cleanup) collect(nested);
+    active.delete(record);
   }
-  if ((typeof error === "object" && error !== null) || typeof error === "function") {
-    for (const failure of effectCleanupFailures.get(error) ?? []) collect(failure);
-    return {error, cleanup, contexts: [...(effectHandlerContexts.get(error) ?? [])]};
+  const carrier = isEffectCarrier(error);
+  const hasMetadata = (typeof error === "object" && error !== null) || typeof error === "function";
+  const records = carrier ? error.cleanup : hasMetadata ? (effectCleanupFailures.get(error) ?? []) : [];
+  for (const failure of records) collect(failure);
+  const contexts = carrier ? [...error.contexts] : hasMetadata ? [...(effectHandlerContexts.get(error) ?? [])] : [];
+  const cleanupDescriptions = cleanup.map((failure) => {
+    try { return String(failure instanceof Error ? failure.message : failure); }
+    catch (_failure) { return "<unavailable error>"; }
+  });
+  const handlerDescriptions = contexts.map((request) =>
+    "while handling " + keyDescription(request.effect) + " at " + request.location.file + ":" + request.location.line + ":" + request.location.column);
+  return Object.freeze({error: effectFailureValue(error), cleanup: Object.freeze(cleanup), contexts: Object.freeze(contexts), cleanupDescriptions: Object.freeze(cleanupDescriptions), handlerDescriptions: Object.freeze(handlerDescriptions)});
+}
+function exposeAsyncEffectFailure(state, error, boundary) {
+  if (typeof onEffectFailure === "function") {
+    if (state.notified) return effectFailureValue(error);
+    state.notified = true;
   }
-  return {error, cleanup, contexts: []};
+  return exposeEffectFailure(error, boundary);
+}
+function exposeEffectFailure(error, boundary) {
+  if (typeof onEffectFailure !== "function") {
+    reportEffectFailures(error);
+    return effectFailureValue(error);
+  }
+  const details = getEffectFailureDetails(error);
+  const diagnostic = Object.freeze({
+    boundary,
+    error: details.error,
+    cleanupDescriptions: details.cleanupDescriptions,
+    handlerDescriptions: details.handlerDescriptions,
+  });
+  notifyEffectFailure(diagnostic);
+  return details.error;
 }
 function reportEffectFailures(error) {
-  if ((typeof error !== "object" || error === null) && typeof error !== "function") return;
   const details = getEffectFailureDetails(error);
-  if (details.cleanup.length === 0 && details.contexts.length === 0) return;
-  const lines = details.contexts.map((request) => "\\n  while handling " + keyDescription(request.effect) + " at " + request.location.file + ":" + request.location.line + ":" + request.location.column);
-  for (const failure of details.cleanup) {
-    let description;
-    try { description = failure instanceof Error ? failure.message : String(failure); }
-    catch (_failure) { description = "<unavailable error>"; }
-    lines.push("\\n  cleanup failure: " + description);
+  error = details.error;
+  if ((typeof error !== "object" || error === null) && typeof error !== "function") return;
+  if (details.cleanup.length === 0 && details.contexts.length === 0) {
+    if (useEffectCarriers && effectOriginalErrorStacks.has(error)) setEffectErrorStack(error, effectOriginalErrorStacks.get(error));
+    return;
   }
+  const lines = details.handlerDescriptions.map((description) => "\\n  " + description);
+  for (const description of details.cleanupDescriptions) lines.push("\\n  cleanup failure: " + description);
   if (!effectOriginalErrorStacks.has(error)) {
     try { effectOriginalErrorStacks.set(error, error.stack); }
     catch (_failure) { return; }
@@ -375,3 +631,4 @@ function reportEffectFailures(error) {
   setEffectErrorStack(error, effectOriginalErrorStacks.get(error) + lines.join(""));
 }
 `;
+}

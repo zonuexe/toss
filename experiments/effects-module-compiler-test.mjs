@@ -81,7 +81,7 @@ const handlerFailureSource = compileExperimentalEffectsSources(
     ["lib.toss", "%export($Effect raise: #A with: $Nil)."],
   ]),
 );
-const observer = "reportEffectFailures(error); throw error;";
+const observer = 'throw exposeEffectFailure(error, "entry");';
 function instrumentRoot(source, replacement) {
   const index = source.lastIndexOf(observer);
   assert.ok(index >= 0, "root error reporter not found");
@@ -186,7 +186,7 @@ const abandonedCleanupSource = compileExperimentalEffectsSources(
 );
 const abandonedCleanupObserved = instrumentRoot(
   abandonedCleanupSource,
-  'const cached = effectModuleStates.get(1)?.error; console.error("cached-interrupted", cached?.message.includes("interrupted"), effectCleanupFailures.get(cached)?.[0] === error); reportEffectFailures(error); throw error;',
+  'const cached = effectModuleStates.get(1)?.error; console.error("cached-interrupted", cached?.message.includes("interrupted"), effectCleanupFailures.get(cached)?.[0]?.error === error); reportEffectFailures(error); throw error;',
 );
 const abandonedCleanupCheck = await new Deno.Command(Deno.execPath(), {
   args: ["eval", abandonedCleanupObserved],
@@ -260,15 +260,16 @@ assert.ok(!secondFailure.includes('Unbound name "cleanupA"'), repeatedText);
 console.log(
   "PASS: reused module error keeps cleanup information per invocation",
 );
+const reentrantSources = new Map([
+  [
+    "main.toss",
+    "#b bind: { %import('./lib.toss') } asJSCallback. #a bind: { { { %import('./lib.toss') } ensure: { $innerCleanup } } ensure: { %js(f = $b; (() => { try { f(); } catch (e) {} })()) } } asJSCallback. %js(f = $a; (() => { try { f(); } catch (e) { console.log(e.stack); } })()).",
+  ],
+  ["lib.toss", "%export($missing)."],
+]);
 const reentrantFailure = compileExperimentalEffectsSources(
   "main.toss",
-  new Map([
-    [
-      "main.toss",
-      "#b bind: { %import('./lib.toss') } asJSCallback. #a bind: { { { %import('./lib.toss') } ensure: { $innerCleanup } } ensure: { %js(f = $b; (() => { try { f(); } catch (e) {} })()) } } asJSCallback. %js(f = $a; (() => { try { f(); } catch (e) { console.log(e.stack); } })()).",
-    ],
-    ["lib.toss", "%export($missing)."],
-  ]),
+  reentrantSources,
 );
 const reentrantResult = await new Deno.Command(Deno.execPath(), {
   args: ["eval", reentrantFailure],
@@ -282,6 +283,26 @@ assert.equal(
   new TextDecoder().decode(reentrantResult.stderr),
 );
 assert.match(reentrantText, /Unbound name "innerCleanup"/);
+const reentrantDirect = await new Deno.Command(Deno.execPath(), {
+  args: [
+    "eval",
+    compileExperimentalEffectsSources("main.toss", reentrantSources, {
+      sharedDispatchTables: true,
+      sharedBoundaryDelegate: true,
+    }),
+  ],
+  stdout: "piped",
+  stderr: "piped",
+}).output();
+assert.equal(
+  reentrantDirect.success,
+  true,
+  new TextDecoder().decode(reentrantDirect.stderr),
+);
+assert.match(
+  new TextDecoder().decode(reentrantDirect.stdout),
+  /Unbound name "innerCleanup"/,
+);
 console.log(
   "PASS: reentrant cached failure preserves the outer cleanup failure",
 );
@@ -403,7 +424,7 @@ const inspectionSource = compileExperimentalEffectsSources(
   new Map([
     [
       "main.toss",
-      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first; try { a(); } catch (e) { first = e; Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
+      "#a bind: { { %import('./lib.toss') } ensure: { $cleanupA } } asJSCallback. #b bind: { { %import('./lib.toss') } ensure: { $cleanupB } } asJSCallback. %js(a = $a, b = $b; (() => { let first, saved; try { a(); } catch (e) { first = e; saved = globalThis.effectProbe(e); Object.defineProperty(e, 'stack', {value: e.stack, writable: false, configurable: false}); Object.freeze(e); } try { b(); } catch (e) { const detail = globalThis.effectProbe(e); console.log('SAME', detail.error === first && saved.error === first); console.log('SAVED', saved.cleanup.map(x => x.message).join('|')); console.log('FROZEN', Object.isFrozen(saved), Object.isFrozen(saved.cleanup), Object.isFrozen(saved.contexts)); saved.cleanup[1].message = 'changed'; console.log('CAPTURED', saved.cleanupDescriptions.join('|')); console.log('CLEANUP', detail.cleanup.map(x => x.message).join('|')); } })()).",
     ],
     ["lib.toss", "%export({ $missing } ensure: { $moduleCleanup })."],
   ]),
@@ -427,11 +448,16 @@ assert.equal(
   new TextDecoder().decode(inspectionResult.stderr),
 );
 assert.match(inspectionText, /SAME true/);
+assert.match(inspectionText, /FROZEN true true true/);
+const [savedInspection, currentInspection] = inspectionText.split("CLEANUP ");
+assert.match(savedInspection, /Unbound name "cleanupA"/);
+assert.match(savedInspection, /CAPTURED .*Unbound name "cleanupA"/);
+assert.doesNotMatch(savedInspection, /Unbound name "cleanupB"/);
 assert.match(
-  inspectionText,
-  /CLEANUP .*Unbound name "moduleCleanup".*Unbound name "cleanupB"/,
+  currentInspection,
+  /Unbound name "moduleCleanup".*Unbound name "cleanupB"/,
 );
-assert.doesNotMatch(inspectionText, /Unbound name "cleanupA"/);
+assert.doesNotMatch(currentInspection, /Unbound name "cleanupA"/);
 console.log(
   "PASS: non-mutating failure details retain frozen error identity and current cleanup",
 );

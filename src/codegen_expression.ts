@@ -2,16 +2,26 @@ import type { Expression } from "./ast.ts";
 import { emitBlock } from "./codegen_block.ts";
 import { TossSyntaxError } from "./diagnostic.ts";
 import { containsDirectAwait } from "./codegen_analysis.ts";
+import { blockValueWithArguments } from "./prelude/block.ts";
+
+const blockKeywordSelector = new RegExp(
+  blockValueWithArguments.selectorPattern,
+);
 
 export type ExpressionEmitter = (
   expression: Expression,
   scope?: string,
+  discardResult?: boolean,
 ) => string;
 
 export function createEmitter(
   evaluators?: ReadonlyMap<Expression, number>,
 ): ExpressionEmitter {
-  const emit: ExpressionEmitter = (expression, scope = "environment") => {
+  const emit: ExpressionEmitter = (
+    expression,
+    scope = "environment",
+    discardResult = false,
+  ) => {
     const context = `{location: ${
       JSON.stringify(expression.location)
     }, environment: ${scope}}`;
@@ -39,9 +49,22 @@ export function createEmitter(
       case "export":
         return `(moduleExport = ${emit(expression.value, scope)})`;
       case "await":
-        return `(await awaitToss(${
+        if (
+          expression.expression.kind === "number" ||
+          expression.expression.kind === "string"
+        ) {
+          // These literals need no result lookup or box until after suspension.
+          return `(${scope}.asyncTask === undefined || checkEffectTask(undefined, ${scope}.asyncTask),
+            await settledTossTick, resumeTossAwait({value: ${
+            emit(expression.expression, scope)
+          }}, ${scope}))`;
+        }
+        return `(awaitable = awaitToss(${
           emit(expression.expression, scope)
-        }, ${context})).value`;
+        }, ${context}), awaitBox = awaitable[asyncResultState],
+        resumeTossAwait(awaitBox === undefined
+          ? await awaitable
+          : (await settledTossTick, awaitBox), ${scope}))`;
       case "javascript":
         return evaluators?.has(expression)
           ? `evaluateCompiledJavaScript(javascriptEvaluators[${
@@ -65,14 +88,20 @@ export function createEmitter(
         return `[${
           expression.elements.map((item) => emit(item, scope)).join(", ")
         }]`;
-      case "send":
-        return `send(${emit(expression.receiver, scope)}, {name: ${
+      case "send": {
+        const dispatch = discardResult &&
+            (expression.name === "value" ||
+              blockKeywordSelector.test(expression.name))
+          ? "discardValueSend"
+          : "send";
+        return `${dispatch}(${emit(expression.receiver, scope)}, {name: ${
           JSON.stringify(expression.name)
         }, arguments: [${
           expression.arguments.map((argument) => emit(argument, scope)).join(
             ", ",
           )
         }]}, ${context})`;
+      }
       case "super":
         return `parentSend([${
           expression.arguments.map((argument) => emit(argument, scope)).join(

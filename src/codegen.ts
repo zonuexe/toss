@@ -1,5 +1,6 @@
 import type { Expression } from "./ast.ts";
 import {
+  compileFailureObserverImport,
   compileFormat,
   type CompileOptions,
   compileRuntimeImport,
@@ -35,11 +36,21 @@ export function generate(
 ): string {
   const format = compileFormat(options);
   const runtimeImport = compileRuntimeImport(options);
+  const observerImport = compileFailureObserverImport(options);
   const treeShakePrelude = compileTreeShakePrelude(options);
   const javascriptExpressions = collectJavaScriptExpressions(expressions);
   const javascriptState = emitJavaScriptEvaluators(javascriptExpressions);
   const imports = collectJavaScriptImports(expressions);
-  const importAliases = javascriptImportAliases(imports, javascriptExpressions);
+  const hostImports = observerImport === undefined
+    ? imports
+    : [...imports, observerImport];
+  const importAliases = javascriptImportAliases(
+    hostImports,
+    javascriptExpressions,
+  );
+  const observerAlias = observerImport === undefined
+    ? undefined
+    : importAliases[imports.length];
   const runtimeAlias = runtimeImport === undefined
     ? undefined
     : javascriptRuntimeAlias(javascriptExpressions);
@@ -50,23 +61,33 @@ export function generate(
     ? runtimePreludeLines(
       false,
       treeShakePrelude ? collectPreludeSelectors(expressions) : undefined,
+      undefined,
+      observerAlias !== undefined,
+      true,
     )
-    : runtimeCompatibilitySetupLines("runtimeNamespace");
+    : runtimeCompatibilitySetupLines(
+      "runtimeNamespace",
+      undefined,
+      observerAlias === undefined ? "undefined" : "effectDiagnosticHost",
+    );
   const emit = createEmitter(evaluatorIndices);
   const lines = [
-    ...emitJavaScriptImportStatements(imports, importAliases),
+    ...emitJavaScriptImportStatements(hostImports, importAliases),
     ...(runtimeImport === undefined || runtimeAlias === undefined ? [] : [
       `import * as ${runtimeAlias} from ${JSON.stringify(runtimeImport)};`,
     ]),
     `${
       format === "esm" ? "export default " : ""
     }((javascriptEvaluators, javascriptImportNames${
-      runtimeImport === undefined ? "" : ", runtimeNamespace"
-    }) => {`,
+      observerAlias === undefined ? "" : ", effectDiagnosticHost"
+    }${runtimeImport === undefined ? "" : ", runtimeNamespace"}) => {`,
     ...runtimeSetup,
-    ...fileRootSetupLines(),
+    ...fileRootSetupLines([], true),
   ];
-  for (const expression of expressions) lines.push(emit(expression) + ";");
+  if (observerAlias !== undefined) lines.push("try {");
+  for (const expression of expressions) {
+    lines.push(emit(expression, undefined, true) + ";");
+  }
   if (format === "esm") {
     const exported = expressions.find((expression) =>
       expression.kind === "export"
@@ -82,10 +103,15 @@ export function generate(
       }});`,
     );
   }
+  if (observerAlias !== undefined) {
+    lines.push("} catch (error) { throw reportHostFailure(error, 'entry'); }");
+  }
   lines.push(
     `})(${javascriptState.source}, ${
       javascriptImportMapExpression(imports, importAliases)
-    }${runtimeAlias === undefined ? "" : `, ${runtimeAlias}`});`,
+    }${observerAlias === undefined ? "" : `, ${observerAlias}`}${
+      runtimeAlias === undefined ? "" : `, ${runtimeAlias}`
+    });`,
   );
   return lines.join("\n") + "\n";
 }

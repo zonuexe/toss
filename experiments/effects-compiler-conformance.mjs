@@ -131,6 +131,35 @@ for (const [name, source] of cases) {
   const experimental = await execute(
     compileExperimentalEffects(source, "conformance.toss"),
   );
+  const optimized = await execute(
+    compileExperimentalEffects(source, "conformance.toss", {
+      directNumberSends: true,
+    }),
+  );
+  const shared = await execute(
+    compileExperimentalEffects(source, "conformance.toss", {
+      sharedDispatchTables: true,
+      sharedBoundaryDelegate: true,
+    }),
+  );
+  assert.equal(shared.success, experimental.success, name);
+  assert.equal(shared.stdout, experimental.stdout, name);
+  if (!experimental.success) {
+    assert.equal(
+      diagnostic(shared.stderr),
+      diagnostic(experimental.stderr),
+      name,
+    );
+  }
+  assert.equal(optimized.success, experimental.success, name);
+  assert.equal(optimized.stdout, experimental.stdout, name);
+  if (!experimental.success) {
+    assert.equal(
+      diagnostic(optimized.stderr),
+      diagnostic(experimental.stderr),
+      name,
+    );
+  }
   assert.equal(experimental.success, baseline.success, name);
   assert.equal(experimental.stdout, baseline.stdout, name);
   if (!baseline.success) {
@@ -146,5 +175,5 @@ for (const [name, source] of cases) {
   }
 }
 console.log(
-  `PASS: ${cases.length} supported ordinary Toss programs match the standard compiler`,
+  `PASS: ${cases.length} ordinary programs match with numeric sends and shared delegate variants`,
 );

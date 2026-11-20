@@ -8,6 +8,7 @@ function effectInitialize(id, location) {
     const previous = effectModuleStates.get(id);
     if (previous?.state === "done") return previous.value;
     if (previous?.state === "failed") {
+      if (isEffectCarrier(previous.error)) throw copyEffectFailure(previous.error);
       restoreEffectFailure(previous.error, previous.metadata);
       throw previous.error;
     }
@@ -18,17 +19,18 @@ function effectInitialize(id, location) {
       effectModuleStates.set(id, {state: "done", value});
       return value;
     } catch (error) {
+      error = asEffectFailure(error);
       if (abandoning) {
-        const interrupted = new TossRuntimeError("Module initialization interrupted.", location);
+        const interrupted = asEffectFailure(new TossRuntimeError("Module initialization interrupted.", location));
         recordCleanupFailure(interrupted, error);
         effectModuleStates.set(id, {state: "failed", error: interrupted, metadata: snapshotEffectFailure(interrupted)});
       } else {
-        effectModuleStates.set(id, {state: "failed", error, metadata: snapshotEffectFailure(error)});
+        effectModuleStates.set(id, {state: "failed", error: isEffectCarrier(error) ? copyEffectFailure(error) : error, metadata: snapshotEffectFailure(error)});
       }
       throw error;
     } finally {
       if (effectModuleStates.get(id)?.state === "running") {
-        effectModuleStates.set(id, {state: "failed", error: new TossRuntimeError("Module initialization interrupted.", location)});
+        effectModuleStates.set(id, {state: "failed", error: asEffectFailure(new TossRuntimeError("Module initialization interrupted.", location))});
       }
     }
   })();

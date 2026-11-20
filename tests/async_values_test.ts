@@ -24,9 +24,19 @@ const cases = [
     "14\n",
   ],
   [
+    "await on a same-realm native Promise ignores its own then getter",
+    "#promise bind: %js(Object.defineProperty(Promise.resolve(42), 'then', { get() { throw new Error('then read'); } })). #callback bind: %async({ %await($promise) }) asJSCallback. %js(f = $callback; f().then(value => console.log(value))).",
+    "42\n",
+  ],
+  [
     "nested async results are not implicitly flattened",
     "#inner bind: %async({ 9 }). #outer bind: %async({ $inner value }). #runner bind: %async({ #nested bind: %await($outer value). %await($nested) }). #callback bind: $runner asJSCallback. %js(callback = $callback; callback().then(value => console.log(value))).",
     "9\n",
+  ],
+  [
+    "Toss async result boxes do not inherit a JavaScript then getter",
+    "#run bind: %async({ %await(%async({ 42 }) value) }) asJSCallback. %js(f = $run; (async () => { Object.defineProperty(Object.prototype, 'then', { configurable: true, get() { if (Object.hasOwn(this, 'value')) throw new Error('result box assimilated'); } }); try { console.log(await f()); } finally { delete Object.prototype.then; } })()).",
+    "42\n",
   ],
   [
     "async callback result converts to a native Promise and original Response",

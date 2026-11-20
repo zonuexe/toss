@@ -7,6 +7,7 @@ import {
   type ModuleImport,
 } from "./module_analysis.ts";
 import {
+  compileFailureObserverImport,
   compileFormat,
   type CompileOptions,
   compileRuntimeImport,
@@ -51,6 +52,7 @@ export async function compileFile(
   compileTreeShakePrelude(options);
   const format = compileFormat(options);
   const runtimeImport = compileRuntimeImport(options);
+  const failureObserverImport = compileFailureObserverImport(options);
   const entryCanonical = await Deno.realPath(input);
   const modules: LoadedModule[] = [];
   let entryExport: ModuleExport | undefined;
@@ -200,6 +202,7 @@ export async function compileFile(
     moduleSources: modules.map((module) => module.canonical),
     macroLibraries,
     ...(runtimeImport === undefined ? {} : { runtimeImport }),
+    ...(failureObserverImport === undefined ? {} : { failureObserverImport }),
   });
   const bundle = finalizeModuleGraph(modules, entry, edges);
   return generateBundle(bundle, entry, options);
