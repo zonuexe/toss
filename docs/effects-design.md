@@ -3047,3 +3047,137 @@ much fallback traffic has a wider pause problem. The natural GC
 pauses in this workload exceeded the map-write maxima, and sharding
 the registrations would address only part of the observed delay.
 The runtime code is unchanged.
+
+### Natural GC with scheduled arrivals
+
+The churn benchmark's `scheduled` mode queues 256 publications
+every 10 ms. One read with a single await is due halfway through each slot,
+independently of when the publications finish. The scheduler processes
+every due job in order, including arrivals that became due while
+the thread was stopped. The queue clock starts at the scheduled
+arrival and ends when the callback starts. For publications it
+includes creation of the batch's keys and waiting behind the
+earlier callbacks in the same batch. End-to-end time runs from
+the scheduled arrival to return for publication and settlement
+for the read. Browser timer, network and application queueing
+are outside this fixture.
+
+Two factors are varied independently:
+
+- `keys` and `anchored` each hold 100,000 Wasm keys for the entire
+  run. Only `anchored` gives those keys published results and
+  reverse-map entries. Neither profile reads the anchor keys
+  during the timed section.
+- The extra publication argument is 0 or 256 per slot. The extra
+  keys are released after the slot. The same 256 ordinary cohort
+  keys and one read per slot are present in both cases. This
+  varies temporary allocation and registration churn together,
+  as they occur in the Wasm path.
+
+The normal cohorts retain keys for 4, 128 and 2,048 slots. Setup
+is before the `SCHEDULE_START` marker, and `SCHEDULE_END`
+follows completion of every scheduled request. The harness does
+not expose or call forced GC.
+
+```sh
+deno run --allow-read --v8-flags=--trace-gc-nvp \
+  experiments/async-wasm-churn-benchmark.mjs \
+  . external anchored 40 scheduled 256
+```
+
+The matrix below is one fresh Deno 2.9.7 process per cell on arm64
+macOS, with 40 seconds of scheduled arrivals. Every process handled
+4,000 reads and either 1,024,000 or 2,048,000 publications.
+A pseudo-terminal kept V8's natural GC lines in order with the phase
+markers. Allocated MB/s comes from the GC log's allocation counters.
+Post-major heap is the logged object size after collection, so the
+median also reflects the evolving cohorts. The queue and end-to-end
+columns give separate maxima.
+
+| Runtime | Anchor profile | Extra/slot | Allocated MB/s | Young collections | Major collections | Max major pause | Median post-major heap |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Embedded | keys | 0 | 78.5 | 138 | 4 | 63.41 ms | 18.5 MB |
+| Embedded | keys | 256 | 155.4 | 251 | 6 | 124.44 ms | 26.5 MB |
+| Embedded | anchored | 0 | 78.3 | 121 | 2 | 119.94 ms | 43.9 MB |
+| Embedded | anchored | 256 | 156.5 | 235 | 3 | 349.70 ms | 66.4 MB |
+| External | keys | 0 | 78.8 | 133 | 5 | 87.88 ms | 23.1 MB |
+| External | keys | 256 | 155.9 | 250 | 6 | 131.65 ms | 26.8 MB |
+| External | anchored | 0 | 79.4 | 121 | 2 | 165.66 ms | 57.3 MB |
+| External | anchored | 256 | 156.0 | 234 | 3 | 317.14 ms | 66.0 MB |
+
+| Runtime | Anchor profile | Extra/slot | Publication queue / end-to-end max | One-await queue / end-to-end max | One awaits ≥16 ms |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Embedded | keys | 0 | 75.44 / 75.45 ms | 70.45 / 70.48 ms | 0.40% |
+| Embedded | keys | 256 | 138.88 / 138.88 ms | 133.89 / 133.93 ms | 1.23% |
+| Embedded | anchored | 0 | 154.08 / 154.08 ms | 149.09 / 149.11 ms | 0.50% |
+| Embedded | anchored | 256 | 386.72 / 386.72 ms | 381.73 / 381.84 ms | 2.30% |
+| External | keys | 0 | 551.52 / 551.53 ms | 546.53 / 546.64 ms | 4.62% |
+| External | keys | 256 | 146.83 / 146.83 ms | 141.84 / 141.89 ms | 1.85% |
+| External | anchored | 0 | 198.41 / 198.41 ms | 193.41 / 193.45 ms | 0.83% |
+| External | anchored | 256 | 369.30 / 369.31 ms | 364.32 / 364.41 ms | 1.88% |
+
+Keeping the anchor profile fixed, the extra transient publications
+nearly doubled the measured allocation rate in every pair and
+increased young collections from 121–138 to 234–251 per run. It also
+increased the largest major stop in each pair. This changes allocation
+and weak-table churn together.
+
+At a fixed offered rate, keeping the anchor results increased the
+median heap after a major collection by roughly 25–40 MB. The total
+allocation rate was nearly unchanged. The number of major pauses
+fell from 4–6 to 2–3, but the worst pauses increased. At the high
+rate the longest embedded and external pauses spent 332 and 296 ms
+in marking, including 126 and 110 ms of linear ephemeron marking,
+respectively. That V8 phase is for the whole isolate.
+
+Callback execution alone understates the observed tail. The external
+anchored high-rate read ran for at most 0.624 ms after it started,
+while its scheduled end-to-end maximum was 364.41 ms. The embedded
+counterpart took at most 2.613 ms in the callback and 381.84 ms
+end to end. The external keys-only low-rate run had a separate
+546.64 ms read outlier. Its largest logged GC stop was 87.88 ms,
+its slowest single publication 79.93 ms, and its slowest read
+callback 8.75 ms. The raw end-to-end maximum therefore cannot be
+attributed to one GC pause or one measured callback.
+
+Two further 40-second anchored high-rate runs used no V8 log flags.
+Both completed all 2,048,000 publications and 4,000 reads.
+
+| Runtime | Max publication including wait | Max one await including wait | Max one-await callback alone | One awaits ≥16 ms |
+| --- | ---: | ---: | ---: | ---: |
+| Embedded | 720.72 ms | 715.86 ms | 13.94 ms | 8.88% |
+| External | 518.04 ms | 513.12 ms | 10.68 ms | 2.78% |
+
+These repeats show that long scheduled delays do not depend on GC
+trace logging. They do not measure GC stop times, and the maxima
+vary substantially across processes.
+
+Two diagnostic repeats logged late slot boundaries with the
+collector trace. In the external keys-only low-rate repeat, the
+earlier 546.64 ms outlier did not recur. A timer wait of 89.71 ms
+included an 89.44 ms major collection. The next publication batch
+took 20.47 ms, and the queued read waited 104.63 ms for a 0.032 ms
+callback. This shows how a GC pause can propagate into later jobs
+without a similarly long read.
+
+The embedded anchored high-rate repeat showed both patterns.
+A 133.59 ms timer wait included a 132.83 ms major pause.
+At a different point in the same run the queue was already late
+and several publication batches exceeded their 10 ms slots.
+One batch of publishing calls took 160.46 ms while its arrival
+was already 321.79 ms late. The longest read queue wait eventually
+reached 537.55 ms, while the largest recorded GC pause was
+132.83 ms. The slow batches and queue debt are observable. The
+trace does not attribute the remaining batch time to a specific
+V8 operation or host scheduling event.
+
+A 16 ms p99 target needs mitigation at the tested 51,200
+publications per second. All four matrix cells at that rate
+had more than 1% of reads at or above 16 ms, including both
+keys-only controls. With 100,000 results held, even the lower
+25,600 per second rate exceeded 100 ms end to end in both forms.
+A hard 100 ms target under that retention load also needs
+mitigation. These are conditions observed in this workload,
+not universal thresholds. The results point to temporary
+allocation rate, retained result volume and queue backlog as
+the relevant levers. The runtime code is unchanged.

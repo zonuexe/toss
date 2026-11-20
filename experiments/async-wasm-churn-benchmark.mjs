@@ -8,12 +8,19 @@ const [
   profile = "mixed",
   secondsArgument = "60",
   mode = "timing",
+  extraArgument = "0",
 ] = Deno.args;
 const seconds = Number(secondsArgument);
+const extra = Number(extraArgument);
 assert.ok(runtime === "embedded" || runtime === "external");
-assert.ok(profile === "mixed" || profile === "anchored");
-assert.ok(mode === "timing" || mode === "trace");
+assert.ok(["timing", "trace", "scheduled"].includes(mode));
+assert.ok(
+  profile === "mixed" || profile === "anchored" ||
+    (profile === "keys" && mode === "scheduled"),
+);
 assert.ok(Number.isFinite(seconds) && seconds >= 1);
+assert.ok(Number.isSafeInteger(extra) && extra >= 0);
+assert.ok(extra === 0 || mode === "scheduled");
 const trace = mode === "trace";
 
 // (module (type (struct)) (func (export "mak") (result externref)
@@ -81,6 +88,9 @@ const bounds = [
   32,
   64,
   128,
+  256,
+  512,
+  1024,
 ];
 class Latencies {
   counts = new Uint32Array(bounds.length + 1);
@@ -135,12 +145,14 @@ const readsAfterSlowBatch = new Latencies();
 const mapWrites = new Latencies();
 const firstAfterSlowMap = new Latencies();
 const readsAfterSlowMapBatch = new Latencies();
+const registrationQueue = new Latencies();
+const registrationEndToEnd = new Latencies();
 let previousWasSlow = false;
 let previousMapWasSlow = false;
 let slowMapInBatch = false;
 let batch = 0;
 const nativeThen = Promise.prototype.then;
-function publish(keys, measured) {
+function publish(keys, measured, due) {
   let current;
   let returned;
   let slowInBatch = false;
@@ -158,8 +170,13 @@ function publish(keys, measured) {
       }
       const start = performance.now();
       returned = fixture.start();
-      const elapsed = performance.now() - start;
+      const end = performance.now();
+      const elapsed = end - start;
       registrations.add(elapsed);
+      if (due !== undefined) {
+        registrationQueue.add(start - due);
+        registrationEndToEnd.add(end - due);
+      }
       if (previousWasSlow) firstAfterSlow.add(elapsed);
       previousWasSlow = elapsed >= 1;
       if (previousWasSlow) slowInBatch = true;
@@ -189,11 +206,11 @@ function publish(keys, measured) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const anchors = [];
-const anchorCount = profile === "anchored" ? 100000 : 0;
+const anchorCount = profile === "mixed" ? 0 : 100000;
 while (anchors.length < anchorCount) {
   const size = Math.min(512, anchorCount - anchors.length);
   const keys = Array.from({ length: size }, mak);
-  publish(keys, false);
+  if (profile === "anchored") publish(keys, false);
   anchors.push(...keys);
   await wait(0);
 }
@@ -204,6 +221,78 @@ const cohorts = [
 ];
 const batchSize = 256;
 const intervalMs = 5;
+if (mode === "scheduled") {
+  const periodMs = 10;
+  const slots = Math.floor(seconds * 1000 / periodMs);
+  const candidates = [];
+  const readQueue = new Latencies();
+  const readEndToEnd = new Latencies();
+  let publications = 0;
+  let readRequests = 0;
+  console.log("SCHEDULE_START");
+  const started = performance.now();
+  while (publications < slots || readRequests < slots) {
+    const publishDue = publications < slots
+      ? started + publications * periodMs
+      : Infinity;
+    const readDue = readRequests < slots
+      ? started + readRequests * periodMs + periodMs / 2
+      : Infinity;
+    const due = Math.min(publishDue, readDue);
+    while (performance.now() < due) {
+      await wait(Math.ceil(due - performance.now()));
+    }
+    if (publishDue < readDue) {
+      const keys = Array.from({ length: batchSize + extra }, mak);
+      publish(keys, true, due);
+      let offset = 0;
+      for (const [index, { size, slots }] of cohorts.entries()) {
+        const slot = publications % slots.length;
+        const retained = keys.slice(offset, offset + size);
+        const targets = slots[slot] ?? retained;
+        candidates[index] = targets[publications % size];
+        slots[slot] = retained;
+        offset += size;
+      }
+      publications++;
+    } else {
+      const start = performance.now();
+      const result = await fixture.read(
+        candidates[readRequests % cohorts.length],
+      );
+      const end = performance.now();
+      assert.equal(result, 42);
+      reads.add(end - start);
+      readQueue.add(start - due);
+      readEndToEnd.add(end - due);
+      readRequests++;
+    }
+  }
+  const durationMs = performance.now() - started;
+  assert.equal(anchors.length, anchorCount);
+  assert.equal(registrations.count, slots * (batchSize + extra));
+  assert.equal(reads.count, slots);
+  console.log("SCHEDULE_END");
+  console.log(JSON.stringify({
+    runtime,
+    profile,
+    mode,
+    durationMs,
+    seconds,
+    periodMs,
+    batchSize,
+    extra,
+    anchorCount,
+    registrations: registrations.report(),
+    registrationQueue: registrationQueue.report(),
+    registrationEndToEnd: registrationEndToEnd.report(),
+    reads: reads.report(),
+    readQueue: readQueue.report(),
+    readEndToEnd: readEndToEnd.report(),
+    heapBytes: Deno.memoryUsage().heapUsed,
+  }));
+  Deno.exit(0);
+}
 const started = performance.now();
 while (performance.now() - started < seconds * 1000) {
   if (trace) console.log("BATCH", batch, performance.now());
