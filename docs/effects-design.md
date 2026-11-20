@@ -3387,3 +3387,102 @@ sustains the joint budget at this retention. The traced repetitions demonstrate
 collection-driven queue buildup and, at the higher rate, a separate registration
 stall with no matching collection. They also show why a pause below 100 ms can
 exceed the hard limit once the following batch is included.
+
+### Separating fallback writes, collection, and host scheduling
+
+The same 10,000 fixed results, rolling cohorts, batch size of 128 and 10 ms read
+interval were repeated in four sequential 120-second processes on arm64 macOS
+with Deno 2.9.7. The production-runtime budget runs used no V8 tracing flags.
+Every run completed all scheduled jobs. The measurements below include queue
+wait. Percentiles are histogram upper bounds.
+
+| Interval | Runtime  | Registrations/s | Registration p99 / max, ms | One-await p99 / max, ms |
+| -------- | -------- | --------------: | -------------------------: | ----------------------: |
+| 5 ms     | Embedded |        25,600.4 |               128 / 554.28 |            128 / 553.31 |
+| 5 ms     | External |        25,600.4 |                32 / 243.79 |             32 / 243.84 |
+| 10 ms    | Embedded |        12,800.3 |                16 / 121.76 |             16 / 116.79 |
+| 10 ms    | External |        12,800.3 |                16 / 117.68 |             16 / 112.73 |
+
+Use the same reproduction command as for the three-minute runs, with a
+120-second schedule. The runs at both rates exceeded the 100 ms maximum. The two
+5 ms runs also exceeded the 16 ms p99 target. The embedded 10 ms baseline did
+not repeat the approximately one-second event.
+
+Separate 120-second diagnostic processes measured elapsed time and macOS
+`CLOCK_THREAD_CPUTIME_ID` around registrations and the exact fallback
+`WeakMap.set`. A native observer sampled the benchmark thread using
+`THREAD_BASIC_INFO` at a nominal 4 ms interval. Natural V8 GC was recorded with
+`--trace-gc-nvp` on the same pseudo-terminal as the scheduler markers. No
+process invoked or exposed forced GC.
+
+A calibration on this host recorded 53.67 ms of thread CPU and 11 running
+samples during a 60.06 ms busy loop. An explicit blocking wait took 67.11 ms,
+used 0.09 ms of thread CPU, and had 11 waiting and zero running samples. Thread
+state is sampled, so the total elapsed time minus thread CPU is more precise
+than using the sample counts to estimate a stall's length.
+
+| Interval | Runtime  | Registration p99 / max, ms | One-await p99 / max, ms |
+| -------- | -------- | -------------------------: | ----------------------: |
+| 5 ms     | Embedded |                16 / 137.75 |             16 / 133.52 |
+| 5 ms     | External |                32 / 169.46 |             32 / 169.53 |
+| 10 ms    | Embedded |                 32 / 87.22 |              16 / 82.30 |
+| 10 ms    | External |                16 / 130.51 |             16 / 125.59 |
+
+These diagnostic distributions include the effects of the probes and are
+reported separately from the production-runtime budget runs.
+
+V8's insertion path can do a table rehash or capacity work within the same
+WeakMap call. The probe locates CPU time inside that call, and has no V8 rehash
+event counter. The previous threshold sweep provides an independent rehash
+reproduction.
+[V8 weak collection insertion](https://chromium.googlesource.com/v8/v8/%2B/0dd2a1712162de72da0f413b4de9056cbe31ef29/src/builtins/builtins-collections-gen.cc#2052)
+
+The embedded 5 ms trace caught a 119.78 ms major collection during a 122.17 ms
+timer wait. The first batch registration after the collection spent 16.62 ms of
+thread CPU inside the map write. Its queued read took 133.52 ms end to end, of
+which only 0.05 ms was in the read callback. A distinct post-collection first
+write used 19.25 ms of thread CPU in 20.03 ms elapsed. The first-write pattern
+and concentrated CPU are consistent with table rehashing.
+
+Off-CPU stops occurred independently. In the embedded 10 ms trace, one call took
+51.88 ms with 0.11 ms of thread CPU and a map write under 0.01 ms. Another write
+took 21.81 ms with 0.27 ms thread CPU and four waiting samples. Neither
+coincided with any GC record. The embedded 5 ms trace likewise had a 22.87 ms
+write with 0.03 ms of thread CPU and no coincident GC record. A long write's
+elapsed duration alone overstates the time spent working on the table.
+
+In the external 5 ms trace, a 130.77 ms individual registration overlapped a
+113.64 ms major collection. Its map write took 16.98 ms elapsed and used 16.05
+ms of thread CPU, after the collection. Separately, a 30.83 ms registration
+without an overlapping GC used 0.04 ms of thread CPU and returned from the map
+within 0.01 ms. The external form can exhibit the same distinction between a
+long call overlapping GC and an off-CPU call outside the map. At the 10 ms
+interval the external trace also recorded a 51.23 ms timer wait without
+overlapping GC and with just 0.14 ms of benchmark-thread CPU. Its largest queue
+delay was a different episode that followed a 111.96 ms major collection. The
+corresponding read spent 125.56 ms in the queue and 0.03 ms running its
+callback.
+
+Mach reports a thread as `TH_STATE_RUNNING` when it is executing or on the run
+queue. A running sample during a span with negligible thread CPU supports
+scheduling delay, while a waiting sample supports blocking. Sparse samples leave
+the full interval unclassified.
+[XNU state mapping](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/thread.c)
+[XNU thread state flags](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/thread.h#L3020-L3026)
+
+Two fresh 90-second embedded diagnostics gave registration and read p99/max
+pairs of 32/184.58 ms and 64/180.83 ms at the 5 ms interval, and 16/72.61 ms and
+8/67.70 ms at the 10 ms interval. The 5 ms trace again showed both mechanisms. A
+161.97 ms major collection was followed by a 23.25 ms map write with 21.78 ms of
+thread CPU. A separate 43.01 ms registration without GC used 0.07 ms of thread
+CPU and spent under 0.01 ms inside the map. The 10 ms trace had a timer wake
+53.31 ms past its due time with 0.08 ms of thread CPU, one running and one
+waiting sample, and no concurrent GC.
+
+The original embedded 627.31 ms registration, near-one-second queue delay, and
+109.67 ms registration did not recur at their original sizes in the timed
+traces. Their exact causes remain unknown. The new evidence separates
+CPU-intensive map writes on the scale of tens of milliseconds, GC pauses that
+feed backlogged batches, and off-CPU waits inside and outside the map. The
+latter can occur without a matching GC record, and the Mach samples only support
+a scheduler attribution for parts of some spans.
