@@ -3590,3 +3590,79 @@ registration. These controls establish substantial queueing without tracing.
 They leave the GC attribution of the 112.14 ms call and the cause of the
 variation between runs unresolved. The approximately three-second maximum was
 observed only in the instrumented series.
+
+### Diagnostic output during CPU contention
+
+The 25,600/s workload was repeated on arm64 macOS with Deno 2.9.7, 10,000 fixed
+results, 128 registrations every 5 ms, and a one-await read every 10 ms. Sixteen
+arithmetic workers contended for 12 logical CPUs. Each runtime and recording
+mode ran in a fresh process for 75 seconds of scheduled arrivals, repeated in
+reverse order. All modes used the same terminal capture and 1 ms end-to-end
+latency buckets.
+
+- No trace. Use the normal workload with a count of individual registrations
+  taking at least 100 ms.
+- GC only. Enable passive V8 `--trace-gc-nvp`. Save timestamps for individual
+  calls of at least 90 ms in a preallocated array and print these timestamps
+  after the schedule. This makes it possible to test GC overlap with no
+  synchronous JavaScript diagnostic lines.
+- Buffered diagnostics. Enable the same V8 GC output and clock/thread probes as
+  the live variant. Save JavaScript diagnostic events in preallocated numeric
+  arrays and emit them after the schedule ends.
+- Live diagnostics. Save the same events, and also emit the diagnostic lines
+  synchronously during the schedule. Record elapsed time around each JavaScript
+  console call and emit those spans after the schedule.
+
+Only the JavaScript diagnostics are deferred in the buffered variant. V8's
+passive GC output still occurs during collection. No variant invokes or exposes
+forced GC. Live console spans include time lost to scheduling while inside a
+console call. They describe where that time was spent and cannot be treated as
+pure logging CPU cost.
+
+| Runtime  | Recording mode | Registration p99 upper bound / max, ms | One-await p99 upper bound / max, ms |
+| -------- | -------------- | -------------------------------------: | ----------------------------------: |
+| Embedded | No trace       |                    7–8 / 160.06–184.57 |                 8–9 / 160.09–184.60 |
+| Embedded | GC only        |                 10–195 / 160.99–410.16 |              10–196 / 156.64–410.21 |
+| Embedded | Buffered       |                   7–21 / 157.21–183.81 |                9–22 / 157.24–179.48 |
+| Embedded | Live           |                   9–24 / 145.06–147.73 |               10–24 / 143.43–147.78 |
+| External | No trace       |                  17–97 / 148.01–221.78 |               18–99 / 148.03–224.99 |
+| External | GC only        |                  14–52 / 134.51–246.61 |               16–53 / 134.53–242.76 |
+| External | Buffered       |                  13–45 / 149.19–156.81 |               14–47 / 149.22–156.84 |
+| External | Live           |                   8–17 / 161.57–169.89 |                8–18 / 157.25–165.84 |
+
+Each cell shows the range across its two repetitions. Each process completed all
+1,920,000 registrations and all 7,500 reads. The host CPU samples taken before
+each process and those taken in the full diagnostic runs were 100%. No run
+exceeded one second. External one-await maxima increased from buffered to live
+output by 16.62 ms in the first repetition and 0.41 ms in the second. The p99
+change reversed direction between repetitions, and maximum GC pauses also
+differed. Embedded one-await maxima were lower in the live repetitions than in
+the matching buffered repetitions.
+
+In both external repetitions, the longest read wait overlapped less than half a
+millisecond of JavaScript console time. It was 165.79 ms with 0.46 ms of overlap
+in the first repetition, and 157.21 ms with 0.22 ms in the second. The matching
+embedded observations were 147.76 ms with 0.31 ms and 143.41 ms with 1.23 ms of
+overlap. Across the whole live processes, recorded JavaScript console time was
+29.06–137.16 ms, with a single maximum console span of 42.67 ms. These overlaps
+capture the direct intersection with the read's queued interval. They leave
+indirect effects through earlier backlog, allocations, and GC timing unresolved.
+
+The historical 2,923.45 ms queue window contained 691 JavaScript diagnostic
+lines. Replaying those exact records in a burst twelve times under the same CPU
+load and terminal capture took a median 11.59 ms of elapsed time and 11.08 ms of
+thread CPU with synchronous output. The elapsed range was 5.99–25.07 ms.
+Buffering those records took a median 0.044 ms before output. The replay
+measures the cost of that volume of formatting and output in isolation. It lacks
+the original arrival schedule, GC timing, and interactions with backlogged work.
+The original seconds-scale delay's attribution remains open.
+
+One registration in the first embedded GC-only run took 124.22 ms. The nearest
+preceding GC ended about 293 ms before the call and the next GC began about 62
+ms after it. The timing comparison used monotonic terminal receipt times,
+aligned to the process clock, with 12 ms padding for delivery and rounding. Live
+trace markers offered an independent check on the clock offset. This call
+demonstrates that a GC-free, 100 ms-class registration can occur without
+synchronous JavaScript diagnostic output. The other 15 runs had no individual
+registration reach 100 ms. In particular, the external GC-recorded repetitions
+did not reproduce the earlier 104.12 ms call.
