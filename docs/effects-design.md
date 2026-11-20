@@ -3486,3 +3486,107 @@ CPU-intensive map writes on the scale of tens of milliseconds, GC pauses that
 feed backlogged batches, and off-CPU waits inside and outside the map. The
 latter can occur without a matching GC record, and the Mach samples only support
 a scheduler attribution for parts of some spans.
+
+### Host CPU contention and queue tails
+
+The same 10,000 fixed results, rolling cohorts, 128 registrations per slot and
+one read per 10 ms were used for both runtimes at both rates. Separate processes
+scheduled 120 seconds of arrivals in each cell. Each used the thread-clock probe
+and passive `--trace-gc-nvp` capture, with no forced GC. The measurements
+include probe overhead. They compare conditions with identical instrumentation.
+
+The load generator ran 16 normal-priority arithmetic workers against 12 logical
+CPUs. It started before the benchmark process and stopped after all arrivals
+drained. The comparison condition used the existing host workload with no added
+workers. Mach host CPU tick deltas measured utilization at roughly one-second
+intervals. The order of loaded and no-added-load processes was reversed for half
+of the profile pairs.
+
+The probe measured benchmark-thread CPU time around calls and sampled the
+thread's Mach state and cumulative CPU time at a nominal 4 ms interval. An
+estimate uses adjacent samples of the same state at most 12 ms apart. For each
+covered interval, it deducts the thread CPU delta, then assigns the remaining
+time to runnable or blocked according to the sampled state. Transitions, long
+gaps and interval edges contribute to the unclassified part of elapsed time
+minus CPU time. State-duration estimates are capped by that measured total. In a
+calibration, an 80.03 ms busy loop used 79.66 ms of thread CPU, but the uncapped
+sample estimate assigned 22.24 ms to runnable wait. The wall-minus-CPU cap
+reduces that estimate to 0.37 ms. An explicit wait took 85.28 ms with 0.09 ms of
+thread CPU and 79.80 ms of estimated blocking. The category split is an
+estimate, with stronger evidence in the long calls that consumed almost no CPU.
+
+| Publications/s | Runtime  | Added load | Host CPU median |   Registration p99 / max, ms | One-await p99 / max, ms |
+| -------------: | -------- | ---------- | --------------: | ---------------------------: | ----------------------: |
+|         12,800 | Embedded | None       |           60.1% |         31.03–37.44 / 222.40 |          35.50 / 217.49 |
+|         12,800 | Embedded | 16 workers |          100.0% |         13.40–20.48 / 227.99 |          17.29 / 223.05 |
+|         12,800 | External | None       |           44.2% |         16.49–21.19 / 213.59 |          19.02 / 208.63 |
+|         12,800 | External | 16 workers |          100.0% |                  ≤8 / 122.82 |             ≤8 / 117.90 |
+|         25,600 | Embedded | None       |           50.0% |         61.35–64.25 / 410.09 |          66.18 / 410.17 |
+|         25,600 | Embedded | 16 workers |          100.0% |       250.36–252.46 / 497.04 |         250.76 / 497.18 |
+|         25,600 | External | None       |           40.3% |         25.16–28.04 / 212.39 |          27.59 / 212.44 |
+|         25,600 | External | 16 workers |          100.0% | 2,751.38–2,755.68 / 2,921.62 |     2,756.29 / 2,923.59 |
+
+All 12,000 scheduled reads and all 1,536,000 or 3,072,000 scheduled
+registrations completed in every cell. Latencies include queue wait. Slow reads
+were individually logged, so their 99th percentile can be recovered when it
+exceeds the logging cutoff. Each slow registration batch provides lower and
+upper bounds for all its registrations from the end of key creation and the end
+of the publish loop. The ranks of these bounds give the displayed registration
+p99 ranges. The remaining low percentiles use the existing 8 ms histogram bound.
+This also avoids using the maximum as a substitute for the percentile when the
+benchmark overflows its 1,024 ms histogram.
+
+The four no-added-load runs had host CPU medians of 40.3–60.1%. The lowest
+one-second sample among those runs was 20.6%. The loaded runs ranged from 99.6%
+to 100%. The comparison is between the existing host load and added contention.
+The host remained active in the no-added-load runs. A separate 60-second check
+after stopping all workers measured 23.0% minimum, 43.0% median and 75.1%
+maximum. The idle gate of ten consecutive samples at or below 20% CPU busy never
+opened, so the idle comparison remains unmeasured.
+
+At 12,800/s under added load, the embedded runtime had a 52.96 ms registration
+with 0.06 ms of thread CPU and no matching GC. Six Mach samples reported the
+thread runnable, supporting 36.72 ms of runnable wait. The remaining 16.17 ms of
+off-CPU time lacked state coverage. At 25,600/s the same loaded runtime had a
+71.33 ms registration with 0.08 ms of thread CPU, a near-instant map write and
+no matching GC. Fourteen runnable samples supported 68.34 ms of runnable wait
+and left 2.92 ms unclassified.
+
+The external no-added-load trace at 25,600/s recorded a 78.03 ms registration
+with 22.24 ms of thread CPU and no matching GC. Its 55.80 ms off-CPU time split
+into an estimated 26.33 ms runnable, 9.40 ms blocked and 20.06 ms unclassified.
+It spent 78.01 ms elapsed inside the fallback map write. The write's elapsed
+time included both table work and time off CPU. The embedded no-added-load trace
+at 25,600/s also recorded a 9.88 ms registration with no matching GC, 0.21 ms of
+thread CPU and two blocked samples. It assigned 5.01 ms to blocking and left
+4.65 ms unclassified.
+
+A separate loaded embedded 25,600/s episode showed how GC can amplify a
+scheduling delay. A 361.51 ms major collection overlapped a 361.10 ms
+post-deadline timer wake delay, during which the benchmark thread used 177.53 ms
+of CPU. All 73 sampled states in the wake-delay window were runnable. Subsequent
+registrations added further delay.
+
+Under added load the external 25,600/s run recorded a 2,923.45 ms read queue
+wait and 0.14 ms of read service. At least 1,250 reads waited 900 ms or more,
+with 1,232 waiting at least one second. Backlog preceded the longest individual
+calls and grew through successive registration delays and natural collections.
+In that run a 104.12 ms registration with no matching GC used 0.04 ms of thread
+CPU and 0.003 ms elapsed in the map. All 20 state samples were runnable. The
+estimated runnable wait was 90.91 ms, leaving 13.17 ms unclassified. A separate
+161.82 ms registration with no matching GC used 0.29 ms of thread CPU and had
+98.67 ms of estimated runnable wait. There was no sampled blocked interval for
+either registration. Both kinds of historical outlier therefore occurred at
+comparable or larger sizes in the loaded external runtime. The embedded traces
+reached 497.07 ms of queue wait and had no GC-free registration of 100 ms or
+more.
+
+A separate 120-second control at external 25,600/s with the same 16 workers
+disabled both GC trace and per-event probes. The p99 histogram bound was 256 ms
+for both registration and one await. The maxima were 619.10 and 619.13 ms. The
+longest individual registration took 112.14 ms. A second control gave bounds of
+16 and 32 ms and maxima of 214.30 and 214.33 ms, with a 35.60 ms longest
+registration. These controls establish substantial queueing without tracing.
+They leave the GC attribution of the 112.14 ms call and the cause of the
+variation between runs unresolved. The approximately three-second maximum was
+observed only in the instrumented series.
