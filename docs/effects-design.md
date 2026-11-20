@@ -3733,3 +3733,91 @@ during timer wake-up. The just-due registration batch waited 510.56 ms and then
 ran for 44.99 ms, giving the next batch 550.58 ms of backlog. The initial
 one-second episode and these GC-led episodes show different orders of onset
 within the same load profile.
+
+### Splitting batches and limiting arrivals under CPU saturation
+
+The comparison retained 10,000 fixed results, the same nominal cohort retention
+times, and 100 scheduled reads per second. Sixteen arithmetic workers competed
+for 12 logical CPUs. JavaScript diagnostic records and the per-batch timeline
+were buffered until measurement ended. V8 recorded natural GC during the run. No
+forced GC was used.
+
+The previous two 180-second runs per runtime at 128 registrations every 5 ms
+provide the reference. The 90-second screen compared 64 every 2.5 ms at the same
+25,600/s, 128 every 10 ms to halve the admission rate, and 64 every 5 ms to
+combine splitting and limiting at 12,800/s. At fixed rate the split preserves
+the number of rotating result slots. Halving the rate also halves those slots
+because their lifetimes stay fixed. The fixed 10,000 results are additional to
+those slots.
+
+The scheduler processes all admitted arrivals, even if the run ends with a
+backlog. The rate limit changes the offered schedule at the source. The measured
+queue starts at the new arrival deadline. Any upstream queue for excess offers
+from a 25,600/s producer sits outside those measured deadlines.
+
+| Screen profile | Runtime  | Actual registrations/s | Registration p99 bound / max, ms | One-await p99 bound / max, ms | Maximum GC, ms | Both targets |
+| -------------- | -------- | ---------------------: | -------------------------------: | ----------------------------: | -------------: | ------------ |
+| 64 / 2.5 ms    | Embedded |               25,599.0 |                      11 / 268.23 |                   10 / 265.83 |         232.46 | Fail         |
+| 64 / 2.5 ms    | External |               25,600.2 |                      28 / 105.61 |                   30 / 101.28 |          85.25 | Fail         |
+| 128 / 10 ms    | Embedded |               12,800.4 |                        8 / 81.47 |                     6 / 76.53 |          42.79 | Pass         |
+| 128 / 10 ms    | External |               12,800.3 |                       9 / 142.06 |                    8 / 137.09 |         120.57 | Fail         |
+| 64 / 5 ms      | Embedded |               12,800.2 |                        9 / 70.85 |                     9 / 70.91 |          56.39 | Pass         |
+| 64 / 5 ms      | External |               12,800.1 |                       10 / 95.84 |                    11 / 95.86 |          81.08 | Pass         |
+
+All screen runs completed 9,000 reads and all admitted registrations. Their
+median host CPU was 100%. Both latency targets mean a queue-inclusive p99 upper
+bound at or below 16 ms and an observed maximum at or below 100 ms for both
+operations.
+
+At unchanged throughput, splitting shortened the batch service p99 to about 1.75
+ms from 2.44–7.16 ms in the preceding 180-second references. The 90-second split
+screens had no 1-second queue, and both still exceeded 100 ms. A 232.46 ms major
+collection drove the embedded peak. In the external split a major collection
+took 85.25 ms and the first queued batch took 21.18 ms, pushing both metrics
+over 100 ms despite the sub-100 ms collection. The shorter split observation
+window limits any comparison of the recurrence of one-second queues.
+
+Halving arrivals at the original batch size met both targets in the embedded
+screen. The external maximum followed a 120.57 ms major collection and a 17.14
+ms registration batch. Splitting as well met both targets in both screens. In
+the external combined screen, the corresponding largest episode was an 81.08 ms
+collection followed by a 14.14 ms batch. The batch size and natural-GC variation
+both changed between the observations.
+
+The combined 12,800/s profile was repeated for 180 seconds in each runtime. The
+embedded repeat stayed within both targets. The external repeat reached 154.09
+ms for one await when a 133.14 ms major collection delayed the scheduler and a
+16.97 ms registration batch followed. Its p99 remained within 16 ms. The
+90-second joint pass therefore did not hold for the longer repetitions.
+
+| 180-second profile | Runtime  | Actual registrations/s | Registration p99 bound / max, ms | One-await p99 bound / max, ms | Maximum GC, ms | Both targets |
+| ------------------ | -------- | ---------------------: | -------------------------------: | ----------------------------: | -------------: | ------------ |
+| 64 / 2.5 ms        | Embedded |               25,600.0 |                     107 / 375.62 |                  108 / 372.20 |         333.81 | Fail         |
+| 64 / 2.5 ms        | External |               25,600.2 |                     192 / 954.40 |                  194 / 951.36 |         761.01 | Fail         |
+| 64 / 5 ms          | Embedded |               12,800.1 |                        9 / 93.04 |                    10 / 93.10 |          71.10 | Pass         |
+| 64 / 5 ms          | External |               12,800.1 |                       9 / 154.06 |                   10 / 154.09 |         133.14 | Fail         |
+| 32 / 5 ms          | Embedded |                6,400.1 |                        7 / 86.52 |                     7 / 82.01 |          72.59 | Pass         |
+| 32 / 5 ms          | External |                6,400.1 |                        6 / 69.05 |                     7 / 64.24 |          60.16 | Pass         |
+
+The 6,400/s profile met both targets for both runtimes over 180 seconds. Each
+run completed 1,152,000 registrations and 18,000 reads with a median CPU load of
+100%. It kept the fixed set of 10,000 results and 10,912 rotating slots. Peak
+registration latency followed a major collection and one longer batch in both
+runs. The external GC and batch took 60.16 ms and 11.11 ms respectively. The
+embedded values were 72.59 ms and 9.50 ms. The source admitted a quarter of the
+reference registration rate. Longer exposures and other host conditions for this
+configuration remain unmeasured.
+
+The fixed-rate split also ran for 180 seconds to match the reference observation
+window. At 25,600/s in the external runtime, a 761.01 ms major collection
+coincided with the timer delay. The first batch started 761.40 ms late and
+itself took 193.01 ms despite using only 18.24 ms of thread CPU. Its estimated
+runnable wait was 160.77 ms. Thirteen reads waited at least 900 ms, with a
+maximum wait of 951.30 ms. The 64-row batch still left the workload exposed to a
+one-second-scale queue when a long GC and runnable delay occurred in succession.
+
+The embedded split peak followed a 333.81 ms collection and a 40.22 ms batch. It
+also had a distinct 104.58 ms individual registration without a matching GC
+record. That call used 0.06 ms of thread CPU, and the state sampling attributed
+an estimated 103.11 ms to runnable wait. Fixed-rate splitting kept throughput
+but left both runtimes above both latency budgets in the three-minute runs.
