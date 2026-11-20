@@ -9,9 +9,17 @@ const [
   secondsArgument = "60",
   mode = "timing",
   extraArgument = "0",
+  optionsArgument = "{}",
 ] = Deno.args;
 const seconds = Number(secondsArgument);
 const extra = Number(extraArgument);
+const {
+  batch: batchSize = 256,
+  period: periodMs = 10,
+  anchorKeys: anchorCount = profile === "mixed" ? 0 : 100000,
+  anchorResults = profile === "anchored" ? anchorCount : 0,
+  knownFallback = false,
+} = JSON.parse(optionsArgument);
 assert.ok(runtime === "embedded" || runtime === "external");
 assert.ok(["timing", "trace", "scheduled"].includes(mode));
 assert.ok(
@@ -21,6 +29,17 @@ assert.ok(
 assert.ok(Number.isFinite(seconds) && seconds >= 1);
 assert.ok(Number.isSafeInteger(extra) && extra >= 0);
 assert.ok(extra === 0 || mode === "scheduled");
+assert.ok(
+  Number.isSafeInteger(batchSize) && batchSize > 0 && batchSize % 16 === 0,
+);
+assert.ok(Number.isFinite(periodMs) && periodMs >= 1);
+assert.ok(Number.isSafeInteger(anchorCount) && anchorCount >= 0);
+assert.ok(
+  Number.isSafeInteger(anchorResults) && anchorResults >= 0 &&
+    anchorResults <= anchorCount,
+);
+assert.equal(typeof knownFallback, "boolean");
+assert.ok(mode === "scheduled" || optionsArgument === "{}");
 const trace = mode === "trace";
 
 // (module (type (struct)) (func (export "mak") (result externref)
@@ -35,6 +54,18 @@ const { compile, generateRuntimeModule } = await import(
 );
 const moduleUrl = (source) => "data:text/javascript;base64," + btoa(source);
 function traceFallback(source) {
+  if (knownFallback) {
+    const site = "  static set(value, reference) {";
+    assert.equal(source.split(site).length, 2);
+    return source.replace(
+      site,
+      `${site}
+    if (globalThis.tossWasmKnownFallback === true) {
+      hostReferences.set(value, reference);
+      return;
+    }`,
+    );
+  }
   if (!trace) return source;
   const site = "      hostReferences.set(value, reference);\n      return;";
   assert.equal(source.split(site).length, 2);
@@ -161,6 +192,7 @@ function publish(keys, measured, due) {
     Reflect.apply(nativeThen, this, reactions);
     return current;
   };
+  if (knownFallback) globalThis.tossWasmKnownFallback = true;
   try {
     for (const key of keys) {
       current = key;
@@ -199,6 +231,7 @@ function publish(keys, measured, due) {
     }
   } finally {
     Promise.prototype.then = nativeThen;
+    if (knownFallback) globalThis.tossWasmKnownFallback = false;
   }
   assert.equal(returned, current);
   return slowInBatch;
@@ -206,24 +239,26 @@ function publish(keys, measured, due) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const anchors = [];
-const anchorCount = profile === "mixed" ? 0 : 100000;
 while (anchors.length < anchorCount) {
   const size = Math.min(512, anchorCount - anchors.length);
   const keys = Array.from({ length: size }, mak);
-  if (profile === "anchored") publish(keys, false);
+  const published = Math.min(size, Math.max(0, anchorResults - anchors.length));
+  if (published > 0) publish(keys.slice(0, published), false);
   anchors.push(...keys);
   await wait(0);
 }
 const cohorts = [
-  { size: 160, slots: new Array(4) },
-  { size: 80, slots: new Array(128) },
-  { size: 16, slots: new Array(2048) },
+  { size: batchSize * 10 / 16, slots: new Array(Math.ceil(40 / periodMs)) },
+  { size: batchSize * 5 / 16, slots: new Array(Math.ceil(1280 / periodMs)) },
+  { size: batchSize / 16, slots: new Array(Math.ceil(20480 / periodMs)) },
 ];
-const batchSize = 256;
 const intervalMs = 5;
 if (mode === "scheduled") {
-  const periodMs = 10;
-  const slots = Math.floor(seconds * 1000 / periodMs);
+  const readPeriodMs = 10;
+  const publicationSlots = Math.ceil(seconds * 1000 / periodMs);
+  const readSlots = Math.ceil(
+    (seconds * 1000 - readPeriodMs / 2) / readPeriodMs,
+  );
   const candidates = [];
   const readQueue = new Latencies();
   const readEndToEnd = new Latencies();
@@ -231,18 +266,18 @@ if (mode === "scheduled") {
   let readRequests = 0;
   console.log("SCHEDULE_START");
   const started = performance.now();
-  while (publications < slots || readRequests < slots) {
-    const publishDue = publications < slots
+  while (publications < publicationSlots || readRequests < readSlots) {
+    const publishDue = publications < publicationSlots
       ? started + publications * periodMs
       : Infinity;
-    const readDue = readRequests < slots
-      ? started + readRequests * periodMs + periodMs / 2
+    const readDue = readRequests < readSlots
+      ? started + readRequests * readPeriodMs + readPeriodMs / 2
       : Infinity;
     const due = Math.min(publishDue, readDue);
     while (performance.now() < due) {
       await wait(Math.ceil(due - performance.now()));
     }
-    if (publishDue < readDue) {
+    if (publishDue <= readDue) {
       const keys = Array.from({ length: batchSize + extra }, mak);
       publish(keys, true, due);
       let offset = 0;
@@ -270,8 +305,8 @@ if (mode === "scheduled") {
   }
   const durationMs = performance.now() - started;
   assert.equal(anchors.length, anchorCount);
-  assert.equal(registrations.count, slots * (batchSize + extra));
-  assert.equal(reads.count, slots);
+  assert.equal(registrations.count, publicationSlots * (batchSize + extra));
+  assert.equal(reads.count, readSlots);
   console.log("SCHEDULE_END");
   console.log(JSON.stringify({
     runtime,
@@ -283,6 +318,9 @@ if (mode === "scheduled") {
     batchSize,
     extra,
     anchorCount,
+    anchorResults,
+    knownFallback,
+    publicationsPerSecond: registrations.count * 1000 / durationMs,
     registrations: registrations.report(),
     registrationQueue: registrationQueue.report(),
     registrationEndToEnd: registrationEndToEnd.report(),

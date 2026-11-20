@@ -3181,3 +3181,121 @@ mitigation. These are conditions observed in this workload,
 not universal thresholds. The results point to temporary
 allocation rate, retained result volume and queue backlog as
 the relevant levers. The runtime code is unchanged.
+
+### Queue budgets under Wasm allocation and retention changes
+
+The scheduled benchmark now accepts a JSON configuration after the
+extra-publication count. `batch` sets the normal cohort keys per
+slot, `period` sets the interval in milliseconds, `anchorKeys` sets
+the number of keys pinned for the run, and `anchorResults` sets the
+number of those keys with published results. Batch splitting scales
+the number of retained cohorts to keep their wall-time lifetimes at
+40 ms, 1,280 ms and 20,480 ms in the tested configurations. Reads
+remain on the same 10 ms schedule in all cases. When a publication
+and read share a due time, publication runs first. All due jobs
+are recorded, including those delayed during catch-up.
+
+The `knownFallback` option is an allocation control in the benchmark
+only. The benchmark knows that its custom `then` returns an opaque
+Wasm key. For that publication it writes to the same WeakMap
+without attempting a private field and catching a TypeError. This
+keeps result associations and offered throughput the same while
+avoiding the failed stamp and its temporary work. Read callbacks
+still publish ordinary Promises through the original branch. This
+experiment does not introduce such a capability into the Toss
+runtime.
+
+```sh
+deno run --allow-read --v8-flags=--trace-gc-nvp \
+  experiments/async-wasm-churn-benchmark.mjs \
+  . external anchored 25 scheduled 128 '{"batch":128,"period":5}'
+```
+
+The comparison uses a 16 ms p99 upper bound from the benchmark's
+histogram and an exact observed maximum of 100 ms for both
+publication and the one-await read. It uses queue-inclusive
+latencies. Passing a run describes that finite observation.
+
+The initial comparison uses one 25-second Deno 2.9.7 process
+per runtime and case on arm64 macOS, with passive natural-GC
+tracing. All cases ran 100 reads per second. The names below
+denote the following changes:
+
+- Base. 100,000 anchor results, 256 ordinary and 256 temporary
+  publications every 10 ms.
+- Allocation control. The base with `knownFallback`.
+- Result cap. Publish only 25,000 of the same 100,000 anchor keys.
+  The publication schedule stays fixed.
+- Split batch. Use 128 ordinary and 128 temporary publications
+  every 5 ms, preserving throughput and cohort retention.
+- Remove extra. Keep the 256 ordinary publications per 10 ms
+  and all 100,000 anchor results, omitting the temporary batch.
+- Combined prototype. Use 10,000 anchor results, 128 ordinary
+  publications per 5 ms, no extra publications, and
+  `knownFallback`.
+- Lower rate. Use 10,000 anchor results and 128 ordinary
+  publications per 10 ms on the ordinary runtime.
+
+| Case | Runtime | Actual publications/s | Allocated MB/s | Publication p99 bound / max, ms | One-await p99 bound / max, ms | Both budgets |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Base | Embedded | 51,207 | 156.2 | 32 / 166.59 | 32 / 161.65 | Fail |
+| Base | External | 51,207 | 157.3 | 64 / 226.24 | 64 / 221.30 | Fail |
+| Allocation control | Embedded | 51,208 | 92.9 | 64 / 174.90 | 64 / 169.97 | Fail |
+| Allocation control | External | 51,208 | 93.2 | 64 / 164.67 | 64 / 159.72 | Fail |
+| Result cap | Embedded | 51,207 | 155.5 | 64 / 152.81 | 32 / 147.87 | Fail |
+| Result cap | External | 51,208 | 157.9 | 128 / 294.94 | 128 / 290.03 | Fail |
+| Split batch | Embedded | 51,205 | 157.2 | 128 / 278.73 | 128 / 274.78 | Fail |
+| Split batch | External | 51,202 | 157.4 | 128 / 259.33 | 128 / 259.38 | Fail |
+| Remove extra | Embedded | 25,603 | 79.1 | 8 / 68.61 | 8 / 63.68 | Pass |
+| Remove extra | External | 25,604 | 79.3 | 8 / 69.12 | 4 / 64.16 | Pass |
+| Combined prototype | Embedded | 25,603 | 46.5 | 16 / 41.68 | 8 / 37.94 | Pass |
+| Combined prototype | External | 25,603 | 47.2 | 8 / 64.65 | 8 / 59.76 | Pass |
+| Lower rate | Embedded | 12,801 | 39.7 | 8 / 19.06 | 4 / 14.95 | Pass |
+| Lower rate | External | 12,802 | 40.3 | 8 / 28.74 | 8 / 26.18 | Pass |
+
+The allocation control cut allocated MB/s by about 40% at the same
+publication rate. With 100,000 anchor results it still missed both
+latency budgets. The result cap alone still kept the high rate of
+transient publication. Splitting the batch kept allocation near
+157 MB/s and also missed the budgets. These runs establish that
+none of the isolated changes crossed both targets at 51,200/s.
+They do not establish that every latency difference between the
+individual runs was caused by the varied parameter.
+
+Removing the extra batch met the targets for both runtimes in this
+25-second series. An independent 40-second run from the preceding
+study with the same 100,000 result anchors and 25,600 publications/s
+reached 154.08 and 198.41 ms for publication and 149.11 and
+193.45 ms for one await, embedded and external respectively.
+The 25-second pass is sensitive to the observation window.
+
+The confirmation used fresh 45-second processes with the ordinary
+runtime and without V8 trace flags. Both profiles pinned 10,000
+published results in addition to the rotating cohorts, registered
+128 cohort keys per slot, and omitted the extra temporary batch.
+Each process completed all 4,500 scheduled reads.
+
+| Slot interval | Runtime | Actual publications/s | Publication p99 bound / max, ms | One-await p99 bound / max, ms | Both budgets |
+| --- | --- | ---: | ---: | ---: | --- |
+| 5 ms | Embedded | 25,601 | 16 / 81.50 | 16 / 77.02 | Pass |
+| 5 ms | External | 25,601 | 16 / 75.88 | 16 / 71.41 | Pass |
+| 10 ms | Embedded | 12,801 | 16 / 55.21 | 16 / 50.25 | Pass |
+| 10 ms | External | 12,801 | 16 / 42.41 | 16 / 37.45 | Pass |
+
+To reproduce the 5 ms condition without GC tracing, select
+`embedded` or `external` in the following command.
+
+```sh
+deno run --allow-read experiments/async-wasm-churn-benchmark.mjs \
+  . embedded anchored 45 scheduled 0 \
+  '{"batch":128,"period":5,"anchorKeys":10000}'
+```
+
+The 5 ms profile preserved the ordinary publication rate of the
+base workload and met both budgets in both runtime forms. The
+production runtime can use this workload shape without the
+benchmark-only allocation control. The 10 ms profile halved
+throughput and left more margin against the 100 ms maximum in
+both runtimes. At 51,200 total publications/s, the benchmark
+found no passing single change. The 45-second maxima do not
+establish a hard upper bound for longer runs or other hosts.
