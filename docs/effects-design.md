@@ -3299,3 +3299,91 @@ throughput and left more margin against the 100 ms maximum in
 both runtimes. At 51,200 total publications/s, the benchmark
 found no passing single change. The 45-second maxima do not
 establish a hard upper bound for longer runs or other hosts.
+
+### Three-minute queue budget repeats
+
+The 45-second profiles were repeated in separate, sequential 180-second Deno
+2.9.7 processes on arm64 macOS with the production runtime. The budget runs used
+neither forced GC nor trace flags. Each run pinned 10,000 published results,
+used batches of 128 publications with no extra batch, and scheduled one read
+every 10 ms. Changing the publication interval preserves the rotating cohorts'
+retention times. It also changes their capacity from 21,824 results at 10 ms to
+43,648 at 5 ms, in addition to the 10,000 pinned results.
+
+```sh
+for pair in embedded:5 external:5 external:10 embedded:10; do
+  deno run --allow-read experiments/async-wasm-churn-benchmark.mjs \
+    . "${pair%:*}" anchored 180 scheduled 0 \
+    "{\"batch\":128,\"period\":${pair#*:},\"anchorKeys\":10000}"
+done
+```
+
+Each process completed all 18,000 reads and all 4,608,000 or 2,304,000
+registrations. Latencies below include queue wait.
+
+| Interval | Runtime  | Actual registrations/s | Registration p99 bound / max, ms | One-await p99 bound / max, ms | Registration / read at or above 16 ms |
+| -------- | -------- | ---------------------: | -------------------------------: | ----------------------------: | ------------------------------------: |
+| 5 ms     | Embedded |               25,600.1 |                      16 / 130.26 |                   16 / 125.82 |                       0.836% / 0.839% |
+| 5 ms     | External |               25,599.9 |                      16 / 126.83 |                   16 / 126.86 |                       0.637% / 0.811% |
+| 10 ms    | Embedded |               12,800.2 |                   128 / 1,004.18 |                  128 / 999.76 |                       1.621% / 1.539% |
+| 10 ms    | External |               12,800.3 |                      16 / 123.59 |                   16 / 118.62 |                       0.372% / 0.339% |
+
+All combinations exceeded the 100 ms maximum. The embedded 10 ms run also
+exceeded the 16 ms p99 target for both metrics. In the other three runs, the
+largest queue waits were within 0.04 ms of the corresponding end-to-end maxima
+across each run. The largest individual registration calls were 20.78 to 27.49
+ms. In the embedded 10 ms run a single registration call took 627.31 ms, and the
+largest registration and read queue waits were 1,004.17 and 999.72 ms
+respectively. These maxima are computed independently and need not come from the
+same job.
+
+Separate diagnostic processes used passive V8 GC tracing and logged the
+boundaries of late scheduler slots. They kept the same intervals, cohorts and
+retention. For example, 43.37 s into the embedded 5 ms run, a 126.80 ms major
+collection coincided with a 126.94 ms timer wait. The collector reported 118.48
+ms of marking, including 45.82 ms of linear ephemeron marking. The next
+registration batch took 16.26 ms. The following read spent 137.17 ms in the
+queue and 0.03 ms in the callback.
+
+At 11.00 s in that same run, a different breach began in a 114.77 ms
+registration batch with a 109.67 ms individual call. The preceding timer wait
+was 4.68 ms, and there was no matching GC pause in the trace. A read due with
+the batch waited 117.57 ms. The delay is localized to the registration call. The
+operation within that call remains unidentified.
+
+Seven of eight over-100 ms episodes in that diagnostic run coincided with a
+major collection during a timer wait. Some collections were below 100 ms
+themselves. At 155.79 s an 80.03 ms collection was followed by a batch
+containing a 21.71 ms registration call, and the episode crossed 100 ms.
+
+The external 5 ms diagnostic also had five over-100 ms episodes with major
+collections during timer waits. A sixth crossed 522 ms at about 117 s. Before
+the longest registration call, its batch already had 179.92 ms of backlog. A
+340.08 ms young collection was recorded inside the batch, whose slowest
+registration call took 340.20 ms. The read due with the batch waited 522.49 ms
+and took 0.06 ms to finish the callback. The relative contributions of collector
+CPU work and host descheduling during that pause remain unknown.
+
+The external 10 ms diagnostic reproduced the maximum breach in three episodes.
+Their major collections took 95.32 ms, 101.13 ms and 111.08 ms. With the 95.32
+ms collection, the first affected read finished in 95.33 ms, and the subsequent
+registration batch pushed the episode's maximum to 106.47 ms. The episode with
+the 111.08 ms collection started just before the end of the 180-second schedule
+and peaked at 123.25 ms.
+
+The embedded 10 ms diagnostic also exceeded the maximum, with 123.99 ms for
+registration and 119.05 ms for one await. Both p99 upper bounds were 16 ms. Its
+over-100 ms episode was 81.07 s into the schedule. A 116.40 ms major collection
+coincided with a 117.95 ms timer wait. During catch-up, the slowest registration
+call took 12.38 ms, including 12.35 ms in the fallback WeakMap write. That write
+is a measured location, and the probe cannot separate map work from a host delay
+inside the write. The largest measured map write in a late slot was 24.74 ms.
+The near-one-second baseline episode and its 627.31 ms call did not recur in
+this diagnostic repeat, so their trigger remains unknown.
+
+Both publication rates produced queue delays above 100 ms in both traced and
+untraced runs. The 45-second pass therefore does not establish that either rate
+sustains the joint budget at this retention. The traced repetitions demonstrate
+collection-driven queue buildup and, at the higher rate, a separate registration
+stall with no matching collection. They also show why a pause below 100 ms can
+exceed the hard limit once the following batch is included.
